@@ -1,0 +1,82 @@
+Overview:
+BigSack (formerly TreePool) is a Java persistence mechanism that provides TreeSet and TreeMap functionality with a small footprint
+and exabyte object serialization capability. Undo logging tunable cache are some of the differentiating features. The typical workflow is to open
+a 'database', get a session, perform adds/deletes/updates/retrievals, then commit or rollback. Accessing the data is done through
+methods returning subsets of the ordered set via iterators, like the native Java KeySet and KeyMap collections classes.
+ 
+Storage Mechanism:
+It stores individual key/value pairs as a bTree index spread over a series of 
+fixed-length blocks which are double linked. As elements are needed the necessary blocks are paged in to the pool as the index is traversed. 
+The leaf nodes point to data blocks that contain the serialized version of the object, again spread over the necessary blocks.
+Multiple tablespace files are dynamically managed by memory mapping and/or file IO. An undo file mirrors the modified
+blocks and restores them in the event of a failure. The index to the keys is a BTree composed of serialized internal BigSack
+tree pointer classes and its possible to modify their structure and still have them work on old data as long as serialization is 
+not broken by the change. Any key or value that can be serialized can be stored. Use good practice for your classes to be used
+and add SerialVersionUID's and make sure there are default constructors and use transient keywords where necessary...all good
+standard serialization practices that most native Java classes employ. 
+
+Configurable Parameters:
+To tune the cache, look at the BigSack.properties file:
+#
+# Properties for BigSack
+#
+# L3 cache is our final backing store; File or MMap. this can be changed at will
+# File is filesystem based, MMap is memory-mapped demand paging, preferred for very large tables
+#L3Cache: File
+L3Cache: MMap
+#
+# Number of pool blocks in runtime buffer pool (bytes=PoolBlocks*BlockSize)
+# This can also be modified without fear.  A large pool increases performance at the cost
+# of memory
+#
+PoolBlocks: 8192
+#
+# these constants are dangerous, dont change them after creating a table
+#
+# Table page size, or block size, in bytes
+#BlockSize: 4096
+BlockSize: 1024
+# Number of buckets in each tablespace.
+# buckets in the BigSack constitute the pre-allocated storage blocks
+# More buckets can increase performance of large datasets at the cost of overhead
+Buckets: 1024
+
+Parameter Elaboration:
+There layout on disk (or card, etc) controlled by Buckets and BlockSize. Buckets are the number of blocks that are
+appended to disk when the space is needed, so we allocate a bit more to preplan. Blocksize is the number of bytes in each block
+allocated.
+PoolBlocks are a pool of database blocks stored in memory and swapped in and out as needed.
+L3Cache has 2 options: pure File IO using standard functions or memory mapped IO in which the table spaces are mapped
+into virtual memory page file space. MMap is much faster but some but is more complex and may not be suitable for small footprint devices 
+with limited memory for swapping and paging.
+
+Running the Demo:
+If you just want to get going the program is run by the following:
+java -cp bin/BigSack.jar com.neocoretechs.bigsack.test.BatteryBigSack user/TestDB
+or right click BatteryBigSack in eclipse and 'Run As Java application'. The app will look for the BigSack.properties and if
+not found on the ClassPath will look for a system property. Set up you 'Arguments' tab in eclipse to include the
+path and name of directory/database.
+A command line example:
+java -cp bin/Bigsack.jar -DBigSack.properties=conf/BigSack.properties com.neocoretechs.bigsack.test.BatteryBigSack user/TestDB
+
+A number of functions are performed. If you look in the DB directory you specified on the command line argument you see files <DBNAME>.0 - <DBNAME>.7
+and <DBNAME>.log. These are the tablespace files and log file respectively. 
+
+There is also an ant build file in the eclipse project.
+
+Building Your Application:
+The options exist to go fully embedded single thread or to use a wrapper to provide concurrency and caching.  The fundamental class to access a DB
+is the BigSackSession. Through the session you can directly access database functions add/delete/set/subset etc. No concurrency control really exists
+at this level so if you dont need it use the following:
+BigSackSession session = SessionManager.Connect(argv[0], true);
+Classes that wrap a session are BufferedTreeMap, BufferedTreeSet, and BufferedCachlessTreeSet. At this level concurrency
+control is managed through a mutex object and an in-memory cache of deserialized objects is provided. In you app you would do the following:
+BufferedTreeMap bm = new BufferedTreeMap(argv[0], true);
+and from there use bm to put/get/get your iterators on, etc.
+
+Easter Eggs:
+Many possibilities exist. If you explore you'll find a mechanism to plug in your own classloader for class resolution. There are AdminSessions that,
+working in a multi-user multi-threaded container allow you to put the database online or offline etc.  There are analysis functions stuck
+there too.  Of course, its fully thread safe!
+
+This doc created 12/2013
