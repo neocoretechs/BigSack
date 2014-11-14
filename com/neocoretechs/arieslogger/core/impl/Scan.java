@@ -52,7 +52,7 @@ public class Scan implements StreamLogScan {
 	public static final byte FORWARD = 1;
 	public static final byte BACKWARD = 2;
 	public static final byte BACKWARD_FROM_LOG_END = 4;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 
 	private RandomAccessFile scan;		// an output stream to the log file
 	private LogToFile logFactory; 		// log factory knows how to to skip

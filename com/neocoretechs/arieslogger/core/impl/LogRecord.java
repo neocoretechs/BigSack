@@ -40,13 +40,13 @@ import java.io.IOException;
 
 */
 public class LogRecord implements Externalizable {
-
+	public static long serialVersionUID = 1193478925184398366L;
 	private long	xactId;	// the transaction Id
 	private int		group;	// the loggable's group value
 	private Loggable op;		// the loggable
 
 	private static final int LOG_RECORD = 0;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 
 	public LogRecord() {
 	}

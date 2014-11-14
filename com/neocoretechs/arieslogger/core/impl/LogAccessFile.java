@@ -82,7 +82,7 @@ public class LogAccessFile
     private static final int            LOG_RECORD_FIXED_OVERHEAD_SIZE = 16;
 	private static final int            LOG_RECORD_HEADER_SIZE = 12; //(length + instance)
     private static final int            LOG_NUMBER_LOG_BUFFERS = 3;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final int STORE_MAJOR_VERSION_1 = 1;
 	private static final int STORE_MINOR_VERSION_0 = 0;
 

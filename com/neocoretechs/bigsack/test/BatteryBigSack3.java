@@ -47,8 +47,9 @@ public class BatteryBigSack3 {
 		//battery3(session.getSession(), argv);
 		//battery4(session, argv);
 		//battery5(session, argv);
-		SessionManager.stopCheckpointDaemon(argv[0]);
-		 System.out.println("TEST BATTERY 3 COMPLETE.");
+		//SessionManager.stopCheckpointDaemon(argv[0]);
+		session.getSession().Commit();
+		System.out.println("TEST BATTERY 3 COMPLETE.");
 		
 	}
 	/**
