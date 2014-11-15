@@ -391,7 +391,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	public LogToFile(BlockDBIO blockIO) {
 		this.blockIO = blockIO;
 		this.dbName = (new File(blockIO.getDBName())).getName();
-		keepAllLogs = true;
+		keepAllLogs = false; // indicates whether obsolete logs may be removed, true causes return from truncate immediately
 		if (MEASURE)
 			mon_LogSyncStatistics = true;
 	}
@@ -1201,7 +1201,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			{
 				switchLogFile();
 
-				//log switch is occuring in conjuction with the 
+				//log switch is occurring in conjunction with the 
 				//checkpoint, set the amount of log written from last 
                 //checkpoint to zero.
 				logWrittenFromLastCheckPoint = 0;
@@ -1445,10 +1445,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	{
 		if (newlog.length() != 0)
 			return false;
-
-		//if (DEBUG)
-		//{
-		//		testLogFull();
+		//if (DEBUG) {
+		//	testLogFull();
 		//}
 		newlog.seek(0);
 		newlog.writeInt(fid);
@@ -1456,10 +1454,21 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		newlog.writeLong(prevLogRecordEndInstance);
 		newlog.writeInt(0);
 		syncFile(newlog);
-
 		return true;
 	}
-
+	private boolean forceInitLogFile(RandomAccessFile newlog, long number, long prevLogRecordEndInstance) throws IOException
+	{
+		//if (DEBUG) {
+		//	testLogFull();
+		//}
+		newlog.seek(0);
+		newlog.writeInt(fid);
+		newlog.writeLong(number);
+		newlog.writeLong(prevLogRecordEndInstance);
+		newlog.writeInt(0);
+		syncFile(newlog);
+		return true;
+	}
 	/**
 		Switch to the next log file if possible.
 
@@ -1785,10 +1794,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 			if (DEBUG)
 			{
-                 System.out.println("truncatLog: undoLWM firstlog needed " + firstLogNeeded);
-                 System.out.println( "truncatLog: checkpoint truncationLWM firstlog needed " +
-                      firstLogNeeded+ 
-                      "truncatLog: firstLogFileNumber = " + getFirstLogFileNumber());
+                 System.out.println("getfirstLogNeeded: checkpoint:"+checkpoint+
+                		 " first log needed:" +firstLogNeeded+ 
+                		 ",first log FileNumber = " + getFirstLogFileNumber());
 			}
 		}
 		return firstLogNeeded;
@@ -1977,8 +1985,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	                        LogCounter.toDebugString(value));
 				}	
 	
-				// from version 1.5 onward, we added an int for storing JBMS
-				// version and an int for storing checkpoint interval
+				// an int for storing version and an int for storing checkpoint interval
 				// and log switch interval
 				onDiskMajorVersion = dais.readInt();
 				onDiskMinorVersion = dais.readInt();
@@ -1989,9 +1996,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				onDiskBeta = (flags & IS_BETA_FLAG) != 0;
 				if (onDiskBeta)
 				{
-					// if is beta, can only be booted by exactly the same
-					// version
-	
+					// if beta, can only be booted by exactly the same version
 				}
 					
 			}
@@ -2009,8 +2014,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		return value;
 
 	}
-
-
 
     /**
      * Create the directory where transaction log should go.
@@ -2472,8 +2475,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		}
 		else
 		{
-			// log file exist, need to run recovery
-			recoveryNeeded = true;
+				// log file exist, need to run recovery
+				System.out.println("Recovery indicated for starting log file "+logFileNumber+" end position:"+endPosition);
+				recoveryNeeded = true;
 		}
 
 		maxLogFileNumber = LogCounter.MAX_LOGFILE_NUMBER;
@@ -2484,6 +2488,54 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			System.out.println("RecoveryLog boot complete, log file "+logFileNumber+" recovery "+(recoveryNeeded ? "" : "not ")+ "needed");
 	} // end of boot
 
+	/**
+	 * At the end of commit, truncate the primary log file.
+	 * This can be used to override corruption by forcing writes to log files and restoring state
+	 * @throws IOException 
+	 */
+	public void resetLogFiles() throws IOException {
+		if( DEBUG )
+			System.out.println("Reset log files with current corruption as:"+corrupt);
+		// reset corruption
+		corrupt = null;
+		File logControlFileName = getControlFileName();
+		logFileNumber = 1;
+		// writeControlfile does a checkCorrupt so corrupt still null if this passes
+		if (writeControlFile(logControlFileName,LogCounter.INVALID_LOG_INSTANCE)) {
+			File logFile = getLogFileName(logFileNumber);
+            firstLog = privRandomAccessFile(logFile, "rw");
+            firstLog.getChannel().truncate(LOG_FILE_HEADER_SIZE);
+			if (!forceInitLogFile(firstLog, logFileNumber, LogCounter.INVALID_LOG_INSTANCE))
+            {
+				IOException ioe = new IOException(logFile.getPath());
+				logErrMsg(ioe);
+				corrupt = ioe;
+				throw ioe;
+            }
+			setEndPosition( firstLog.getFilePointer() );
+			setLastFlush(firstLog.getFilePointer());
+			if (DEBUG)
+			{
+				assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
+			}
+			setFirstLogFileNumber(logFileNumber);
+			if(corrupt == null && ! logArchived() && !keepAllLogs )	{
+				deleteObsoleteLogfiles();
+				if( DEBUG )
+					System.out.println("Truncated log file "+logFileNumber);
+			} else {
+				if( DEBUG )
+					System.out.println("Truncation of log did not include obsolete file deletion");
+			}
+		} else {
+			// most likely did not pass checkCorrupt in control file write
+			RuntimeException e = new RuntimeException("Can not write control file during commit");
+			logErrMsg(e);
+			corrupt = e;
+			throw e;
+		}
+		
+	}
 	/**
 	*    Stop the log factory
 	*	<P> MT- caller provide synchronization
@@ -2567,7 +2619,13 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// delete the log files that are not needed any more
 				if(logfiles[i].endsWith(".log"))
 				{
-					fileNumber = Long.parseLong(logfiles[i].substring(3, (logfiles[i].length() -4)));
+					String fileIndex = "";
+					for(int k = (logfiles[i].length()-5); k > 0; k--) {
+						if( logfiles[i].charAt(k) < '0' || logfiles[i].charAt(k) > '9')
+							break;
+						fileIndex = logfiles[i].charAt(k)+fileIndex;
+					}
+					fileNumber = Long.parseLong(fileIndex);
 					if(fileNumber < firstLogNeeded )
 					{
 						uselessLogFile = new File(logDir, logfiles[i]);
@@ -3746,7 +3804,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * be opened in write sync mode then disable the write sync mode and 
 	 * open the file in "rw" mode.
  	 */
-	private RandomAccessFile openLogFileInWriteMode(File logFile) throws IOException
+	public RandomAccessFile openLogFileInWriteMode(File logFile) throws IOException
 	{
 		RandomAccessFile log = privRandomAccessFile(logFile, "rwd");
 		return log ;

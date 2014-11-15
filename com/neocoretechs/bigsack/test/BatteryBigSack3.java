@@ -24,7 +24,7 @@ public class BatteryBigSack3 {
 	static String val = "Of a BigSack K/V pair!yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0;
-	static int max = 1;
+	static int max = 10;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -48,7 +48,7 @@ public class BatteryBigSack3 {
 		//battery4(session, argv);
 		//battery5(session, argv);
 		//SessionManager.stopCheckpointDaemon(argv[0]);
-		session.getSession().Commit();
+		
 		System.out.println("TEST BATTERY 3 COMPLETE.");
 		
 	}

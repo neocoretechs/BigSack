@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.impl.FileLogger;
+import com.neocoretechs.arieslogger.core.impl.LogCounter;
 import com.neocoretechs.arieslogger.core.impl.LogToFile;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
@@ -66,8 +67,7 @@ public final class RecoveryLog  {
 	* Write log entry - uses current db.
 	* This is initiated before buffer pool block flush (writeblk). Get the original block
 	* from deep store and log it as undoable
-	* @param tlbn The long block number of the block about to be written to main tablespace
-	* @param tdb The block instance, payload of block about to be written to main tablespace
+	* @param blk The block instance, payload of block about to be written to log
 	* @exception IOException if cannot open or write
 	*/
 	public void writeLog(BlockAccessIndex blk) throws IOException {
@@ -86,14 +86,14 @@ public final class RecoveryLog  {
 		return;
 	}
 	/**
-	 * Reset the version in each block, the version points to the block in the log
-	 * If the block is in used list set version to 1 and wait for flush
+	 * Remove archived files and reset log file 1 to its primordial state
 	 * 
 	 * @throws IOException
 	 */
 	public void Commit() throws IOException {
 		if( Props.DEBUG) System.out.println("Commit called");
 		firstTrans = null;
+		ltf.resetLogFiles();
 	}
 	
 	/**

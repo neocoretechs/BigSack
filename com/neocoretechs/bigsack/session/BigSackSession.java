@@ -302,7 +302,6 @@ public final class BigSackSession {
 			bTree.getIO().deallocOutstandingRollback();
 		} else {
 			bTree.getRoot().putPages(bTree.getIO());
-			//bTree.getIO().getKeycountfile().updateKeysCount(bTree.getNumKeys());
 			bTree.getIO().deallocOutstandingCommit();
 		}
 	}
