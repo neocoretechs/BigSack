@@ -252,7 +252,7 @@ public final class BigSackSession {
 		bTree.getIO().resetBuckets();
 		bTree.getIO().forceBufferClear();
 		bTree.getIO().createOrLoad(false);
-		bTree.getIO().getUlog().ResetLog();
+		bTree.getIO().getUlog().resetLog();
 		bTree.setNumKeys(0);
 		if( Props.DEBUG ) System.out.println("Clear called, all reset..");
 	}
@@ -290,8 +290,14 @@ public final class BigSackSession {
 	public void Commit() throws IOException {
 		rollupSession(false);
 	}
-	
-	
+	/**
+	 * Checkpoint the current transaction
+	 * @throws IOException 
+	 * @throws IllegalAccessException 
+	 */
+	public void Checkpoint() throws IllegalAccessException, IOException {
+		bTree.getIO().getUlog().checkpoint();
+	}
 	/**
 	* Generic session roll up.  Data is committed based on rollback param
 	* @param rollback true to roll back, false to commit

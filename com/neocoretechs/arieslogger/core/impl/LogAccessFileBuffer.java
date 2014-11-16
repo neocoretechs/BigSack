@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 final class LogAccessFileBuffer
 {
 
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
 	protected ByteBuffer    buffer;
     protected long      greatest_instance;
     protected int length;

@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
+import java.io.Serializable;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.logrecords.Compensation;
@@ -26,7 +27,11 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  * @author jg
  *
  */
-public class CompensationBlock implements Compensation {
+public class CompensationBlock implements Compensation, Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 532343753448457047L;
 	private transient Undoable op;
 	public CompensationBlock() {
 	}

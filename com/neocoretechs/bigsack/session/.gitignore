@@ -13,3 +13,5 @@
 /BufferedTreeMap.class
 /BufferedTreeSet.class
 /SessionManager.class
+/TransactionalTreeSet.class
+/TransactionalTreeMap.class

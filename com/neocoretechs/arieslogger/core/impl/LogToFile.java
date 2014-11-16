@@ -176,7 +176,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	// Number of bytes overhead of each log record.
 	// 4 bytes of length at the beginning, 8 bytes of log instance,4 bytes ending length for backwards scan
 	public static final int LOG_RECORD_OVERHEAD = 16;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final boolean DUMPLOG = false;
 	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
 	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;

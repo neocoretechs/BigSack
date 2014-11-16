@@ -7,6 +7,7 @@ import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.BufferedTreeMap;
 import com.neocoretechs.bigsack.session.BufferedTreeSet;
 import com.neocoretechs.bigsack.session.SessionManager;
+import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
  * Yes, this should be a nice JUnit fixture someday
  * The static constant fields in the class control the key generation for the tests
@@ -24,7 +25,7 @@ public class BatteryBigSack3 {
 	static String val = "Of a BigSack K/V pair!yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0;
-	static int max = 10;
+	static int max = 40;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -35,9 +36,10 @@ public class BatteryBigSack3 {
 			 System.out.println("usage: java BatteryBigSack3 <database>");
 			System.exit(1);
 		}
-		BufferedTreeSet session = new BufferedTreeSet(argv[0],l3CacheSize);
+		//BufferedTreeSet session = new BufferedTreeSet(argv[0],l3CacheSize);
+		TransactionalTreeSet session = new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
-		battery1(session, argv);
+		battery1E(session, argv);
 		//battery1A(session, argv);
 		//battery1B(session, argv);
 		//battery1D(session, argv);
@@ -48,7 +50,7 @@ public class BatteryBigSack3 {
 		//battery4(session, argv);
 		//battery5(session, argv);
 		//SessionManager.stopCheckpointDaemon(argv[0]);
-		
+		//session.commit();
 		System.out.println("TEST BATTERY 3 COMPLETE.");
 		
 	}
@@ -97,6 +99,30 @@ public class BatteryBigSack3 {
 	
 	}
 
+	public static void battery1C(TransactionalTreeSet session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		for(int i = min; i < max; i++) {
+			session.add(key + String.format(uniqKeyFmt, i));
+		}
+		session.commit();
+		System.out.println("BATTERY1C SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	public static void battery1D(TransactionalTreeSet session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		for(int i = min; i < max; i++) {
+			session.add(key + String.format(uniqKeyFmt, i));
+			if( i == (max/2) ) session.checkpoint();
+		}	
+		System.out.println("BATTERY1D SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	public static void battery1E(TransactionalTreeSet session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		for(int i = min; i < max; i++) {
+			session.add(key + String.format(uniqKeyFmt, i));
+		}
+		session.rollback();
+		System.out.println("BATTERY1E SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
 	/**
 	 * headset returns values strictly less than 'to' element
 	 * @param session

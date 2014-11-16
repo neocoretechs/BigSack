@@ -85,7 +85,7 @@ import java.nio.ByteBuffer;
 
 public class FileLogger implements Logger {
 
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 
 	private LogRecord		 logRecord;
 
@@ -295,10 +295,8 @@ public class FileLogger implements Logger {
 			// compensation operation.  Optional data for the rollback comes
 			// from the undoable operation - and is passed into this call.
 			int completeLength = logOutputBuffer.position();
-			long instance = 0;
+			long instance =  logFactory.appendLogRecord(logOutputBuffer.array(), 0, completeLength, null, 0, 0);
 			LogInstance logInstance = new LogCounter(instance);
-
-			instance = logFactory.appendLogRecord(logOutputBuffer.array(), 0, completeLength, null, 0, 0);
 
 			if (DEBUG)
 			{
@@ -412,7 +410,7 @@ public class FileLogger implements Logger {
 			}
 
 			if (DEBUG)
-				assert(scanLog != null);//, "cannot open log for undo");
+				assert(scanLog != null) : "cannot open log for undo";
 
 			LogRecord record;
 

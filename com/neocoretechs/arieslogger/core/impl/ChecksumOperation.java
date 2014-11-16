@@ -67,7 +67,7 @@ public class ChecksumOperation implements Loggable, Externalizable
     public static final byte CRC32_ALGORITHM  = (byte) 0x1; //java.util.zip.CRC32
 	
 	private static final int LOGOP_CHECKSUM = 0;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	
 	public void init()
 	{

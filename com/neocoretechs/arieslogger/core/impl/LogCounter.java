@@ -43,7 +43,7 @@ public class LogCounter implements LogInstance, Externalizable {
 
 	/********************************************************
 	**
-	**	This class implements Formatable. That means that it
+	**	This class
 	**	can write itself to and from a formatted stream. If
 	**	you add more fields to this class, make sure that you
 	**	also write/read them with the writeExternal()/readExternal()
@@ -68,7 +68,7 @@ public class LogCounter implements LogInstance, Externalizable {
 	// 32 bits are used to store the log file postion
 	private static final long FILE_POSITION_MASK = (long)0x7FFFFFFFL;
 
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 
 	private static final int LOG_COUNTER = 0;
 

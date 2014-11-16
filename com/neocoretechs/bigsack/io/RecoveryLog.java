@@ -90,7 +90,7 @@ public final class RecoveryLog  {
 	 * 
 	 * @throws IOException
 	 */
-	public void Commit() throws IOException {
+	public void commit() throws IOException {
 		if( Props.DEBUG) System.out.println("Commit called");
 		firstTrans = null;
 		ltf.resetLogFiles();
@@ -113,6 +113,7 @@ public final class RecoveryLog  {
 			fl.undo(blockIO, firstTrans, null);
 		else
 			if( Props.DEBUG) System.out.println("No initial transaction recorded for rollback");
+		firstTrans = null;
 	}
 	
 	/**
@@ -124,7 +125,7 @@ public final class RecoveryLog  {
 		blockIO.Fforce(); // make sure we synch our main file buffers
 	}
 	
-	public void ResetLog() throws IOException {
+	public void resetLog() throws IOException {
 		clear();
 	}
 	
@@ -135,6 +136,11 @@ public final class RecoveryLog  {
 	private void clear() throws IOException {
 
 		if( Props.DEBUG ) System.out.println("RecoveryLog cleared");
+	}
+
+	public void checkpoint() throws IllegalAccessException, IOException {
+		ltf.checkpoint(true);
+		if( Props.DEBUG ) System.out.println("Checkpoint taken");
 	}
 
 
