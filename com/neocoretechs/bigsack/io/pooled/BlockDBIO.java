@@ -6,7 +6,7 @@ import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.RecoveryLog;
 
 /*
-* Copyright (c) 2003, NeoCoreTechs
+* Copyright (c) 2003,2014 NeoCoreTechs
 * All rights reserved.
 * Redistribution and use in source and binary forms, with or without modification, 
 * are permitted provided that the following conditions are met:
@@ -30,6 +30,14 @@ import com.neocoretechs.bigsack.io.RecoveryLog;
 */
 /**
 * Session-level IO used by GlobalDBIO
+* This module is where the recovery logs are initialized, though they are kept higher up.
+* When this module is instantiated the RecoveryLog is assigned to 'ulog' and a roll forward recovery
+* is started. If there are any records in the log file they will scanned for low water marks and
+* checkpoints etc and the determination is made based on the type of log record encountered.
+* Our log granularity is the page level. We store DB blocks and their original mirrors to use in
+* recovery. At the end of recovery we restore the logs to their initial state, as we do on a commit. 
+* There is a simple paradigm at work here, we carry a single block access index in this class and use it
+* to cursor through the blocks as we access them.
 * @author Groff
 */
 public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
@@ -43,7 +51,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	protected BlockAccessIndex getBlockIndex() { return lbai;}
 
 	/**
-	* Create the block ipo and up throught the chain to global io. After constructing, create a recovery log instance
+	* Create the block IO and up through the chain to global IO. After constructing, create a recovery log instance
 	* and determine if a roll forward recovery is needed 
 	* @param transId 
 	* @param create 
@@ -52,20 +60,29 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	*/
 	public BlockDBIO(String objname, boolean create, long transId) throws IOException {
 		super(objname, create, transId);
-		// create the undoLog and keyfile if working at the block level
+		// create the ARIES protocol recovery log
 		ulog = new RecoveryLog(this, create);
 		// attempt recovery if needed
 		ulog.getLogToFile().recover();
 	}
-	
+	/**
+	 * Get the data block portion of our block access index
+	 */
 	public Datablock getDatablock() {
 		return lbai.getBlk();
 	}
-	
+	/**
+	 * Get the physical block number of our block access index
+	 */
 	public long getCurblock() {
 		return lbai.getBlockNum();
 	}
-
+	/**
+	 * Set our current blockaccessindex to the passed one, perform an allocation on it, and set
+	 * the byteindex cursor to 0, basically, get it and get it ready to read/write
+	 * @param tbai
+	 * @throws IOException
+	 */
 	void setLbn(BlockAccessIndex tbai) throws IOException {
 		lbai = tbai;
 		alloc(lbai);
@@ -82,11 +99,19 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 			lbai = null;
 		}		
 	}
+	
+	/**
+	 * Deallocate the outstanding block and call commit on the recovery log
+	 * @throws IOException
+	 */
 	public void deallocOutstandingCommit() throws IOException {
 		deallocOutstanding();
 		getUlog().commit();
 	}
-	
+	/**
+	 * Deallocate the outstanding block and call rollback on the recovery log
+	 * @throws IOException
+	 */
 	public void deallocOutstandingRollback() throws IOException {
 		deallocOutstanding();
 		getUlog().rollBack();

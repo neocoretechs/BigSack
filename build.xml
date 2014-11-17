@@ -41,6 +41,10 @@
 
   </target>
 
+	<target name="copy" depends="jar">
+		<copy file="${bin.dir}/BigSack.jar" todir="C:/Program Files/Apache/apache-tomcat/lib"/>
+	</target>
+	
   <!-- Creates Javadoc -->
   <target name="docs" depends="compile">
     <javadoc packagenames="src" sourcepath="${src.dir}" destdir="${docs.dir}">
@@ -53,7 +57,7 @@
 
   <!--Creates the deployable jar file  -->
   <target name="jar" depends="compile">
-    <jar destfile="${bin.dir}\BigSack.jar" basedir="${build.dir}" includes="**/com/**" excludes="**/*.java">
+    <jar destfile="${bin.dir}/BigSack.jar" basedir="${build.dir}" includes="**/com/**" excludes="**/*.java">
     </jar>
   </target>
 

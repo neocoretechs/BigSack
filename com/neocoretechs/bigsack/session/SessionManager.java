@@ -185,9 +185,9 @@ public final class SessionManager {
 	}
 	
 	public static CheckpointDaemonInterface getCheckpointDaemon() {
-		if(checkpointDaemon == null) {
-			checkpointDaemon = new CheckpointDaemon();
-		}
+		//if(checkpointDaemon == null) {
+		//	checkpointDaemon = new CheckpointDaemon();
+		//}
 		return checkpointDaemon;
 	}
 	

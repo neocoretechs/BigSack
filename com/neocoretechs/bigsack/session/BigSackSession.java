@@ -310,6 +310,7 @@ public final class BigSackSession {
 			bTree.getRoot().putPages(bTree.getIO());
 			bTree.getIO().deallocOutstandingCommit();
 		}
+		bTree.getIO().getUlog().getLogToFile().deleteOnlineArchivedLogFiles();
 	}
 	
 	/**

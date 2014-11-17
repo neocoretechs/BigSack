@@ -82,7 +82,7 @@ public class LogAccessFile
     private static final int            LOG_RECORD_FIXED_OVERHEAD_SIZE = 16;
 	private static final int            LOG_RECORD_HEADER_SIZE = 12; //(length + instance)
     private static final int            LOG_NUMBER_LOG_BUFFERS = 3;
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static final int STORE_MAJOR_VERSION_1 = 1;
 	private static final int STORE_MINOR_VERSION_0 = 0;
 
@@ -198,17 +198,19 @@ public class LogAccessFile
     int     data_offset,
     byte[]  optional_data,
     int     optional_data_offset,
-    int     optional_data_length)
-        throws IOException 
+    int     optional_data_length) throws IOException 
     {
+        if( DEBUG )
+        	System.out.println("LogAccessFile.writeLogRecord instance:"+instance+" len:"+length);
+        	
     	assert(currentBuffer.buffer.limit() > 0 ) : "free bytes less than zero";
     	
         int total_log_record_length = length + LOG_RECORD_FIXED_OVERHEAD_SIZE;
 
         if (total_log_record_length <= currentBuffer.buffer.remaining()) {
-            if( DEBUG ) {
-            	System.out.println("LogAccessFile.writeLogRecord: main buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" -- "+new String(data)+" len:"+length);
-            }
+            //if( DEBUG ) {
+            //	System.out.println("LogAccessFile.writeLogRecord: main buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" -- "+new String(data)+" len:"+length);
+            //}
             int newpos = appendLogRecordToBuffer(currentBuffer.buffer,
                                                  currentBuffer.buffer.position(),
                                                  length, 
@@ -247,7 +249,7 @@ public class LogAccessFile
             // allocate a byte[] that is big enough to contain the
             // giant log record:
             if( DEBUG ) {
-            	System.out.println("LogAccessFile.writeLogRecord: big buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" -- "+new String(data)+" len:"+length);
+            	System.out.println("LogAccessFile.writeLogRecord: BIG buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" -- "+new String(data)+" len:"+length);
             }
             // add another log overhead for checksum log record
             int bigBufferLength = checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE + total_log_record_length;
@@ -281,9 +283,9 @@ public class LogAccessFile
             // following direct log to file call finishes.
 
 			// write the log record directly to the log file.
-            if( DEBUG ) {
-            	System.out.println("LogAccessFile.writeLogRecord: len:"+bigBufferLength+" dat:"+new String(bigbuffer.array()));
-            }
+            //if( DEBUG ) {
+            //	System.out.println("LogAccessFile.writeLogRecord: len:"+bigBufferLength+" dat:"+new String(bigbuffer.array()));
+            //}
             writeToLog(bigbuffer.array(), 0, bigBufferLength, instance);
         }
     }
@@ -315,7 +317,7 @@ public class LogAccessFile
                                         int optional_data_offset,
                                         int optional_data_length) {
         if( DEBUG ) {
-        	System.out.println("LogAccessFile.appendLogRecordToBuffer:"+pos+" len:"+length+" "+new String(data));
+        	System.out.println("LogAccessFile.appendLogRecordToBuffer1:"+pos+" len:"+length);//+" "+new String(data));
         }
         buffer.position(pos);
         buffer.putInt(length);
@@ -330,12 +332,12 @@ public class LogAccessFile
         // write ending length used in reverse scan
         buffer.putInt(length);
         if( DEBUG ) {
-        	System.out.println("LogAccessFile.appendLogRecordToBuffer:"+pos+" len:"+length+" inst:"+LogCounter.toDebugString(instance)+" "+new String(buffer.array()));
+        	System.out.println("LogAccessFile.appendLogRecordToBuffer2:"+LogCounter.toDebugString(instance));//+" "+new String(buffer.array()));
         }
         if( buffer == currentBuffer.buffer ) {
         	currentBuffer.length = buffer.position();
         	if( DEBUG ) {
-        		System.out.println("LogAccessFile.appendLogRecordToBuffer: Setting main current buffer to length:"+currentBuffer.length);
+        		System.out.println("LogAccessFile.appendLogRecordToBuffer3: Setting main current buffer to length:"+currentBuffer.length);
         	}
         }
         return buffer.position();
@@ -371,6 +373,8 @@ public class LogAccessFile
      **/
 	protected void flushDirtyBuffers() throws IOException 
     {
+		if( DEBUG )
+			System.out.println("Flush "+dirtyBuffers.size()+" dirty buffers "+flushInProgress);
         LogAccessFileBuffer buf = null;
 		int noOfBuffers;
 		int nFlushed= 0;
@@ -411,7 +415,7 @@ public class LogAccessFile
 				nFlushed++;
 				synchronized(this)
 				{
-					//add the buffer that was written previosly to the free list
+					//add the buffer that was written previously to the free list
 					freeBuffers.addLast(buf);
 					if(nFlushed < noOfBuffers)
 						buf = (LogAccessFileBuffer) dirtyBuffers.removeFirst();
@@ -459,7 +463,8 @@ public class LogAccessFile
 	 */
 	public void switchLogBuffer() throws IOException  
     {
-
+		
+		if( DEBUG ) System.out.println("LogAccessFile.switchLogBuffer");
 		synchronized(this)
 		{
 			// ignore empty buffer switch requests
@@ -506,6 +511,7 @@ public class LogAccessFile
                 assert(currentBuffer.buffer.remaining() > 0);
 			}
 		}
+		
 	}
 
 
