@@ -91,4 +91,7 @@ public class UndoableBlock implements Undoable, Serializable {
 		return new CompensationBlock();
 	}
 
+	public String toString() {
+		return "Undoable block version 1:"+blkV1+" version 2:"+blkV2;
+	}
 }

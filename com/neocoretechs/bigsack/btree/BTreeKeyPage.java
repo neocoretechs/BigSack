@@ -2,12 +2,13 @@ package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.io.Serializable;
 
+import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
-* Copyright (c) 2003, NeoCoreTechs
+* Copyright (c) 2003,2014 NeoCoreTechs
 * All rights reserved.
 * Redistribution and use in source and binary forms, with or without modification, 
 * are permitted provided that the following conditions are met:
@@ -35,14 +36,15 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * serialized instance when nesessary.
 * MAXKEYS is an attempt to keep keys from spanning page boundaries at the expense of some storage
 * a key overflow will cause a page split, at times unavoidable.
-* Important to note that the data is stores as arrays serialized out in this class. Related to that
+* Important to note that the data is stored as arrays serialized out in this class. Related to that
 * is the concept of element 0 of those arrays being 'this', hence the special treatment in CRUD 
 * @author Groff
 */
 public class BTreeKeyPage implements Serializable {
 	static final long serialVersionUID = -2441425588886011772L;
-	static int MAXKEYS = 4;
+	static int MAXKEYS = DBPhysicalConstants.DATASIZE / 512; //4;
 	int numKeys = 0;
+	static final boolean DEBUG = false;
 
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")
@@ -177,8 +179,8 @@ public class BTreeKeyPage implements Serializable {
 
 	void deleteData(ObjectDBIO sdbio, int index) throws IOException {
 		if (dataArray[index] != null && !dataIdArray[index].isEmptyPointer()) {
-			if( Props.DEBUG ) System.out.print("Deleting :"+dataIdArray[index]+"\r\n");
-			if( Props.DEBUG ) System.out.println("Data: "+dataArray[index]+"\r\n");
+			if( DEBUG ) System.out.print("Deleting :"+dataIdArray[index]+"\r\n");
+			if( DEBUG ) System.out.println("Data: "+dataArray[index]+"\r\n");
 			//if( Props.DEBUG ) System.out.println(" size "+ilen);
 			sdbio.delete_object(dataIdArray[index],  GlobalDBIO.getObjectAsBytes(dataArray[index]).length );
 			dataIdArray[index] = Optr.getEmptyPointer();
@@ -221,7 +223,7 @@ public class BTreeKeyPage implements Serializable {
 			throw new IOException("Page index invalid in getPage");
 		BTreeKeyPage btk =
 			(BTreeKeyPage) (sdbio.deserializeObject(pos));
-		if( Props.DEBUG ) System.out.println("BTreeKeyPage "+pos+" "+btk);
+		if( DEBUG ) System.out.println("BTreeKeyPage "+pos+" "+btk);
 		// initialize transients
 		btk.pageId = pos;
 		btk.pageArray = new BTreeKeyPage[MAXKEYS + 1];
@@ -240,13 +242,13 @@ public class BTreeKeyPage implements Serializable {
 			return;
 		}
 		byte[] pb = GlobalDBIO.getObjectAsBytes(this);
-		if( Props.DEBUG ) System.out.println("BTreeKeyPage putPage Got "+pb.length+" bytes");
+		if( DEBUG ) System.out.println("BTreeKeyPage putPage Got "+pb.length+" bytes");
 		if (pageId == -1L) {
 			pageId = sdbio.stealBlock();
-			if( Props.DEBUG ) System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
+			if( DEBUG ) System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
 		}
 		sdbio.add_object(Optr.valueOf(pageId), pb, pb.length);
-		if( Props.DEBUG ) System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length);
+		if( DEBUG ) System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length);
 		setUpdated(false);
 	}
 	/**

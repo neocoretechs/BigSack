@@ -51,20 +51,20 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
     Log Buffers are used in circular fashion, each buffer moves through following stages: 
 	freeBuffers --> dirtyBuffers --> freeBuffers. Movement of buffers from one
-    stage to 	another stage is synchronized using	the object(this) of this class. 
+    stage to another stage is synchronized using the object(this) of this class. 
 
 	A Checksum log record that has the checksum value for the data that is
-    being written to the disk is generated and written 	before the actual data. 
-	Except for the large log records that does not fit into a single buffer, 
+    being written to the disk is generated and written before the actual data. 
+	Except for the large log records that do not fit into a single buffer, 
     checksum is calculated for a group of log records that are in the buffer 
-	when buffers is switched. Checksum log record is written into the reserved
-	space in the beginning buffer. 
+	when buffers are switched. Checksum log records are written into the reserved
+	space in the beginning of the buffer. 
 
     In case of a large log record that does not fit into a buffer, the
     checksum is written to the byte[] allocated for the big log
     record. 
 
-	Checksum log records helps in identifying the incomplete log disk writes during 
+	Checksum log records help in identifying the incomplete log disk writes during 
     recovery. This is done by recalculating the checksum value for the data on
     the disk and comparing it to the the value stored in the checksum log
     record. 
@@ -82,7 +82,7 @@ public class LogAccessFile
     private static final int            LOG_RECORD_FIXED_OVERHEAD_SIZE = 16;
 	private static final int            LOG_RECORD_HEADER_SIZE = 12; //(length + instance)
     private static final int            LOG_NUMBER_LOG_BUFFERS = 3;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final int STORE_MAJOR_VERSION_1 = 1;
 	private static final int STORE_MINOR_VERSION_0 = 0;
 
@@ -140,7 +140,7 @@ public class LogAccessFile
 
 		// Note: Checksum log records are not related any particular transaction, 
 		// they are written to store a checksum to identify
-		// incomplete log record writes. No transacton id is set for this
+		// incomplete log record writes. No transaction id is set for this
 		// log record. That is why a null argument is passed below 
 		// setValue(..) call. 
 		checksumLogRecord.setValue(-1, checksumLogOperation);
@@ -353,10 +353,8 @@ public class LogAccessFile
      * of the various scan classes will see
      * all the data which has been written to this point.
      * <p>
-     * Note that this routine only "writes" the data to the file, this does not
-     * mean that the data has been synched to disk unless file was opened in
-	 * WRITE SYNC mode(rws/rwd).  The only way to insure that is by calling
-     * is to call syncLogAccessFile() after this call in Non-WRITE sync mode(rw)
+     * Note that this routine only "writes" the data to the file, full flush
+     * is to call syncLogAccessFile() after this call 
 	 * 
 	 * <p>
 	 * MT-Safe : parallel threads can call this function, only one threads does
@@ -465,8 +463,7 @@ public class LogAccessFile
     {
 		
 		if( DEBUG ) System.out.println("LogAccessFile.switchLogBuffer");
-		synchronized(this)
-		{
+		synchronized(this) {
 			// ignore empty buffer switch requests
 			if( currentBuffer.isBufferEmpty() ) {
 				if( DEBUG ) {
@@ -492,7 +489,7 @@ public class LogAccessFile
 			{
 				flushDirtyBuffers();
 				//after the flush call there should be a free buffer
-				//because this is only methods removes items from 
+				//because this is only method that removes items from 
 				//free buffers and removal is in synchronized block. 
 			}
 

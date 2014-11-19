@@ -233,7 +233,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 			}
 			// assertion
 			if (this.getBlk().getBytesinuse() < 0)
-				throw new IOException(this.toString() + " negative bytesinuse");
+				throw new IOException(this.toString() + " negative bytesinuse "+this.getBlk().getBytesinuse()+" from runcount "+runcount);
 			//
 			this.getBlk().setIncore(true);
 			//

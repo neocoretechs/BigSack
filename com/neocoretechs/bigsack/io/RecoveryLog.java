@@ -36,7 +36,8 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 *
 */
 /**
-* 
+* This class is the bridge to the recovery log subsystem which is based on the ARIES protocol.
+* LogToFile is the main ARIES subsystem class used, with FileLogger being the higher level construct
 * @author Groff
 */
 

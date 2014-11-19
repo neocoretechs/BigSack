@@ -52,7 +52,7 @@ public class GlobalDBIO {
 	private MappedBlockBuffer  usedBL = new MappedBlockBuffer(); // block number to Datablock
 	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(); // free blocks
 	private BlockAccessIndex tmpBai;
-	protected RecoveryLog ulog;		
+	private RecoveryLog ulog;		
 	private long[] nextFreeBlock = new long[DBPhysicalConstants.DTABLESPACES];
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
@@ -795,6 +795,10 @@ public class GlobalDBIO {
 
 	public long getTransId() {
 		return transId;
+	}
+
+	public void setUlog(RecoveryLog ulog) {
+		this.ulog = ulog;
 	}
 
 }

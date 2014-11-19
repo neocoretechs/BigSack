@@ -68,17 +68,21 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	}
 	
 	public String toString() {
-		return "BlockAccessIndex:"
-			+ globalIO != null ? " database " + globalIO.getDBName() : "DB NULL "
-			+ " block "
-			+ GlobalDBIO.valueOf(blockNum)
-			+ " data "
-			+ blk.toBriefString()
+		String db = "BlockAccessIndex: database ";
+		if( globalIO != null ) {
+			db += globalIO.getDBName()
+					+ " block "
+					+ GlobalDBIO.valueOf(blockNum);
+		} else
+			db += "NULL";
+		db += " data "
+			+ blk == null ?  "null block" : blk.toBriefString()
 			+ " accesses: "
 			+ accesses
 			+ " byteindex "
 			+ byteindex
 			;
+		return db;
 	}
 
 	public long getBlockNum() {
@@ -92,7 +96,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		}
 		// blocks not same and not first
 		if (blk.isIncore()) {
-				globalIO.ulog.writeLog(this);
+				globalIO.getUlog().writeLog(this);
 		}
 		if (accesses > 0)
 				throw new IOException("Attempt to read into allocated block "

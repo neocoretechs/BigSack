@@ -30,7 +30,7 @@ import com.neocoretechs.bigsack.io.RecoveryLog;
 */
 /**
 * Session-level IO used by GlobalDBIO
-* This module is where the recovery logs are initialized, though they are kept higher up.
+* This module is where the recovery logs are initialized because the logs operate at the block (database page) level.
 * When this module is instantiated the RecoveryLog is assigned to 'ulog' and a roll forward recovery
 * is started. If there are any records in the log file they will scanned for low water marks and
 * checkpoints etc and the determination is made based on the type of log record encountered.
@@ -61,9 +61,9 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	public BlockDBIO(String objname, boolean create, long transId) throws IOException {
 		super(objname, create, transId);
 		// create the ARIES protocol recovery log
-		ulog = new RecoveryLog(this, create);
+		setUlog(new RecoveryLog(this, create));
 		// attempt recovery if needed
-		ulog.getLogToFile().recover();
+		getUlog().getLogToFile().recover();
 	}
 	/**
 	 * Get the data block portion of our block access index

@@ -89,7 +89,7 @@ public class FileLogger implements Logger {
 
 	private LogRecord		 logRecord;
 
-	private LogToFile logFactory;	// actually writes the log records.
+	private LogToFile logToFile;	// actually writes the log records.
 	
 	private ByteBuffer logOutputBuffer;
 	private ByteBuffer logRecordRead;
@@ -101,11 +101,11 @@ public class FileLogger implements Logger {
 	*/
 	public FileLogger(LogToFile logFactory) throws IOException {
 
-		this.logFactory = logFactory;
-		logOutputBuffer = ByteBuffer.allocate(1024); // init size 1K
-		logRecordRead = ByteBuffer.allocate(1024);
+		this.logToFile = logFactory;
+		this.logOutputBuffer = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE); // init size
+		this.logRecordRead = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
  
-		logRecord = new LogRecord();
+		this.logRecord = new LogRecord();
 	}
 
 	/**
@@ -147,7 +147,6 @@ public class FileLogger implements Logger {
 		boolean isLogPrepared = false;
 		boolean inUserCode = false;
 		
-		byte[] preparedLog;
 		LogInstance logInstance = null;
 		try {		
 
@@ -164,26 +163,28 @@ public class FileLogger implements Logger {
 			logRecord.setValue(transactionId, operation);
 
 			inUserCode = true;
+			int optionalDataLength = 0;
+			int optionalDataOffset = 0;
+			int completeLength = 0;
+			
 			byte[] buf = GlobalDBIO.getObjectAsBytes(logRecord);
 			if( DEBUG ) {
 				System.out.println("FileLogger.logAndDo: Log record byte array size:"+buf.length);
 			}
-			if(logOutputBuffer.remaining() < buf.length) {// "Not enough space in buffer for record:"+logOutputBuffer.remaining()+" need "+buf.length;
-				logOutputBuffer = ByteBuffer.allocate(8192);
+			byte[] preparedLogArray = operation.getPreparedLog();
+			if( preparedLogArray != null ) {
+				optionalDataLength = preparedLogArray.length;
+			}
+			if(logOutputBuffer.remaining() < buf.length+optionalDataLength+4 ) {
+				if(DEBUG)
+				System.out.println("Not enough space in buffer for record:"+logOutputBuffer.remaining()+" reallocating to "+(buf.length+optionalDataLength+4));
+				logOutputBuffer = ByteBuffer.allocate(buf.length+optionalDataLength+4);
 			}
 			logOutputBuffer.put(buf);
 			inUserCode = false;
 
-			int optionalDataLength = 0;
-			int optionalDataOffset = 0;
-			int completeLength = 0;
-
-			byte[] preparedLogArray = operation.getPreparedLog();
+			//byte[] preparedLogArray = operation.getPreparedLog();
 			if (preparedLogArray != null) {
-
-				preparedLog = preparedLogArray;
-				optionalDataLength = preparedLogArray.length;
-				optionalDataOffset = 0;
 
 				// There is a race condition if the operation is a begin tran in
 				// that between the time the beginXact log record is written to
@@ -210,7 +211,7 @@ public class FileLogger implements Logger {
 				// transaction table, its order and transaction state does not
 				// change.
 				//
-				// Use the logFactory as the sync object so that a checkpoint can
+				// Use the logToFile as the sync object so that a checkpoint can
 				// take its snap shot of the undoLWM before or after a transaction
 				// is started, but not in the middle. (see LogToFile.checkpoint)
 				//
@@ -218,12 +219,12 @@ public class FileLogger implements Logger {
 				// now set the input limit to be the optional data.  
 				// This limits amount of data available to logIn that applyChange can
 				// use
-				logOutputBuffer.put(preparedLog);
+				logOutputBuffer.put(preparedLogArray);
 				//logIn.setPosition(optionalDataOffset);
 				//logIn.setLimit(optionalDataLength);
 
 			} else {
-				preparedLog = null;
+				preparedLogArray = null;
 				optionalDataLength = 0;
 			}
 
@@ -231,8 +232,8 @@ public class FileLogger implements Logger {
 			completeLength = logOutputBuffer.position() + 1 + optionalDataLength;
 	
 			long instance = 0;
-			instance = logFactory.appendLogRecord(logOutputBuffer.array(), 0,
-									completeLength, preparedLog,
+			instance = logToFile.appendLogRecord(logOutputBuffer.array(), 0,
+									completeLength, preparedLogArray,
 									optionalDataOffset,
 									optionalDataLength); 
 			logInstance = new LogCounter(instance);
@@ -241,7 +242,7 @@ public class FileLogger implements Logger {
 			if (DEBUG) {	    
                 System.out.println("FileLogger.logAndDo: Write log record: tranId=" + transactionId +
                     " instance: " + logInstance.toString() + " length: " +
-                    completeLength + "op:" + operation);    
+                    completeLength + " op:" + operation);    
 			}
 
 		} finally {
@@ -295,7 +296,7 @@ public class FileLogger implements Logger {
 			// compensation operation.  Optional data for the rollback comes
 			// from the undoable operation - and is passed into this call.
 			int completeLength = logOutputBuffer.position();
-			long instance =  logFactory.appendLogRecord(logOutputBuffer.array(), 0, completeLength, null, 0, 0);
+			long instance =  logToFile.appendLogRecord(logOutputBuffer.array(), 0, completeLength, null, 0, 0);
 			LogInstance logInstance = new LogCounter(instance);
 
 			if (DEBUG)
@@ -312,29 +313,25 @@ public class FileLogger implements Logger {
 	}
 
 	/**
-		Flush the log up to the given log instance.
-
+		Flush the log up to the given log instance. Calls logToFile(LogToFIle).flush()
 		<P>MT - not needed, wrapper method
-
 		@exception StandardException cannot sync log file
 	*/
 	public void flush(LogInstance where) throws IOException {
 		if (DEBUG){
                 System.out.println("FileLogger.flush: Flush log to:" + where.toString());  
 		}
-		logFactory.flush(where);
+		logToFile.flush(where);
 	}
 
 	/**
-		Flush all outstanding log to disk.
-
+		Flush all outstanding log to disk. calls logToFile(LogToFile).flushAll()
 		<P>MT - not needed, wrapper method
-
 		@exception StandardException cannot sync log file
 	*/
-	public void flushAll () throws IOException
+	public void flushAll() throws IOException
 	{
-		logFactory.flushAll();
+		logToFile.flushAll();
 	}
 
   
@@ -392,7 +389,7 @@ public class FileLogger implements Logger {
 			if (undoStartAt == null)	
             {
                 // don't know where to start, rollback from end of log
-				scanLog = (StreamLogScan)logFactory.openBackwardsScan(undoStopAt);
+				scanLog = (StreamLogScan)logToFile.openBackwardsScan(undoStopAt);
             }
 			else
 			{
@@ -406,7 +403,7 @@ public class FileLogger implements Logger {
                     ((LogCounter) undoStartAt).getValueAsLong();
 
 				scanLog = (StreamLogScan)
-					logFactory.openBackwardsScan(undoStartInstance, undoStopAt);
+					logToFile.openBackwardsScan(undoStartInstance, undoStopAt);
 			}
 
 			if (DEBUG)
@@ -486,11 +483,11 @@ public class FileLogger implements Logger {
 		}
 		catch (ClassNotFoundException cnfe)
 		{
-			throw logFactory.markCorrupt( new IOException(cnfe));
+			throw logToFile.markCorrupt( new IOException(cnfe));
 		}
 	    catch (IOException ioe) 
 		{
-			throw logFactory.markCorrupt(ioe);
+			throw logToFile.markCorrupt(ioe);
 		}
 		finally
 		{
@@ -689,7 +686,7 @@ public class FileLogger implements Logger {
 
 						if (undoScan == null)
 						{
-							undoScan = (StreamLogScan)logFactory.openForwardScan(undoInstance,(LogInstance)null);
+							undoScan = (StreamLogScan)logToFile.openForwardScan(undoInstance,(LogInstance)null);
 						}
 						else
 						{

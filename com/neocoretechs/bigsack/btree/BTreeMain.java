@@ -53,7 +53,7 @@ public class BTreeMain {
 	int[] indexStack;
 	int stackDepth;
 	boolean atKey;
-
+	private static boolean DEBUG = false;
 	private ObjectDBIO sdbio;
 
 	public BTreeMain(ObjectDBIO sdbio) throws IOException {
@@ -61,7 +61,7 @@ public class BTreeMain {
 		keyPageStack = new BTreeKeyPage[MAXSTACK];
 		indexStack = new int[MAXSTACK];
 		currentPage = setRoot(BTreeKeyPage.getPageFromPool(sdbio, 0L));
-		if( Props.DEBUG ) System.out.println("Root BTreeKeyPage: "+currentPage);
+		if( DEBUG ) System.out.println("Root BTreeKeyPage: "+currentPage);
 		currentIndex = 0;
 		// Attempt to retrieve last good key count
 		numKeys = 0;//sdbio.getKeycountfile().getKeysCount();
@@ -219,7 +219,7 @@ public class BTreeMain {
 		// Is the key there?
 		if(!search(newKey))
 			return (NOTFOUND);
-		if( Props.DEBUG ) System.out.println("--ENTERING DELETE LOOP FOR "+newKey+" with currentPage "+currentPage);
+		if( DEBUG ) System.out.println("--ENTERING DELETE LOOP FOR "+newKey+" with currentPage "+currentPage);
 		while (true) {
 			// If either left or right pointer
 			// is null, we're at a leaf or a
@@ -248,72 +248,72 @@ public class BTreeMain {
 				// Null the root, clear the keycount
 				if (currentPage.numKeys == 0) {
 					// Following guards against leaks
-					if( Props.DEBUG ) System.out.println("Delete found numKeys 0");
+					if( DEBUG ) System.out.println("Delete found numKeys 0");
 					currentPage.nullPageArray(0);
 					if (pop()) { // Null pointer to node
 						// just deleted
-						if( Props.DEBUG ) System.out.println("Delete popped "+currentPage+" nulling and decrementing key count");
+						if( DEBUG ) System.out.println("Delete popped "+currentPage+" nulling and decrementing key count");
 						currentPage.nullPageArray(currentIndex);
 						--numKeys;
-						if( Props.DEBUG ) System.out.println("Key count now "+numKeys+" returning");
+						if( DEBUG ) System.out.println("Key count now "+numKeys+" returning");
 						// Perform re-seek to re-establish location
 						//search(newKey);
 						return (0);
 					}
-					if( Props.DEBUG ) System.out.println("Cant pop, clear root");
+					if( DEBUG ) System.out.println("Cant pop, clear root");
 					// Can't pop -- clear the root
 					// if root had pointer make new root
 					if (tpage != null) {
-						if( Props.DEBUG ) System.out.println("Delete tpage not null, setting page Id/current page root "+tpage);
+						if( DEBUG ) System.out.println("Delete tpage not null, setting page Id/current page root "+tpage);
 						tpage.pageId = 0L;
 						setRoot(tpage);
 						currentPage = tpage;
 					} else {
 						// no more keys
-						if( Props.DEBUG ) System.out.println("Delete No more keys, setting new root page");
+						if( DEBUG ) System.out.println("Delete No more keys, setting new root page");
 						setRoot(new BTreeKeyPage(0L));
 						getRoot().setUpdated(true);
 						currentPage = null;
 						numKeys = 0;
 					}
 					atKey = false;
-					if( Props.DEBUG ) System.out.println("Delete returning");
+					if( DEBUG ) System.out.println("Delete returning");
 					return (0);
 				}
 				// If we haven't deleted the last key, see if we have few enough
 				// keys on a sibling node to coalesce the two. If the
 				// keycount is even, look at the sibling to the left first;
 				// if the keycount is odd, look at the sibling to the right first.
-				if( Props.DEBUG ) System.out.println("Have not deleted last key");
+				if( DEBUG ) System.out.println("Have not deleted last key");
 				if (stackDepth == 0) { // At root - no siblings
-					if( Props.DEBUG ) System.out.println("Delete @ root w/no siblings");
+					if( DEBUG ) System.out.println("Delete @ root w/no siblings");
 					--numKeys;
 					//search(newKey);
-					if( Props.DEBUG ) System.out.println("Delete returning after numKeys set to "+numKeys);
+					if( DEBUG ) System.out.println("Delete returning after numKeys set to "+numKeys);
 					return (0);
 				}
 				// Get parent page and index
-				if( Props.DEBUG ) System.out.println("Delete get parent page and index");
+				if( DEBUG ) System.out.println("Delete get parent page and index");
 				tpage = keyPageStack[stackDepth - 1];
 				tindex = indexStack[stackDepth - 1];
-				if( Props.DEBUG ) System.out.println("Delete tpage now "+tpage+" and index now "+tindex+" with stack depth "+stackDepth);
+				if( DEBUG ) System.out.println("Delete tpage now "+tpage+" and index now "+tindex+" with stack depth "+stackDepth);
 				// Get sibling pages
-				if( Props.DEBUG ) System.out.println("Delete Getting sibling pages");
+				if( DEBUG ) System.out.println("Delete Getting sibling pages");
 				if (tindex > 0) {
 					leftPage = tpage.getPage(getIO(), tindex - 1);
-					if( Props.DEBUG ) System.out.println("Delete tindex > 0 @ "+tindex+" left page "+leftPage);
+					if( DEBUG ) System.out.println("Delete tindex > 0 @ "+tindex+" left page "+leftPage);
 				} else {
 					leftPage = null;
-					if( Props.DEBUG ) System.out.println("Delete tindex not > 0 @ "+tindex+" left page "+leftPage);
+					if( DEBUG ) System.out.println("Delete tindex not > 0 @ "+tindex+" left page "+leftPage);
 				}
 				if (tindex < tpage.numKeys) {
 					rightPage = tpage.getPage(getIO(), tindex + 1);
 				} else {
 					rightPage = null;
 				}
-				if( Props.DEBUG ) System.out.println("Delete tindex "+tindex+" tpage.numKeys "+tpage.numKeys+" right page "+rightPage);
+				if( DEBUG ) System.out.println("Delete tindex "+tindex+" tpage.numKeys "+tpage.numKeys+" right page "+rightPage);
 				// Decide which sibling
-				if( Props.DEBUG ) System.out.println("Delete find sibling from "+leftPage+" -- " + rightPage);
+				if( DEBUG ) System.out.println("Delete find sibling from "+leftPage+" -- " + rightPage);
 				if (numKeys % 2 == 0)
 					if (leftPage == null)
 						leftPage = currentPage;
@@ -324,11 +324,11 @@ public class BTreeMain {
 						rightPage = currentPage;
 					else
 						leftPage = currentPage;
-				if( Props.DEBUG ) System.out.println("Delete found sibling from "+leftPage+" -- " + rightPage);
+				if( DEBUG ) System.out.println("Delete found sibling from "+leftPage+" -- " + rightPage);
 
 				// assertion check
 				if (leftPage == null || rightPage == null) {
-					if( Props.DEBUG ) System.out.println("ASSERTION CHECK FAILED, left/right page null in delete");
+					if( DEBUG ) System.out.println("ASSERTION CHECK FAILED, left/right page null in delete");
 					return (TREEERROR);
 				}
 				// Are the siblings small enough to coalesce
@@ -337,7 +337,7 @@ public class BTreeMain {
 					// Coalescing not possible, exit
 					--numKeys;
 					//search(newKey);
-					if( Props.DEBUG ) System.out.println("Cant coalesce, returning with keys="+numKeys);
+					if( DEBUG ) System.out.println("Cant coalesce, returning with keys="+numKeys);
 					return (0);
 				/*	
 				} else {
@@ -371,19 +371,19 @@ public class BTreeMain {
 				tindex = currentIndex;
 				if (currentPage.getPage(getIO(), currentIndex) != null) {
 					// Get predecessor if possible
-					if( Props.DEBUG ) System.out.println("Delete Seeking right tree");
+					if( DEBUG ) System.out.println("Delete Seeking right tree");
 					if (!seekRightTree()) {
-						if( Props.DEBUG ) System.out.println("Delete cant seek right tree, returning");
+						if( DEBUG ) System.out.println("Delete cant seek right tree, returning");
 						return (STACKERROR);
 					}
 				} else { // Get successor
 					if (currentPage.getPage(getIO(), currentIndex + 1) == null) {
-						if( Props.DEBUG ) System.out.println("Delete cant get successor, returning");
+						if( DEBUG ) System.out.println("Delete cant get successor, returning");
 						return (TREEERROR);
 					}
 					currentIndex++;
 					if (!seekLeftTree()) {
-						if( Props.DEBUG ) System.out.println("Delete cant seek left tree, returning");
+						if( DEBUG ) System.out.println("Delete cant seek left tree, returning");
 						return (STACKERROR);
 					}
 				}
@@ -392,7 +392,7 @@ public class BTreeMain {
 				tpage.putDataToArray(
 					currentPage.getDataFromArray(getIO(), currentIndex),
 					tindex);
-				if( Props.DEBUG ) System.out.println("Delete re-entring loop to delete key on leaf of tpage "+tpage);
+				if( DEBUG ) System.out.println("Delete re-entring loop to delete key on leaf of tpage "+tpage);
 				// Reenter loop to delete key on leaf
 			}
 		}
@@ -577,7 +577,7 @@ public class BTreeMain {
 	public boolean search(Comparable targetKey) throws IOException {
 		// File empty?
 		if (getNumKeys() == 0) {
-			if( Props.DEBUG ) System.out.println("*** NO KEYS! ***");
+			if( DEBUG ) System.out.println("*** NO KEYS! ***");
 			return false;
 		}
 		// Search - start at root
