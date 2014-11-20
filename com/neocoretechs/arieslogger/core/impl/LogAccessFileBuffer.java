@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 
 /**
 * A single buffer of data. this class encapsulates a NIO ByteBuffer
-* It functions as a linked list as it contains next and prev pointers of the same type.
 * Frequently, we will initialize it with space reserved for the checksum
 * record at the beginning, hence the need for the reserved space calculation.
 **/
@@ -20,19 +19,13 @@ final class LogAccessFileBuffer
     protected int length;
     private int reservedLength;
 
-    LogAccessFileBuffer next;
-    LogAccessFileBuffer prev;
-
     /**
-     * Allocate size bytes to the NIO ByteBuffer, set the next and prev values to null
+     * Allocate size bytes to the NIO ByteBuffer
      * @param size
      */
     public LogAccessFileBuffer(int size)
     {
         buffer      = ByteBuffer.allocate(size);
-        prev        = null;
-        next        = null;
-
         init(0);
     }
     /**

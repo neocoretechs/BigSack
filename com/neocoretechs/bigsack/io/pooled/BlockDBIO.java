@@ -106,6 +106,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 */
 	public void deallocOutstandingCommit() throws IOException {
 		deallocOutstanding();
+		checkBufferFlush();
 		getUlog().commit();
 	}
 	/**
@@ -114,6 +115,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 */
 	public void deallocOutstandingRollback() throws IOException {
 		deallocOutstanding();
+		checkBufferFlush();
 		getUlog().rollBack();
 	}
 	/**

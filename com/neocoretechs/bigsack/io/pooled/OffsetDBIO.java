@@ -155,6 +155,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 				//update control info
 				this.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
 				this.getBlk().setIncore(true);
+				this.getBlk().setInlog(false);
 				if (!getnextblk())
 					acquireBlock();
 			} else {
@@ -172,6 +173,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 					this.getBlk().setBytesinuse(this.getBlk().getBytesused());
 				}
 				this.getBlk().setIncore(true);
+				this.getBlk().setInlog(false);
 				return i;
 			}
 		}
@@ -192,6 +194,8 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 				acquireBlock();
 		if (!this.getBlk().isIncore())
 			this.getBlk().setIncore(true);
+		if (this.getBlk().isInlog())
+			this.getBlk().setInlog(false);
 		this.getBlk().data[this.getByteindex()] = (byte) tbyte;
 		if (this.getByteindex() + 1 > this.getBlk().getBytesused()) {
 			//update control info
@@ -236,6 +240,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 				throw new IOException(this.toString() + " negative bytesinuse "+this.getBlk().getBytesinuse()+" from runcount "+runcount);
 			//
 			this.getBlk().setIncore(true);
+			this.getBlk().setInlog(false);
 			//
 			if (runcount > 0) {
 				if (nextblk == -1L)

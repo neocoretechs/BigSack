@@ -236,6 +236,7 @@ public class FileLogger implements Logger {
 									completeLength, preparedLogArray,
 									optionalDataOffset,
 									optionalDataLength); 
+			logToFile.flushAll();
 			logInstance = new LogCounter(instance);
 			operation.applyChange(xact, logInstance, logOutputBuffer);
 

@@ -11,7 +11,7 @@ import com.neocoretechs.bigsack.io.MmapIO;
 import com.neocoretechs.bigsack.io.RecoveryLog;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 /*
-* Copyright (c) 1997,2003, NeoCoreTechs
+* Copyright (c) 1997,2003,2014 NeoCoreTechs
 * All rights reserved.
 * Redistribution and use in source and binary forms, with or without modification, 
 * are permitted provided that the following conditions are met:
@@ -62,6 +62,10 @@ public class GlobalDBIO {
 		return ulog;
 	}
 	
+	public void checkBufferFlush() throws IOException {
+		usedBL.checkBufferFlush(this, freeBL);
+	}
+
 	/**
 	* Translate the virtual tablspace (first 3 bits) and block to real block
 	* @param tvblock The virtual block
@@ -566,8 +570,6 @@ public class GlobalDBIO {
 		}
 		return Od;
 	}
-	
-
 
 	/**
 	 * Latching block
@@ -622,9 +624,9 @@ public class GlobalDBIO {
 	* @param Lbn block number to add
 	* @exception IOException if new dblock cannot be created
 	*/
-	BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
+	private BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
 		// see if we have open slots
-		usedBL.checkBufferFlush(freeBL);
+		checkBufferFlush();
 		BlockAccessIndex bai = (freeBL.elementAt(0));
 		freeBL.removeElementAt(0);
 		bai.setBlockNum(Lbn.longValue());
@@ -637,10 +639,9 @@ public class GlobalDBIO {
 	* @param Lbn block number to add
 	* @exception IOException if new dblock cannot be created
 	*/
-	BlockAccessIndex addBlockAccessNoRead(Long Lbn)
-		throws IOException {
+	private BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
 		// see if we have open slots
-		usedBL.checkBufferFlush(freeBL);
+		checkBufferFlush();
 		BlockAccessIndex bai = (freeBL.elementAt(0));
 		freeBL.removeElementAt(0);
 		bai.setTemplateBlockNumber(Lbn.longValue());
@@ -745,6 +746,7 @@ public class GlobalDBIO {
 		// update old block
 		ablk.getBlk().setNextblk(newblock);
 		ablk.getBlk().setIncore(true);
+		ablk.getBlk().setInlog(false);
 		dealloc(ablk);
 		// new block number for BlockAccessIndex set in addBlockAccessNoRead
 		BlockAccessIndex dblk = addBlockAccessNoRead(new Long(newblock));
@@ -755,6 +757,7 @@ public class GlobalDBIO {
 		dblk.getBlk().setWriteid(1L);
 		dblk.getBlk().setPageLSN(-1L);
 		dblk.getBlk().setIncore(true);
+		dblk.getBlk().setInlog(false);
 		return dblk;
 	}
 	/**
@@ -781,6 +784,7 @@ public class GlobalDBIO {
 		dblk.getBlk().setWriteid(1L);
 		dblk.getBlk().setPageLSN(-1L);
 		dblk.getBlk().setIncore(true);
+		dblk.getBlk().setInlog(false);
 		return dblk;
 	}
 

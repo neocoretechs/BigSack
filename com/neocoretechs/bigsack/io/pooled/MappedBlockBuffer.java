@@ -12,7 +12,7 @@ public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 	* Toss out pool blocks not in use, iterate through and compute random
 	* chance of keeping block
 	*/
-	public void checkBufferFlush(List<BlockAccessIndex> freeBL) throws IOException {
+	public void checkBufferFlush(GlobalDBIO globalIO, List<BlockAccessIndex> freeBL) throws IOException {
 		if (freeBL.size() == 0) {
 			Iterator<BlockAccessIndex> elbn = this.keySet().iterator();
 			boolean clearedOne = false; // we need at least one
@@ -22,9 +22,11 @@ public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 			while (elbn.hasNext()) {
 				BlockAccessIndex ebaii = (elbn.next());
 				if (ebaii.getAccesses() == 0) {
-					if (ebaii.getBlk().isIncore())
-						throw new IOException(
-							"Accesses 0 but incore true " + ebaii);
+					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
+						globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+						//throw new IOException(
+						//	"Accesses 0 but incore true " + ebaii);
+					}
 					if (!clearedOne)
 						clearedOne = true;
 					else if (bookie.nextInt(iOdds + 1) >= iOdds) {

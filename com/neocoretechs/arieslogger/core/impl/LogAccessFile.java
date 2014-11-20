@@ -80,15 +80,8 @@ public class LogAccessFile
      *     end length				: 4 bytes
      **/
     private static final int            LOG_RECORD_FIXED_OVERHEAD_SIZE = 16;
-	private static final int            LOG_RECORD_HEADER_SIZE = 12; //(length + instance)
-    private static final int            LOG_NUMBER_LOG_BUFFERS = 3;
 	private static final boolean DEBUG = false;
-	private static final int STORE_MAJOR_VERSION_1 = 1;
-	private static final int STORE_MINOR_VERSION_0 = 0;
 
-
-	private LinkedList    freeBuffers;  //list of free buffers
-	private LinkedList    dirtyBuffers; //list of dirty buffers to flush
 	private  LogAccessFileBuffer currentBuffer; //current active buffer
 	private boolean flushInProgress = false;
 	
@@ -111,25 +104,9 @@ public class LogAccessFile
     {
 
 		this.log            = log;
-		logFileSemaphore    = log;
-
-		if (DEBUG)
-            assert(LOG_NUMBER_LOG_BUFFERS >= 1);
-				
-		//initialize buffers lists
-		freeBuffers = new LinkedList();
-		dirtyBuffers = new LinkedList();
-
-
-		//add all buffers to free list
-        for (int i = 0; i < LOG_NUMBER_LOG_BUFFERS; i++)
-        {
-            LogAccessFileBuffer b = new LogAccessFileBuffer(bufferSize);
-            freeBuffers.addLast(b);
-        }
-
-		currentBuffer = (LogAccessFileBuffer) freeBuffers.removeFirst();
-		
+		logFileSemaphore    = log;		
+		currentBuffer = new LogAccessFileBuffer(bufferSize);
+	
 		/**
 		 * setup structures that are required to write the checksum log records
 		 * for a group of log records are being written to the disk. 
@@ -372,74 +349,34 @@ public class LogAccessFile
 	protected void flushDirtyBuffers() throws IOException 
     {
 		if( DEBUG )
-			System.out.println("Flush "+dirtyBuffers.size()+" dirty buffers "+flushInProgress);
-        LogAccessFileBuffer buf = null;
-		int noOfBuffers;
-		int nFlushed= 0;
-		try{
+			System.out.println("Flush "+currentBuffer.length+" dirty buffers "+flushInProgress);
+
 			synchronized(this)
 			{
+				try {
 				/**if some one else flushing wait, otherwise it is possible 
 				 * different threads will get different buffers and order can 
 				 * not be determined.
 				 * 
 				 **/
-				while(flushInProgress)
-				{
-					try{
+				while(flushInProgress) {
+					try {
 						wait();
-					}catch (InterruptedException ie) 
-					{
-                       
-					}
-				}
-		
-				noOfBuffers = dirtyBuffers.size();
-				if(noOfBuffers > 0)
-					buf = (LogAccessFileBuffer) dirtyBuffers.removeFirst();
-				
+					} catch (InterruptedException ie) {}
+				}		
 				flushInProgress = true;
-			}
-			
-			while(nFlushed < noOfBuffers)
-			{
-				if (buf.length != 0) {
+				if (currentBuffer.length != 0) {
 					if( DEBUG ) {
-						System.out.println("LogAccessFile.flushDirtyBuffers: len:"+buf.length+" top inst:"+LogCounter.toDebugString(buf.greatest_instance));
+						System.out.println("LogAccessFile.flushDirtyBuffers: len:"+currentBuffer.length+" top inst:"+LogCounter.toDebugString(currentBuffer.greatest_instance));
 					}
-					writeToLog(buf.buffer.array(), 0, buf.length, buf.greatest_instance);
+					writeToLog(currentBuffer.buffer.array(), 0, currentBuffer.length, currentBuffer.greatest_instance);
 				}
-
-				nFlushed++;
-				synchronized(this)
-				{
-					//add the buffer that was written previously to the free list
-					freeBuffers.addLast(buf);
-					if(nFlushed < noOfBuffers)
-						buf = (LogAccessFileBuffer) dirtyBuffers.removeFirst();
-					else
-					{
-						//see if we can flush more, that came when we are at it.
-						//don't flush more than the total number of buffers,
-						//that might lead to starvation of the current thread.
-						int size = dirtyBuffers.size();
-						if(size > 0 && nFlushed <= LOG_NUMBER_LOG_BUFFERS)
-						{
-							noOfBuffers += size;
-							buf = (LogAccessFileBuffer) dirtyBuffers.removeFirst();
-						}
-					}
+				} finally {
+					flushInProgress = false;
+					notifyAll();
 				}
 			}
-
-				
-		} finally {
-			synchronized(this)
-			{
-				flushInProgress = false;
-				notifyAll();
-			}
-		}
+	
 	}
 
 
@@ -480,26 +417,12 @@ public class LogAccessFile
 						checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE, 
 						currentBuffer.length - (checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE) );
 			writeChecksumLogRecord(currentBuffer.buffer);
-
-			//add the current buffer to the flush buffer list
-			dirtyBuffers.addLast(currentBuffer);
-
-			//if there is No free buffer, flush the buffers to get a free one 
-			if(freeBuffers.size() == 0) 
-			{
-				flushDirtyBuffers();
-				//after the flush call there should be a free buffer
-				//because this is only method that removes items from 
-				//free buffers and removal is in synchronized block. 
-			}
-
-
+			flushDirtyBuffers();
+			//after the flush call there should be a free buffer
+			//because this is only method that removes items from 
+			//free buffers and removal is in synchronized block. 
 			// there should be free buffer available at this point.
-			if (DEBUG)
-				assert(freeBuffers.size() > 0);
 
-			//switch over to the next log buffer, let someone else write it.
-			currentBuffer = (LogAccessFileBuffer) freeBuffers.removeFirst();
 			currentBuffer.init(checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE);
 
 			if (DEBUG)
@@ -552,10 +475,7 @@ public class LogAccessFile
                     // we wait a max of 4 seconds before we give up
                     Thread.sleep( 200 ); 
                 }
-                catch( InterruptedException ie )
-                {
-                    
-                }
+                catch( InterruptedException ie ) { }
 
                 if( i > 20 )
                     throw new IOException(sfe);

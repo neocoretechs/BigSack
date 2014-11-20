@@ -44,6 +44,7 @@ public final class Datablock implements Externalizable {
 	private long pageLSN = -1L; // pageLSN number of this block
 	byte data[]; // data section of blk
 	private boolean incore = false; // is it modified?
+	private boolean inlog = false; // written to log since incore?
 	private static final long serialVersionUID = 1L;
 	//
 	private int datasize;
@@ -343,4 +344,11 @@ public final class Datablock implements Externalizable {
 	public void setPageLSN(long version) {
 		this.pageLSN = version;
 	}
+	public boolean isInlog() {
+		return inlog;
+	}
+	public void setInlog(boolean inlog) {
+		this.inlog = inlog;
+	}
+
 }

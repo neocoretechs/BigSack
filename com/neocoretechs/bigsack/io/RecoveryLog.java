@@ -84,6 +84,7 @@ public final class RecoveryLog  {
 		else
 			fl.logAndDo(blockIO, undoBlk);
 		fl.flushAll();
+		blk.getBlk().setInlog(true);
 		return;
 	}
 	/**

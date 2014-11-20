@@ -1655,7 +1655,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		//	theLog = openLogFileInWriteMode(logFile);
 		//else
 		theLog = privRandomAccessFile(logFile, "rw");
-		System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
+		if( DEBUG)
+			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
 	    theLog.setLength(logSwitchInterval + LOG_FILE_HEADER_SIZE);
 	    syncFile(theLog);
 	    theLog.close();
@@ -2648,7 +2649,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * This relies on the resetLogs method which will reset log file 1 and so
 	 * our task here is to delete those files from 2 onward if they exist.
 	 */
-	private void deleteObsoleteLogfilesOnCommit() throws IOException {
+	public void deleteObsoleteLogfilesOnCommit() throws IOException {
 		File logDir;
 		logDir = getLogDirectory();
 			
@@ -2660,7 +2661,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			for(int i=0 ; i < logfiles.length; i++)
 			{
 				// delete the log files that are not needed any more
-				if(logfiles[i].endsWith(".log"))
+				//File flog = new File(logfiles[i]);
+				if(logfiles[i].startsWith(dbName) && logfiles[i].endsWith(".log"))
 				{
 					String fileIndex = "";
 					for(int k = (logfiles[i].length()-5); k > 0; k--) {
@@ -2673,10 +2675,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						uselessLogFile = new File(logDir, logfiles[i]);
 						if (privDelete(uselessLogFile))
 						{
-							if (DEBUG)
-							{
+							//if (DEBUG)
+							//{
 								System.out.println("Deleted obsolete log file " + uselessLogFile.getPath());
-							}
+							//}
 						}
 						else
 						{
@@ -2794,10 +2796,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
                          LogCounter.MAX_LOGFILE_SIZE)
                     {
 						throw new IOException(
-                                "Max log size "+ 
-                                new Long(logFileNumber)+ 
-                                new Long(endPosition)+
-                                new Long(length)+
+                                "Max log size for file"+ 
+                                new Long(logFileNumber)+" at end position:"+ 
+                                new Long(endPosition)+" data length:"+
+                                new Long(length)+" and max size:"+
                                 new Long(LogCounter.MAX_LOGFILE_SIZE));
                     }
 				}
@@ -3632,11 +3634,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	{
 	}
 
-	//delete the online archived log files
-	public void deleteOnlineArchivedLogFiles() throws IOException
-	{
-		deleteObsoleteLogfiles();
-	}
 
 	/*
 	 * Start the transaction log backup.  
@@ -4046,7 +4043,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		}
 	}
 
-
 	@Override
 	public ScanHandle openFlushedScan() throws IOException {
 		return new FlushedScanHandle(this, new LogCounter(), Loggable.ALLGROUPS);
@@ -4085,6 +4081,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	public void setFirstLogFileNumber(long firstLogFileNumber) {
 		this.firstLogFileNumber = firstLogFileNumber;
+	}
+
+	@Override
+	public void deleteOnlineArchivedLogFiles() throws IOException {
+		deleteObsoleteLogfiles();	
 	}
 
 

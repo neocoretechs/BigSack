@@ -306,11 +306,13 @@ public final class BigSackSession {
 	private void rollupSession(boolean rollback) throws IOException {
 		if (rollback) {
 			bTree.getIO().deallocOutstandingRollback();
+			bTree.getIO().getUlog().getLogToFile().deleteOnlineArchivedLogFiles();
 		} else {
 			bTree.getRoot().putPages(bTree.getIO());
 			bTree.getIO().deallocOutstandingCommit();
+			bTree.getIO().getUlog().getLogToFile().deleteObsoleteLogfilesOnCommit();
 		}
-		bTree.getIO().getUlog().getLogToFile().deleteOnlineArchivedLogFiles();
+
 	}
 	
 	/**
