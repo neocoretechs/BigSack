@@ -1763,8 +1763,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 							System.out.println( "Fail to truncate useless log file " + uselessLogFile.getPath());
 					}
 			}
+    		oldFirstLog++;
 		}
-		oldFirstLog++;
+
 	}
 
    
@@ -2662,6 +2663,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			{
 				// delete the log files that are not needed any more
 				//File flog = new File(logfiles[i]);
+				if( DEBUG )
+					System.out.println("Examining log file: "+logfiles[i]+" for "+dbName);
 				if(logfiles[i].startsWith(dbName) && logfiles[i].endsWith(".log"))
 				{
 					String fileIndex = "";

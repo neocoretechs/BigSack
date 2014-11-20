@@ -66,6 +66,13 @@ public class GlobalDBIO {
 		usedBL.checkBufferFlush(this, freeBL);
 	}
 
+	public void commitBufferFlush() throws IOException {
+		usedBL.commitBufferFlush(this, freeBL);
+	}
+
+	public void rollbackBufferFlush() {
+		forceBufferClear();
+	}
 	/**
 	* Translate the virtual tablspace (first 3 bits) and block to real block
 	* @param tvblock The virtual block

@@ -106,7 +106,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 */
 	public void deallocOutstandingCommit() throws IOException {
 		deallocOutstanding();
-		checkBufferFlush();
+		commitBufferFlush();
 		getUlog().commit();
 	}
 	/**
@@ -115,9 +115,10 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 */
 	public void deallocOutstandingRollback() throws IOException {
 		deallocOutstanding();
-		checkBufferFlush();
+		rollbackBufferFlush();
 		getUlog().rollBack();
 	}
+	
 	/**
 	* Find or add the block to in-mem list.  First deallocate the currently
 	* used block, get the new block, then allocate it

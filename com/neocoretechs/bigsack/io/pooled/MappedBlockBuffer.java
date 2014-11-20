@@ -39,5 +39,25 @@ public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 			}
 		}
 	}
+	/**
+	 * Commit all outstanding blocks in the buffer.
+	 * @param globalIO
+	 * @param freeBL
+	 * @throws IOException
+	 */
+	public void commitBufferFlush(GlobalDBIO globalIO, List<BlockAccessIndex> freeBL) throws IOException {
+		Iterator<BlockAccessIndex> elbn = this.keySet().iterator();
+		while (elbn.hasNext()) {
+					BlockAccessIndex ebaii = (elbn.next());
+					if (ebaii.getAccesses() == 0) {
+						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
+							globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+						}
+						elbn.remove();
+						//
+						freeBL.add(ebaii);
+					}
+		}
+	}
 
 }
