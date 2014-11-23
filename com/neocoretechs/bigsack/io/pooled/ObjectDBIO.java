@@ -123,7 +123,7 @@ public class ObjectDBIO extends OffsetDBIO {
 			BTreeKeyPage broot = new BTreeKeyPage(0L);
 			broot.setUpdated(true);
 			broot.putPage(this);
-			deallocOutstandingCommit();
+			//deallocOutstandingCommit();
 		} //else
 			//deallocOutstandingNoCommit();
 		setNew_node_pos_blk(-1L);

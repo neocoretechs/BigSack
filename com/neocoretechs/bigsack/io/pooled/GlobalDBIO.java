@@ -790,7 +790,7 @@ public class GlobalDBIO {
 		dblk.getBlk().setBytesinuse((short)0);
 		dblk.getBlk().setWriteid(1L);
 		dblk.getBlk().setPageLSN(-1L);
-		dblk.getBlk().setIncore(true);
+		dblk.getBlk().setIncore(false);
 		dblk.getBlk().setInlog(false);
 		return dblk;
 	}

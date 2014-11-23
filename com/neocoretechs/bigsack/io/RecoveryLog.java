@@ -95,7 +95,7 @@ public final class RecoveryLog  {
 	public void commit() throws IOException {
 		if( Props.DEBUG) System.out.println("Commit called");
 		firstTrans = null;
-		ltf.resetLogFiles();
+		ltf.initializeLogFileSequence();
 	}
 	
 	/**

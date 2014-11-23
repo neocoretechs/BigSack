@@ -186,9 +186,9 @@ public class BTreeKeyPage implements Serializable {
 			dataIdArray[index] = Optr.getEmptyPointer();
 			dataUpdatedArray[index] = true;
 			setUpdated(true);
-		} else {
-			throw new IOException("Attempt to delete null data index "+index+" for "+this);
-		}
+		} //else {
+			//throw new IOException("Attempt to delete null data index "+index+" for "+this);
+		//}
 	}
 	/**
 	* Retrieve a page based on an index to this page containing a page 

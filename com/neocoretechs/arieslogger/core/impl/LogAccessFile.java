@@ -24,6 +24,7 @@ package com.neocoretechs.arieslogger.core.impl;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.io.SyncFailedException;
 import java.nio.ByteBuffer;
@@ -379,21 +380,18 @@ public class LogAccessFile
 	
 	}
 
-
 	//flush all the the dirty buffers to disk
 	public void flushLogAccessFile() throws IOException 
 	{
 		switchLogBuffer();
 		flushDirtyBuffers();
 	}
-
-		
+	
 	/**
-	 * Appends the current Buffer to the dirty Buffer list and assigns a free
-	 * buffer to be the currrent active buffer . Flushing of the buffer
-	 * to disk is delayed if there is a free buffer available. 
-	 * dirty buffers will be  flushed to the disk   
-	 * when  flushDirtyBuffers() is invoked by  a commit call 
+	 * Compute the checksum for the current buffer, write it out
+	 * call flushDirtyBuffers then init the currentBuffer (LogAccessFileBuffer)
+	 * dirty buffers will be flushed to the disk   
+	 * when flushDirtyBuffers() is invoked
 	 * or when no more free buffers are available. 
 	 */
 	public void switchLogBuffer() throws IOException  
@@ -491,21 +489,25 @@ public class LogAccessFile
 	{
 		synchronized(logFileSemaphore)
 		{
+			System.out.println("CORRUPTION detected, log file closing.."+log);
 			if (log != null)
 				log.close();
 		}
 	}
-
+	/**
+	 * Flush the log via flushLogAccessFile, then call close in log if not null
+	 * @throws IOException
+	 */
 	public void close() throws IOException
     {
 		if (DEBUG) 
         {
 			if( !currentBuffer.isBufferEmpty() )
-				throw new IOException(
-				"Log file being closed with data still buffered " + 
+				throw new IOException("Attempt to close log file while data still buffered " + 
                 currentBuffer.buffer.position() +  " " + currentBuffer.buffer.remaining());
 		}
-
+		
+		System.out.println("LogAccessFile.Close file being flushed/closed "+log);
 		flushLogAccessFile();
 
 		synchronized(logFileSemaphore)
@@ -513,6 +515,7 @@ public class LogAccessFile
 			if (log != null)
 				log.close();
 		}
+		
 	}
 
 
@@ -549,7 +552,10 @@ public class LogAccessFile
                             throw ioe;
                     }
                 }
-            }
+            } else {
+            	System.out.println("log instance null in LogAccessFile.writeToLog");
+            	throw new IOException("log instance null in LogAccessFile.writeToLog");
+            }  	
 		}
 
 		if (DEBUG) 
@@ -594,11 +600,11 @@ public class LogAccessFile
 				switchLogBuffer();
 				// reserve space if log checksum feature is enabled. 
 		}
-		if (DEBUG) {
+		//if (DEBUG) {
 				// Previously reserved real checksum instance should have been
 				// used, before another one is generated. 
 				assert(checksumInstance == -1) : "CHECKSUM INSTANCE OVERWRITE";
-		}	
+		//}	
 		checksumInstance = LogCounter.makeLogInstanceAsLong(logFileNumber, currentPosition);
 		if( DEBUG ) {
 				System.out.println("Reserved checksum size:"+checksumLogRecordSize+" instance:"+LogCounter.toDebugString(checksumInstance));

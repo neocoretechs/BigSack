@@ -63,8 +63,8 @@ public class LogCounter implements LogInstance, Externalizable {
 	// lower end of 32 bits in long type are used to store the log file position
 	private static final long FILE_NUMBER_SHIFT	= 32;
 
-	// reserve top 4 bits in log file size for future use
-	public static final long MAX_LOGFILE_SIZE = (long)0x0FFFFFFFL; // 268435455
+	//
+	public static final long MAX_LOGFILE_SIZE = (long)0x7FFFFFFFL; // 2147483647 //(long)0x0FFFFFFFL; // 268435455
 	// 32 bits are used to store the log file postion
 	private static final long FILE_POSITION_MASK = (long)0x7FFFFFFFL;
 

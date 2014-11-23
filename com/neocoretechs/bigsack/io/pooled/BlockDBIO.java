@@ -52,7 +52,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 
 	/**
 	* Create the block IO and up through the chain to global IO. After constructing, create a recovery log instance
-	* and determine if a roll forward recovery is needed 
+	* and determine if a roll forward recovery is needed. The flow is create_recovery_log which calls boot()
+	* undolog instance is then set after construction.Finally, the LogToFile instance is extracted and 'recover' is called
 	* @param transId 
 	* @param create 
 	* @param objname 

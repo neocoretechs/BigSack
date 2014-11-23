@@ -82,7 +82,8 @@ public final class BigSackSession {
 
 	@SuppressWarnings("rawtypes")
 	public void put(Comparable o) throws IOException {
-		bTree.add(o, new String());
+		//bTree.add(o, new String());
+		bTree.add(o);
 	}
 
 	@SuppressWarnings("rawtypes")
