@@ -22,6 +22,7 @@
 package com.neocoretechs.arieslogger.core.impl;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
@@ -87,7 +88,7 @@ public class LogAccessFile
 	private boolean flushInProgress = false;
 	
 	private final RandomAccessFile  log;
-
+	private final File logFile;
 	// log can be touched only inside synchronized block protected by
 	// logFileSemaphore.
 	private final Object            logFileSemaphore;
@@ -101,11 +102,11 @@ public class LogAccessFile
 	private ChecksumOperation checksumLogOperation;
 	private LogRecord checksumLogRecord;
 		
-	public LogAccessFile(RandomAccessFile log, int bufferSize) throws IOException 
+	public LogAccessFile(File logFile, RandomAccessFile log, int bufferSize) throws IOException 
     {
-
-		this.log            = log;
-		logFileSemaphore    = log;		
+		this.logFile 	= logFile;
+		this.log        = log;
+		logFileSemaphore= log;		
 		currentBuffer = new LogAccessFileBuffer(bufferSize);
 	
 		/**
@@ -134,7 +135,15 @@ public class LogAccessFile
 		currentBuffer.init(checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE );
 	}
 
-
+	public long getFilePointer() throws IOException {
+		return log.getFilePointer();
+	}
+	
+	public void setLength(long len) throws IOException {
+		log.setLength(len);
+	}
+	
+	public RandomAccessFile getRandomAccessFile() { return log; }
     /**
      * Write a single log record to the stream.
      * <p>

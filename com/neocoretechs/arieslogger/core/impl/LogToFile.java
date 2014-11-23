@@ -206,7 +206,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private FileLogger fileLogger = null;
 	protected LogAccessFile logOut;		// an output stream to the log file
 								// (access of the variable should sync on this)
-	//private RandomAccessFile firstLog = null;
+	//private RandomAccessFile theLog = null;
 	protected long		    endPosition = -1; // end position of the current log file
 	private long			lastFlush = 0;	// the position in the current log
 											// file that has been flushed to disk
@@ -654,7 +654,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// determine where the log ends
 				//
 				/////////////////////////////////////////////////////////////
-				RandomAccessFile theLog = null;
+				logSwitchRequired = true;
 				File logFile = null;
 				// if logend == LogCounter.INVALID_LOG_SCAN, that means there 
                 // is no log record in the log - most likely it is corrupted in
@@ -671,12 +671,12 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 							logFile = getLogFileName(++logFileNumber);
 						}
 					}
-					IOException accessException = null;
 	
-                    theLog = privRandomAccessFile(logFile, "rw");
+                    RandomAccessFile theLog = privRandomAccessFile(logFile, "rw");
 
                     if (theLog == null || !privCanWrite(logFile))
 					{
+                    	System.out.println("LogToFile.recover Cannot open log file for writing "+logFile);
 						if (theLog != null)
 							theLog.close();
 						theLog = null;
@@ -684,16 +684,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					}
 					else
 					{
+						logOut = allocateNewLogFile(theLog, logFile, LogCounter.INVALID_LOG_INSTANCE, 
+								logFileNumber, logBufferSize);
 						// no previous log file or previous log position
-						if (!initLogFile(theLog, logFileNumber, LogCounter.INVALID_LOG_INSTANCE)) {
-								throw markCorrupt(new IOException(logFile.getPath()));
-                        }
-                        // successfully init'd the log file - set up markers,
-                        // and position at the end of the log.
-						setEndPosition( theLog.getFilePointer() );
-						setLastFlush(endPosition);
-						
-						allocateNewLogFile(theLog, logFile);
 						
 						//if (DEBUG)
 						//{
@@ -706,26 +699,18 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						logSwitchRequired = false;
 					}
 				}
-				else
+				else // file position indicates log records present, process
 				{
 					// logEnd is the instance of the next log record in the log
 					// it is used to determine the last known good position of
 					// the log
 					logFileNumber = LogCounter.getLogFileNumber(logEnd);
-					logFile = getLogFileName(logFileNumber);
-
+					logFile = getLogFileName(logFileNumber);	
 					
-					theLog = privRandomAccessFile(logFile, "rw");
-                    if (theLog == null || !privCanWrite(logFile))
-					{
-							if (theLog != null)
-								theLog.close();
-							theLog = null;
-										
-					}
+					logOut = allocateExistingLogFile(logFile, logBufferSize);
+					RandomAccessFile theLog = logOut.getRandomAccessFile();
 
-	
-						setEndPosition( LogCounter.getLogFilePosition(logEnd) );
+					setEndPosition( LogCounter.getLogFilePosition(logEnd) );
 						//
 						// The end of the log is at endPosition.  Which is where
 						// the next log should be appending.
@@ -758,8 +743,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
                         // error or worse.
 						//
 						//find out if log had incomplete log records at the end.
-						if (redoScan.isLogEndFuzzy())
-						{
+					if (redoScan.isLogEndFuzzy()) {
+						System.out.println("Fuzzy log end detected, best effort to zero fuzz..");
 							theLog.seek(endPosition);
 							long eof = theLog.length();
 
@@ -773,39 +758,26 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 								theLog.write(zeroBuf);
 							if(rBytes !=0)
 								theLog.write(zeroBuf, 0, rBytes);
-							
-							//if(!isWriteSynced)
-								syncFile(theLog);
-						}
+							syncFile(theLog);
+					} // fuzzy end
 
-						//if (DEBUG)
-						//{
-							if (theLog.length() != endPosition)
-							{
+					//if (DEBUG)
+					//{
+					if (theLog.length() != endPosition) {
 								assert(theLog.length() > endPosition) : "log end > log file length, bad scan";
-							}
-						//}
-
-						// set the log to the true end position,
-                        // and not the end of the file
-
-						setLastFlush(endPosition);
-						theLog.seek(endPosition);
 					}
-
-				if (theLog != null)
-                {
-                    if (logOut != null)
-                    {
-                        // Close the currently open log file
-                        logOut.close();
-    					theLog = privRandomAccessFile(logFile, "rw");
-                    }
-					logOut = new LogAccessFile(theLog, logBufferSize);
-                }
+					//}
+					// set the log to the true end position,and not the end of the file
+					setLastFlush(endPosition);
+					theLog.seek(endPosition);
+				} // log records present processing
 				
-				if(logSwitchRequired)
+				if(logSwitchRequired) {
+					if( DEBUG ) {
+						System.out.println("LogToFile.recover log switch required, about to enter switchLogFile");
+					}
 					switchLogFile();
+				}
 
 				/////////////////////////////////////////////////////////////
 				//
@@ -1421,10 +1393,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			// we have an empty log file here, refuse to switch.
 			if (endPosition == LOG_FILE_HEADER_SIZE)
 			{
-				if (DEBUG)
-				{
+				//if (DEBUG)
+				//{
 					System.out.println("LogToFile.switchLogFile not switching from an empty log file (" + logFileNumber + ")");
-				}	
+				//}	
 				return;
 			}
 
@@ -1448,7 +1420,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				}
 
 				try {
-                    newLog =   privRandomAccessFile(newLogFile, "rw");
+                    newLog = privRandomAccessFile(newLogFile, "rw");
 				}
 				catch (IOException ioe)
 				{
@@ -1464,10 +1436,16 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					System.out.println("LogToFile.switchLogFile cannot write intended new log file "+newLogFile.getPath()+" returning with fail.");
 					return;
 				}
-
-				if (initLogFile(newLog, logFileNumber+1, LogCounter.makeLogInstanceAsLong(logFileNumber, endPosition)))
-				{
-
+                if( logOut != null ) {
+                	logOut.close();
+                }
+                // sets up checksum log record and calls initBuffer on currentBuffer
+                	logOut = allocateNewLogFile(newLog, newLogFile, LogCounter.makeLogInstanceAsLong(logFileNumber, endPosition), 
+                								logFileNumber+1, logBufferSize);
+                	newLog = logOut.getRandomAccessFile();
+                	//if (initLogFile(newLog, logFileNumber+1, LogCounter.makeLogInstanceAsLong(logFileNumber, endPosition)))
+                	//{
+                	
 					// New log file init ok, close the old one and
 					// switch over, after this point, need to shutdown the
 					// database if any error crops up
@@ -1490,36 +1468,19 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					//{
 							//throw new IOException("TestLogSwitchFail2");
 					//}
-
-					logOut.close();		// close the old log file
 					
 					logWrittenFromLastCheckPoint += endPosition;
 
 					setEndPosition( newLog.getFilePointer() );
 					setLastFlush(endPosition);
-					// sets up checksum log record and calls initBuffer on currentBuffer
-					allocateNewLogFile(newLog, newLogFile);
-
-					logOut = new LogAccessFile(newLog, logBufferSize);
-
-					if (endPosition != LOG_FILE_HEADER_SIZE)
-							throw new IOException(
-											"new log file has unexpected size" +
-											 + endPosition);
+					
+					//logOut.close();		// close the old log file
+					
+					//if (endPosition != LOG_FILE_HEADER_SIZE)
+					//		throw new IOException("New log file has unexpected size:" + endPosition);
 					logFileNumber++;
 
-				}
-				else	// something went wrong, delete the half baked file
-				{
-					newLog.close();
-					newLog = null;
-
-					if (privExists(newLogFile))
-					    privDelete(newLogFile);
-
-					System.out.println("LogToFile.switchLogFile Cannot create new log file "+newLogFile.getPath()+" returning with fail.");
-					newLogFile = null;
- 				}
+					//System.out.println("LogToFile.switchLogFile Cannot create new log file "+newLogFile.getPath()+" returning with fail.");
 
 			}
 			catch (IOException ioe)
@@ -1566,31 +1527,44 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * re-open RW and seek to class variable 'endPosition'
 	 * @param theLog
 	 * @param logFile
+	 * @param logSize 
 	 * @throws IOException
 	 */
-	private void allocateNewLogFile(RandomAccessFile theLog, File logFile) throws IOException {
-		//if write sync is true , prellocate the log file
-		//and reopen the file in rwd mode.
-	      //preallocate a file by writing zeros into it . 
+	private LogAccessFile allocateNewLogFile(RandomAccessFile theLog, File logFile, long prevLogInst, long fileNumber, int logSize) throws IOException {
         //if (DEBUG)
         //{
             int currentPostion = (int)theLog.getFilePointer();
             assert(currentPostion == LOG_FILE_HEADER_SIZE) : "New Log File Is not Correctly Initialized";
         //}
-		//if(isWriteSynced)
-		//	theLog = openLogFileInWriteMode(logFile);
-		//else
-		//theLog = privRandomAccessFile(logFile, "rw");
 		//if( DEBUG)
 			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
 	    theLog.setLength(logSwitchInterval + LOG_FILE_HEADER_SIZE);
 	    syncFile(theLog);
 	    theLog.close();
-		//if(isWriteSynced)
-		//	theLog = openLogFileInWriteMode(logFile);
-		//else
-		theLog = privRandomAccessFile(logFile, "rw");		
-		theLog.seek(endPosition);
+		RandomAccessFile theLog2 = privRandomAccessFile(logFile, "rw");
+		if (!forceInitLogFile(theLog2, fileNumber, prevLogInst)) // LogCounter.INVALID_LOG_INSTANCE
+        {
+			throw new IOException("LogToFIle.allocateNewLogFile cannot initialize log "+logFile.getName()+" in "+getDataDirectory());
+        }
+
+		setEndPosition( theLog2.getFilePointer() );
+		setLastFlush(theLog2.getFilePointer());
+		syncFile(theLog2);
+		//theLog.seek(endPosition);
+		return new LogAccessFile(logFile, theLog2, logSize);
+	}
+	/**
+	 * Assume we have a randomaccesfile positioned at end for append, header should be in and ready to go
+	 * set up the logAccessFile instance
+	 * @param logFile
+	 * @throws IOException
+	 */
+	private LogAccessFile allocateExistingLogFile(File logFile, int logSize) throws IOException {
+		//if( DEBUG)
+			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
+		RandomAccessFile theLog = privRandomAccessFile(logFile, "rw");
+		//theLog.seek(endPosition);
+		return new LogAccessFile(logFile, theLog, logSize);
 	}
 	/**
 		Flush all unwritten log record up to the log instance indicated to disk
@@ -2339,8 +2313,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// create or overwrite the log control file with an invalid
 				// checkpoint instance since there is no checkpoint yet
 				if (writeControlFile(logControlFileName,
-									 LogCounter.INVALID_LOG_INSTANCE))
-				{
+									 LogCounter.INVALID_LOG_INSTANCE)) {
 					setFirstLogFileNumber(1);
 					logFileNumber = 1;
 					logFile = getLogFileName(logFileNumber);
@@ -2354,29 +2327,19 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					}
                     
                     RandomAccessFile firstLog = privRandomAccessFile(logFile, "rw");
-        			logOut = new LogAccessFile(firstLog, logBufferSize);
+        			logOut = allocateNewLogFile(firstLog, logFile, LogCounter.INVALID_LOG_INSTANCE, 
+        					logFileNumber, logBufferSize);
 
-					if (!initLogFile(firstLog, logFileNumber, LogCounter.INVALID_LOG_INSTANCE))
-                    {
-						throw new IOException(logFile.getPath());
-                    }
-
-					setEndPosition( firstLog.getFilePointer() );
-					setLastFlush(firstLog.getFilePointer());
-
-                    //if write sync is true , preallocate the log file
-                    //and reopen the file in rwd mode.
-					allocateNewLogFile(firstLog, logFile);
-
-					if (DEBUG)
-					{
+					//if (DEBUG)
+					//{
 						assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
-					}
+					//}
 				}
 				else
-				{
-				
+				{	
+					logOut.close();
 					logOut = null;
+					throw new IOException("Unable to write control file from recovery log boot, critical failure..");
 				}
 
 				recoveryNeeded = false;
@@ -2459,8 +2422,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		RandomAccessFile firstLog;
 		File logControlFileName = getControlFileName();
 		if (writeControlFile(logControlFileName,
-							 LogCounter.INVALID_LOG_INSTANCE))
-		{
+							 LogCounter.INVALID_LOG_INSTANCE)) {
 			setFirstLogFileNumber(1);
 			logFileNumber = 1;
 			File logFile = getLogFileName(logFileNumber);
@@ -2477,19 +2439,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			}
 
             firstLog = privRandomAccessFile(logFile, "rw");
-
-			if (!initLogFile(firstLog, logFileNumber, LogCounter.INVALID_LOG_INSTANCE))
-            {
-				throw new IOException("LogToFIle.initializeLogFileSequence cannot initialize log "+logFile.getName()+" in "+getDataDirectory());
+            if( logOut != null ) {
+            	logOut.close();
             }
-
-			setEndPosition( firstLog.getFilePointer() );
-			setLastFlush(firstLog.getFilePointer());
-
-            //if write sync is true , preallocate the log file
-            //and reopen the file in rwd mode.
-			allocateNewLogFile(firstLog, logFile);
-			logOut = new LogAccessFile(firstLog, logBufferSize);
+			logOut = allocateNewLogFile(firstLog, logFile, LogCounter.INVALID_LOG_INSTANCE, logFileNumber, logBufferSize);
 
 			//if (DEBUG)
 			//{
@@ -2499,8 +2452,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		}
 		else
 		{
+			if( logOut != null )
+				logOut.close();
 			logOut = null;
-			firstLog = null;
+			throw new IOException("Unable to write control file from recovery log boot, critical failure..");
 		}
 
 		recoveryNeeded = false;
@@ -3837,7 +3792,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		return runBooleanAction(1, file);
     }
 
-    private synchronized RandomAccessFile privRandomAccessFile(File file, String perms)
+    public synchronized RandomAccessFile privRandomAccessFile(File file, String perms)
         throws IOException
     {
 		action = 2;
@@ -3931,8 +3886,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
     {
 		if (DEBUG)
         {
-			assert(newPosition < LogCounter.MAX_LOGFILE_SIZE) :
-							 "log file would spill past its legal end if the end were set to = " + newPosition;
+			assert(newPosition < LogCounter.MAX_LOGFILE_SIZE) : "Log file exceeds maximum at " + newPosition;
 			System.out.println("LogToFile.setEndPosition old:"+endPosition+" new:"+newPosition);
 			
 		}
