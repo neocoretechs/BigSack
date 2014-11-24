@@ -116,13 +116,6 @@ public class BufferedCachelessTreeSet {
 	public synchronized boolean isEmpty() throws IOException {
 			return session.isEmpty();
 	}
-	/**
-	* Clear the set
-	* @exception IOException if bucket reset fails
-	*/
-	public synchronized void clear() throws IOException {
-			session.clear();
-	}
 	
 	public String getDBName() {
 		return session.getDBname();

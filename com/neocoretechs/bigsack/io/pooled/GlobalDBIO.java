@@ -1,5 +1,6 @@
 package com.neocoretechs.bigsack.io.pooled;
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.*;
 
@@ -51,7 +52,8 @@ public class GlobalDBIO {
 	private IoInterface[] ioUnit;
 	private MappedBlockBuffer  usedBL = new MappedBlockBuffer(); // block number to Datablock
 	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(); // free blocks
-	private BlockAccessIndex tmpBai;
+	private BlockAccessIndex tmpBai = new BlockAccessIndex(); // general utility
+	private BlockAccessIndex tbai = new BlockAccessIndex(); // getUsedBlock reserved
 	private RecoveryLog ulog;		
 	private long[] nextFreeBlock = new long[DBPhysicalConstants.DTABLESPACES];
 	private long new_node_pos_blk = -1L;
@@ -142,7 +144,7 @@ public class GlobalDBIO {
 
 		//
 		Fopen(Name, create);
-		tmpBai = new BlockAccessIndex();
+
 		// MAXBLOCKS may be set by PoolBlocks property
 		MAXBLOCKS = Props.toInt("PoolBlocks");
 		// populate with blocks, they're all free for now
@@ -535,13 +537,28 @@ public class GlobalDBIO {
 	public static byte[] getObjectAsBytes(Object Ob) throws IOException {
 		byte[] retbytes;
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		ObjectOutput s = new ObjectOutputStream(baos);
+		//ObjectOutput s = new ObjectOutputStream(baos);
+		//s.writeObject(Ob);
+		//s.flush();
+		//baos.flush();
+		//retbytes = baos.toByteArray();
+		//s.close();
+		//baos.close();
+		//return retbytes;
+		//---------------------
+		WritableByteChannel wbc = Channels.newChannel(baos);
+		ObjectOutput s = new ObjectOutputStream(Channels.newOutputStream(wbc));
 		s.writeObject(Ob);
 		s.flush();
 		baos.flush();
-		retbytes = baos.toByteArray();
+		ByteBuffer bb = ByteBuffer.allocate(baos.size());
+		// try to get the bytes from the channel
+		wbc.write(bb);
+		retbytes = bb.array();
 		s.close();
+		wbc.close();
 		baos.close();
+		
 		return retbytes;
 	}
 	/**
@@ -551,19 +568,29 @@ public class GlobalDBIO {
 	* @return Object instance
 	* @exception IOException cannot convert
 	*/
-	public static Object deserializeObject(ObjectDBIO sdbio, byte[] obuf)
-		throws IOException {
+	public static Object deserializeObject(ObjectDBIO sdbio, byte[] obuf) throws IOException {
 		Object Od;
 		try {
-			ObjectInput s;
+			ObjectInputStream s;
 			ByteArrayInputStream bais = new ByteArrayInputStream(obuf);
+			//if (sdbio.isCustomClassLoader())
+			//	s = new CObjectInputStream(bais, sdbio.getCustomClassLoader());
+			//else
+			//	s = new ObjectInputStream(bais);
+			//Od = s.readObject();
+			//s.close();
+			//bais.close();
+			//--------------------
+			//ByteBuffer bb = ByteBuffer.wrap(obuf);
+			ReadableByteChannel rbc = Channels.newChannel(bais);
 			if (sdbio.isCustomClassLoader())
-				s = new CObjectInputStream(bais, sdbio.getCustomClassLoader());
+				s = new CObjectInputStream(Channels.newInputStream(rbc), sdbio.getCustomClassLoader());
 			else
-				s = new ObjectInputStream(bais);
+				s = new ObjectInputStream(Channels.newInputStream(rbc));
 			Od = s.readObject();
 			s.close();
 			bais.close();
+			rbc.close();
 		} catch (IOException ioe) {
 			throw new IOException(
 				"deserializeObject: "
@@ -617,12 +644,16 @@ public class GlobalDBIO {
 	* We'll do this on a 'clear' of collection, reset all tables
 	*/
 	public void forceBufferClear() {
-		usedBL.clear();
-		freeBL.clear();
+		//freeBL.clear();
 		// populate with blocks, they're all free for now
-		for (int i = 0; i < MAXBLOCKS; i++) {
-			freeBL.addElement(new BlockAccessIndex(this));
+		Set<BlockAccessIndex> sbai = usedBL.keySet();
+		Iterator<BlockAccessIndex> it = sbai.iterator();
+		while(it.hasNext()) {
+			BlockAccessIndex bai = (BlockAccessIndex) it.next();
+			bai.resetBlock();
+			freeBL.addElement(bai);
 		}
+		usedBL.clear();
 	}
 	/**
 	* Get from free list, puts in used list of block access index.
@@ -689,7 +720,6 @@ public class GlobalDBIO {
 	* @return The key found or whatever set returns otherwise if nothing a null is returned
 	*/
 	public BlockAccessIndex getUsedBlock(BlockAccessIndex bai) {
-		BlockAccessIndex tbai = new BlockAccessIndex();
 		tbai.setTemplateBlockNumber(bai.getBlockNum() + 1L);
 		SortedMap<BlockAccessIndex, ?> sm = usedBL.subMap(bai, tbai);
 		return (sm.isEmpty() ? null : (sm.firstKey()));

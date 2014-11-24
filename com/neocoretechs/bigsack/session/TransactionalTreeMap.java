@@ -283,16 +283,7 @@ public class TransactionalTreeMap {
 				return ret;
 		}
 	}
-	/**
-	* Clear the set
-	* @exception IOException if bucket reset fails
-	*/
-	public void clear() throws IOException {
-		synchronized (session.getMutexObject()) {
-				session.clear();
-				table.clear();
-		}
-	}
+
 	/**
 	 * Commit the outstanding transaction
 	 * @throws IOException

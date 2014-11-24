@@ -33,7 +33,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /**
 * A key page in the bTree.  Performs operations on its set of keys and
 * persistent object locations/data.  Persists itself to the buffer pool as
-* serialized instance when nesessary.
+* serialized instance when necessary.
 * MAXKEYS is an attempt to keep keys from spanning page boundaries at the expense of some storage
 * a key overflow will cause a page split, at times unavoidable.
 * Important to note that the data is stored as arrays serialized out in this class. Related to that
@@ -179,8 +179,10 @@ public class BTreeKeyPage implements Serializable {
 
 	void deleteData(ObjectDBIO sdbio, int index) throws IOException {
 		if (dataArray[index] != null && !dataIdArray[index].isEmptyPointer()) {
-			if( DEBUG ) System.out.print("Deleting :"+dataIdArray[index]+"\r\n");
-			if( DEBUG ) System.out.println("Data: "+dataArray[index]+"\r\n");
+			if( DEBUG ) {
+				System.out.print("Deleting :"+dataIdArray[index]+"\r\n");
+				System.out.println("Data: "+dataArray[index]+"\r\n");
+			}
 			//if( Props.DEBUG ) System.out.println(" size "+ilen);
 			sdbio.delete_object(dataIdArray[index],  GlobalDBIO.getObjectAsBytes(dataArray[index]).length );
 			dataIdArray[index] = Optr.getEmptyPointer();

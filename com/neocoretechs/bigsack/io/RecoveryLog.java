@@ -46,12 +46,14 @@ public final class RecoveryLog  {
 	FileLogger fl = null;
 	LogToFile ltf = null;
 	LogInstance firstTrans = null;
+	BlockAccessIndex tblk = null;
 	public BlockDBIO getBlockIO() {
 		return blockIO;
 	}
 
 	public RecoveryLog(BlockDBIO tglobalio, boolean create) throws IOException {
 		blockIO = tglobalio;
+		tblk = new BlockAccessIndex(blockIO); // for writeLog reserved
 		ltf = new LogToFile(blockIO);
 		fl = (FileLogger) ltf.getLogger();
 		ltf.boot(create);
@@ -75,7 +77,7 @@ public final class RecoveryLog  {
 		if( Props.DEBUG ) {
 			System.out.println("RecoveryLog.writeLog "+blk.toString());
 		}
-		BlockAccessIndex tblk = new BlockAccessIndex(blockIO);
+
 		tblk.setTemplateBlockNumber(blk.getBlockNum());
 		blockIO.FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);

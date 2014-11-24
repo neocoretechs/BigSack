@@ -51,6 +51,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public BlockAccessIndex() {
 	}
 
+	public void resetBlock() {
+		blk.resetBlock();
+	}
+	
 	int getAccesses() {
 		return accesses;
 	}

@@ -283,16 +283,7 @@ public class BufferedTreeMap {
 				return ret;
 		}
 	}
-	/**
-	* Clear the set
-	* @exception IOException if bucket reset fails
-	*/
-	public void clear() throws IOException {
-		synchronized (session.getMutexObject()) {
-				session.clear();
-				table.clear();
-		}
-	}
+
 	
 	public String getDBName() {
 		return session.getDBname();

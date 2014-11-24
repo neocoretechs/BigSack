@@ -89,6 +89,17 @@ public final class Datablock implements Externalizable {
 		else
 			fobj.Fwrite(data, getBytesused());
 	}
+	
+	public void resetBlock() {
+		prevblk = -1L;
+		nextblk = -1L;
+		bytesused = 0;
+		bytesinuse = 0;
+		writeid = -1L;
+		pageLSN = -1;
+		incore = false;
+		inlog = false;
+	}
 	/**
 	* write the header and data portion to IoInterface implementor
 	* in compressed form

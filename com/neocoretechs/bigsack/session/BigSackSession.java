@@ -245,18 +245,7 @@ public final class BigSackSession {
 	public long size() throws IOException {
 		return bTree.getNumKeys();
 	}
-	/**
-	 * not sure when to use this
-	 * @throws IOException
-	 */
-	public void clear() throws IOException {
-		bTree.getIO().resetBuckets();
-		bTree.getIO().forceBufferClear();
-		bTree.getIO().createOrLoad(false);
-		bTree.getIO().getUlog().resetLog();
-		bTree.setNumKeys(0);
-		if( Props.DEBUG ) System.out.println("Clear called, all reset..");
-	}
+
 	
 	public boolean isEmpty() throws IOException {
 		return (size() == 0L);
