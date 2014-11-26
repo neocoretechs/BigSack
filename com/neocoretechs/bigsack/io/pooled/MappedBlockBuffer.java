@@ -8,6 +8,7 @@ import java.util.TreeMap;
 
 public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 	private static final long serialVersionUID = -5744666991433173620L;
+	private static final boolean DEBUG = false;
 	/**
 	* Toss out pool blocks not in use, iterate through and compute random
 	* chance of keeping block
@@ -56,6 +57,25 @@ public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 						elbn.remove();
 						//
 						freeBL.add(ebaii);
+					}
+		}
+	}
+	/**
+	 * Commit all outstanding blocks in the buffer, bypassing the log subsystem. Should be used with forethought
+	 * @param globalIO
+	 * @param freeBL
+	 * @throws IOException
+	 */
+	public void directBufferWrite(GlobalDBIO globalIO) throws IOException {
+		Iterator<BlockAccessIndex> elbn = this.keySet().iterator();
+		if(DEBUG) System.out.println("direct buffer write");
+		while (elbn.hasNext()) {
+					BlockAccessIndex ebaii = (elbn.next());
+					if (ebaii.getAccesses() == 0 && ebaii.getBlk().isIncore() ) {
+						if( DEBUG)System.out.println("fully writing "+ebaii.getBlockNum()+" "+ebaii.getBlk());
+							globalIO.FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
+							globalIO.Fforce();
+							ebaii.getBlk().setIncore(false);
 					}
 		}
 	}

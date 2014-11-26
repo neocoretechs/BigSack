@@ -77,7 +77,6 @@ public final class RecoveryLog  {
 		if( Props.DEBUG ) {
 			System.out.println("RecoveryLog.writeLog "+blk.toString());
 		}
-
 		tblk.setTemplateBlockNumber(blk.getBlockNum());
 		blockIO.FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
@@ -95,7 +94,7 @@ public final class RecoveryLog  {
 	 * @throws IOException
 	 */
 	public void commit() throws IOException {
-		if( Props.DEBUG) System.out.println("Commit called");
+		if(Props.DEBUG) System.out.println("Commit called");
 		firstTrans = null;
 		ltf.initializeLogFileSequence();
 	}

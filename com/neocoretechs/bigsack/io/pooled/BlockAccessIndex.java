@@ -64,10 +64,6 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public int decrementAccesses() throws IOException {
 		if (accesses > 0)
 			--accesses;
-		//if (accesses == 0 && blk.isIncore() && !blk.isInlog()) {
-		//	globalIO.getUlog().writeLog(this); // wait for 'applyChange' method of 'Loggable' to push block to raw store
-			//globalIO.FseekAndWrite(blockNum, blk);
-		//}
 		return accesses;
 	}
 	

@@ -34,3 +34,4 @@
 /CObjectInputStream.class
 /DBInputStream.class
 /DBOutputStream.class
+/DirectByteArrayOutputStream.class

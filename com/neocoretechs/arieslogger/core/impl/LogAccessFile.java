@@ -514,11 +514,10 @@ public class LogAccessFile
 			if( !currentBuffer.isBufferEmpty() )
 				throw new IOException("Attempt to close log file while data still buffered " + 
                 currentBuffer.buffer.position() +  " " + currentBuffer.buffer.remaining());
-		}
+			System.out.println("LogAccessFile.Close file being flushed/closed "+log);
+        }
 		
-		System.out.println("LogAccessFile.Close file being flushed/closed "+log);
 		flushLogAccessFile();
-
 		synchronized(logFileSemaphore)
 		{
 			if (log != null)

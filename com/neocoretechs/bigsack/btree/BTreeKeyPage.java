@@ -58,7 +58,6 @@ public class BTreeKeyPage implements Serializable {
 	private transient boolean updated = false;
 
 	BTreeKeyPage() {
-
 		// Pre-allocate the arrays
 		keyArray = new Comparable[MAXKEYS];
 		pageArray = new BTreeKeyPage[MAXKEYS + 1];
@@ -223,6 +222,7 @@ public class BTreeKeyPage implements Serializable {
 	static BTreeKeyPage getPageFromPool(ObjectDBIO sdbio, long pos) throws IOException {
 		if (pos == -1L)
 			throw new IOException("Page index invalid in getPage");
+		//sdbio.findOrAddBlock(pos);
 		BTreeKeyPage btk =
 			(BTreeKeyPage) (sdbio.deserializeObject(pos));
 		if( DEBUG ) System.out.println("BTreeKeyPage "+pos+" "+btk);

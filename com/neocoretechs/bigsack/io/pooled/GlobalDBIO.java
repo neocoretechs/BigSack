@@ -6,11 +6,13 @@ import java.util.*;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
+import com.neocoretechs.bigsack.btree.BTreeKeyPage;
 import com.neocoretechs.bigsack.io.FileIO;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.MmapIO;
 import com.neocoretechs.bigsack.io.RecoveryLog;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
+import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 /*
 * Copyright (c) 1997,2003,2014 NeoCoreTechs
 * All rights reserved.
@@ -43,6 +45,7 @@ import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 */
 
 public class GlobalDBIO {
+	private static final boolean DEBUG = false;
 	private String Name;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
@@ -74,6 +77,9 @@ public class GlobalDBIO {
 
 	public void rollbackBufferFlush() {
 		forceBufferClear();
+	}
+	public void forceBufferWrite() throws IOException {
+		usedBL.directBufferWrite(this);
 	}
 	/**
 	* Translate the virtual tablspace (first 3 bits) and block to real block
@@ -221,9 +227,7 @@ public class GlobalDBIO {
 	*/
 	void getNextFreeBlocks() throws IOException {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
-		long endBlock =
-			(long) (DBPhysicalConstants.DBLOCKSIZ
-				* DBPhysicalConstants.DBUCKETS);
+		long endBlock = (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			long endBl = ioUnit[i].Fsize();
 			while (endBl > endBlock) {
@@ -353,6 +357,12 @@ public class GlobalDBIO {
 		ioUnit[ttableSpace].Fseek(offset);
 	}
 	
+	void Fsync(long toffset) throws IOException {
+		int ttableSpace = getTablespace(toffset);
+		if (ioUnit[ttableSpace] != null && ioUnit[ttableSpace].isopen())
+			ioUnit[ttableSpace].Fforce();
+	}
+	
 	public void FseekAndRead(long toffset, Datablock tblk)
 		throws IOException {
 		int ttableSpace = getTablespace(toffset);
@@ -410,14 +420,13 @@ public class GlobalDBIO {
 		tblk.read(ioUnit[ttableSpace]);
 	}
 	
-	void FseekAndWriteFully(long toffset, Datablock tblk)
-		throws IOException {
+	void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
 		int ttableSpace = getTablespace(toffset);
 		long offset = getBlock(toffset);
 		ioUnit[ttableSpace].Fseek(offset);
 		tblk.write(ioUnit[ttableSpace]);
 		tblk.setIncore(false);
-		if( Props.DEBUG ) System.out.println("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString());
+		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}
 	
 	/** Transfer tablespace 0 to all others (copy op) */
@@ -529,35 +538,39 @@ public class GlobalDBIO {
 		Fclose();
 	}
 	/**
-	* static method for object to serialized byte conversion
+	* Static method for object to serialized byte conversion.
+	* Uses DirectByteArrayOutputStream, which allows underlying buffer to be retrieved without
+	* copying entire backing store
 	* @param Ob the user object
 	* @return byte buffer containing serialized data
 	* @exception IOException cannot convert
 	*/
 	public static byte[] getObjectAsBytes(Object Ob) throws IOException {
 		byte[] retbytes;
-		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		//ObjectOutput s = new ObjectOutputStream(baos);
-		//s.writeObject(Ob);
-		//s.flush();
-		//baos.flush();
-		//retbytes = baos.toByteArray();
-		//s.close();
-		//baos.close();
-		//return retbytes;
-		//---------------------
-		WritableByteChannel wbc = Channels.newChannel(baos);
-		ObjectOutput s = new ObjectOutputStream(Channels.newOutputStream(wbc));
+		DirectByteArrayOutputStream baos = new DirectByteArrayOutputStream();
+		ObjectOutput s = new ObjectOutputStream(baos);
 		s.writeObject(Ob);
 		s.flush();
 		baos.flush();
-		ByteBuffer bb = ByteBuffer.allocate(baos.size());
-		// try to get the bytes from the channel
-		wbc.write(bb);
-		retbytes = bb.array();
+		retbytes = baos.getBuf();
 		s.close();
-		wbc.close();
 		baos.close();
+		//return retbytes;
+		//---------------------
+		// no joy below
+		//WritableByteChannel wbc = Channels.newChannel(baos);
+		//ObjectOutput s = new ObjectOutputStream(Channels.newOutputStream(wbc));
+		//s.writeObject(Ob);
+		//s.flush();
+		//baos.flush();
+		//ByteBuffer bb = ByteBuffer.allocate(baos.size());
+		// try to get the bytes from the channel
+		//wbc.write(bb);
+		//retbytes = bb.array();
+		//retbytes = baos.toByteArray();
+		//s.close();
+		//wbc.close();
+		//baos.close();
 		
 		return retbytes;
 	}
@@ -729,24 +742,59 @@ public class GlobalDBIO {
 	* Create initial buckets
 	* @exception IOException if buckets cannot be created
 	*/
-	void createBuckets() throws IOException {
+	private void createBuckets() throws IOException {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
 			long xsize = 0L;
 			// write bucket blocks
 			//	int ispace = 0;
 			for (int i = 0; i < DBPhysicalConstants.DBUCKETS; i++) {
-				FseekAndWriteFully(makeVblock(ispace, xsize), d);
+				// check for tablespace 0 , pos 0 and add our btree root
+				if( ispace == 0 && i == 0) {
+					long rootbl = makeVblock(0, 0);
+					BTreeKeyPage broot = new BTreeKeyPage(rootbl);
+					broot.setUpdated(true);
+					//broot.putPage(this);
+					byte[] pb = GlobalDBIO.getObjectAsBytes(broot);
+					if( DEBUG ) System.out.println("Main btree create root: "+pb.length+" bytes");
+					if( pb.length > DBPhysicalConstants.DATASIZE) {
+						System.out.println("WARNING: Btree root node keysize of "+pb.length+
+								" overflows page boundary of size "+DBPhysicalConstants.DATASIZE+
+								" possible database instability. Fix configs to rectify.");
+					}
+					if( DEBUG ) {
+						int inz = 0;
+						for(int ii = 0; ii < pb.length; ii++) {
+							if( pb[ii] != 0) ++inz;
+						}
+						assert(inz > 0) : "No non-zero elements in btree root buffer";
+						System.out.println(inz+" non zero elements in serialized array");
+					}
+					Datablock db = new Datablock();
+					db.setBytesused((short) pb.length);
+					db.setBytesinuse((short) pb.length);
+					db.setWriteid(1L);
+					db.setPageLSN(-1L);
+					System.arraycopy(pb, 0, db.data, 0, pb.length);
+					db.setIncore(true);
+					FseekAndWriteFully(rootbl, db);
+					//db.setIncore(false);
+					//Fsync(rootbl);
+					if( DEBUG ) System.out.println("CreateBuckets Added object @ root, bytes:"+pb.length+" data:"+db);
+					broot.setUpdated(false);
+				} else {
+					FseekAndWriteFully(makeVblock(ispace, xsize), d);
+				}
 				xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
 			}
 		}
-		//Ftransfer(); // copy this space to others
+
 	}
 	/**
 	* Reset the tablespaces and write initial buckets
 	* @exception IOException if buckets cannot be traversed
 	*/
-	public void resetBuckets() throws IOException {
+	private void resetBuckets() throws IOException {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
 			long xsize = 0L;

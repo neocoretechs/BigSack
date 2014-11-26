@@ -25,8 +25,9 @@ import java.io.*;
 *
 */
 /**
-* generalized file I/O 
+* Generalized file I/O encapsulating a random access file.
 * @see IoInterface
+* Copyright NeoCoreTechs 2003,2014
 * @author Groff
 */
 public final class FileIO implements IoInterface {
@@ -40,7 +41,10 @@ public final class FileIO implements IoInterface {
 	}
 	public FileIO() {}
 	
-	/** create is true for 'create if not existing' */
+	/** 
+	 * create is true for 'create if not existing' 
+	 * Open the file, performing the proper initialization on creation
+	 */
 	public boolean Fopen(String fname, boolean create) throws IOException {
 		WO = new File(fname);
 		if (!WO.exists()) {
@@ -62,12 +66,19 @@ public final class FileIO implements IoInterface {
 		fisopen = true;
 		return true;
 	}
-	// re-open file
+	
+	/**
+	 * Open the random access file encapsulated by constructor
+	 * mode is rw
+	 */
 	public void Fopen() throws IOException {
 		RA = new RandomAccessFile(WO, "rw");
 		fisnew = false;
 		fisopen = true;
 	}
+	/**
+	 * Close the encapsulated random access file
+	 */
 	public void Fclose() throws IOException {
 		if (fisopen) {
 			fisopen = false;
@@ -75,23 +86,38 @@ public final class FileIO implements IoInterface {
 			RA.close();
 		}
 	}
+	/**
+	 * Return the result of getFilePointer on encapsulated randomaccessfile
+	 */
 	public long Ftell() throws IOException {
 		return RA.getFilePointer();
 	}
+	/**
+	 * See the designated position in encapsulated random access file
+	 */
 	public void Fseek(long offset) throws IOException {
 		RA.seek(offset);
 	}
 	public long Fsize() throws IOException {
 		return RA.length();
 	}
+	/**
+	 * Set the length of the encapsulated RandomAccessFile
+	 */
 	public void Fset_length(long newlen) throws IOException {
 		RA.setLength(newlen);
 	}
+	/**
+	 * Get the file descriptor of the encapsulated RandomAccessFile and perform a 'sync' upon it.
+	 * The will guarantee a flush of the filesystem buffers
+	 */
 	public void Fforce() throws IOException {
 		RA.getFD().sync();
 	}
 
-	// writing..
+	/**
+	 * Write the byte buffer to the encapsulated random access file
+	 */
 	public void Fwrite(byte[] obuf) throws IOException {
 		RA.write(obuf);
 	}
@@ -107,7 +133,9 @@ public final class FileIO implements IoInterface {
 	public void Fwrite_short(short obuf) throws IOException {
 		RA.writeShort(obuf);
 	}
-	// reading...
+	/**
+	 * Read from the encap random file
+	 */
 	public int Fread(byte[] b, int osiz) throws IOException {
 		return RA.read(b, 0, osiz);
 	}

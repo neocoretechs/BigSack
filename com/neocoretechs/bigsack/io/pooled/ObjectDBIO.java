@@ -6,11 +6,12 @@ import java.io.ObjectInputStream;
 
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
+import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 
 public class ObjectDBIO extends OffsetDBIO {
-	
+	private static boolean DEBUG = false;
 	public ObjectDBIO(String objname, boolean create, long transId) throws IOException {
 		super(objname, create, transId);
 		// create or read the initial directory struct
@@ -37,8 +38,7 @@ public class ObjectDBIO extends OffsetDBIO {
 	 * @param osize  The size of the payload to add from array
 	 * @exception IOException If the adding did not happen
 	 */
-	public void add_object(Optr loc, byte[] o, int osize)
-		throws IOException {
+	public void add_object(Optr loc, byte[] o, int osize) throws IOException {
 		objseek(loc);
 		writen(o, osize);
 	}
@@ -49,8 +49,7 @@ public class ObjectDBIO extends OffsetDBIO {
 	* @return The Object extracted from the backing store
 	* @exception IOException if the op fails
 	*/
-	public Object deserializeObject(long iloc)
-		throws IOException {
+	public Object deserializeObject(long iloc) throws IOException {
 		// read Object at ptr to byte array
 		Object Od;
 		try {
@@ -66,7 +65,7 @@ public class ObjectDBIO extends OffsetDBIO {
 			s.close();
 		} catch (IOException ioe) {
 			throw new IOException(
-				"deserializeObject: "
+				"deserializeObject from long: "
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
@@ -99,7 +98,7 @@ public class ObjectDBIO extends OffsetDBIO {
 			s.close();
 		} catch (IOException ioe) {
 			throw new IOException(
-				"deserializeObject: "
+				"deserializeObject from pointer: "
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ iloc+" in "+getDBName());
@@ -115,15 +114,13 @@ public class ObjectDBIO extends OffsetDBIO {
 	/**
 	* create the directory linked list of blocks,
 	* start a system-level session to do it
+	* a setRoot is performed in the BtreeMain constructor after getPageFromPool in constructor
 	* @param create true to create initial root
 	* @exception IOException if we cannot create it
 	*/
 	public void createOrLoad(boolean create) throws IOException {
 		if ( create && isNew ) { // determined in globalio ctor
-			BTreeKeyPage broot = new BTreeKeyPage(0L);
-			broot.setUpdated(true);
-			broot.putPage(this);
-			//deallocOutstandingCommit();
+
 		} //else
 			//deallocOutstandingNoCommit();
 		setNew_node_pos_blk(-1L);

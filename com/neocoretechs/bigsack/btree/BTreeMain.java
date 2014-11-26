@@ -60,6 +60,7 @@ public final class BTreeMain {
 		this.sdbio = sdbio;
 		keyPageStack = new BTreeKeyPage[MAXSTACK];
 		indexStack = new int[MAXSTACK];
+		//currentPage = setRoot(BTreeKeyPage.getPageFromPool(sdbio, 0L));
 		currentPage = setRoot(BTreeKeyPage.getPageFromPool(sdbio, 0L));
 		if( DEBUG ) System.out.println("Root BTreeKeyPage: "+currentPage);
 		currentIndex = 0;

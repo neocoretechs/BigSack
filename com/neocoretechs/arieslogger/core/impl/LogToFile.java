@@ -1536,7 +1536,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             int currentPostion = (int)theLog.getFilePointer();
             assert(currentPostion == LOG_FILE_HEADER_SIZE) : "New Log File Is not Correctly Initialized";
         //}
-		//if( DEBUG)
+		if( DEBUG)
 			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
 	    theLog.setLength(logSwitchInterval + LOG_FILE_HEADER_SIZE);
 	    syncFile(theLog);
@@ -1560,10 +1560,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * @throws IOException
 	 */
 	private LogAccessFile allocateExistingLogFile(File logFile, int logSize) throws IOException {
-		//if( DEBUG)
+		if( DEBUG)
 			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
 		RandomAccessFile theLog = privRandomAccessFile(logFile, "rw");
-		//theLog.seek(endPosition);
 		return new LogAccessFile(logFile, theLog, logSize);
 	}
 	/**
