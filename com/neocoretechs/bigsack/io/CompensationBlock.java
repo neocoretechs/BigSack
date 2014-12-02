@@ -43,7 +43,7 @@ public class CompensationBlock implements Compensation, Serializable {
 	@Override
 	public void applyChange(BlockDBIO xact, LogInstance instance, Object in) throws IOException {
 		BlockAccessIndex blk = ((UndoableBlock)op).getBlkV1();
-		xact.FseekAndWrite(blk.getBlockNum(), blk.getBlk());
+		xact.getIOManager().FseekAndWrite(blk.getBlockNum(), blk.getBlk());
 	}
 
 	@Override

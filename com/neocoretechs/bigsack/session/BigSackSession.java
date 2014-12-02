@@ -259,11 +259,11 @@ public final class BigSackSession {
 	public void Close(boolean rollback) throws IOException {
 		rollupSession(rollback);
 		//SessionManager.releaseSession(this);
-		bTree.getIO().Close();
+		bTree.getIO().getIOManager().Fclose();
 	}
 	
 	public void Open() throws IOException {
-		bTree.getIO().Open();
+		bTree.getIO().getIOManager().Fopen();
 	}
 	
 	/**
@@ -330,10 +330,10 @@ public final class BigSackSession {
 		int numberBlks = 1;
 		long xblk = bTree.getIO().firstTableSpace();
 		do {
-			long fsiz = bTree.getIO().Fsize(itab);
+			long fsiz = 0;//bTree.getIO().Fsize(itab);
 			System.out.println("BigSack Analysis|Tablespace "+itab+" bytes: " + fsiz);
 			while (xpos < fsiz) {
-				bTree.getIO().FseekAndRead(xblk, db);
+				bTree.getIO().getIOManager().FseekAndRead(xblk, db);
 				//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toString());
 				//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toBriefString());
 				if( verbose ) {

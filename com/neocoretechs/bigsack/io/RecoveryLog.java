@@ -78,7 +78,7 @@ public final class RecoveryLog  {
 			System.out.println("RecoveryLog.writeLog "+blk.toString());
 		}
 		tblk.setTemplateBlockNumber(blk.getBlockNum());
-		blockIO.FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
+		blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		if( firstTrans == null )
 			firstTrans = fl.logAndDo(blockIO, undoBlk);
@@ -104,14 +104,8 @@ public final class RecoveryLog  {
 	 * @throws IOException
 	 */
 	public void rollBack() throws IOException {
-		// restore original keys count, we failed and we are starting from beginning in recovery mode
-		// if there is a non zero value assume we have to restore it
-		//if( numKeys != 0 )
-		//	blockIO.getKeycountfile().writeKeysCount(numKeys);
-		blockIO.Fforce(); // synch main file buffs
+		rollBackCache(); // synch main file buffs
 		blockIO.forceBufferClear(); // flush buffer pool
-		//ltf.setRecoveryNeeded();
-		//ltf.recover();
 		if( firstTrans != null)
 			fl.undo(blockIO, firstTrans, null);
 		else
@@ -125,7 +119,7 @@ public final class RecoveryLog  {
 	* @exception IOException If we can't replace blocks
 	*/
 	public void rollBackCache() throws IOException {
-		blockIO.Fforce(); // make sure we synch our main file buffers
+		blockIO.getIOManager().Fforce(); // make sure we synch our main file buffers
 	}
 	
 	public void resetLog() throws IOException {

@@ -105,7 +105,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 						+ bnum);
 		blockNum = bnum;
 		byteindex = 0;
-		globalIO.FseekAndRead(blockNum, blk);
+		globalIO.getIOManager().FseekAndRead(blockNum, blk);
 	}
 	/**
 	* Used to locate elements in tables

@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.TreeMap;
 
+import com.neocoretechs.bigsack.io.MultithreadedIOManager;
+
 public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
@@ -28,6 +30,9 @@ public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 						//throw new IOException(
 						//	"Accesses 0 but incore true " + ebaii);
 					}
+					// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
+					if( ebaii.getBlockNum() == 0L )
+						continue;
 					if (!clearedOne)
 						clearedOne = true;
 					else if (bookie.nextInt(iOdds + 1) >= iOdds) {
@@ -73,8 +78,8 @@ public class MappedBlockBuffer extends TreeMap<BlockAccessIndex, Object>  {
 					BlockAccessIndex ebaii = (elbn.next());
 					if (ebaii.getAccesses() == 0 && ebaii.getBlk().isIncore() ) {
 						if( DEBUG)System.out.println("fully writing "+ebaii.getBlockNum()+" "+ebaii.getBlk());
-							globalIO.FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
-							globalIO.Fforce();
+							globalIO.getIOManager().FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
+							globalIO.getIOManager().Fforce();
 							ebaii.getBlk().setIncore(false);
 					}
 		}

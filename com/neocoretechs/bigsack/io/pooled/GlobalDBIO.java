@@ -8,9 +8,12 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
 import com.neocoretechs.bigsack.io.FileIO;
+import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.MmapIO;
+import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLog;
+import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 /*
@@ -45,26 +48,26 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private String Name;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
-	// this plugs in proper io module, file, network, etc.
-	// for tablespace array
-	//private IoInterface[] ioUnit = new FileIO[DBPhysicalConstants.DTABLESPACES];
-	private IoInterface[] ioUnit;
+	private MultithreadedIOManager ioManager = new MultithreadedIOManager();
 	private MappedBlockBuffer  usedBL = new MappedBlockBuffer(); // block number to Datablock
 	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(); // free blocks
 	private BlockAccessIndex tmpBai = new BlockAccessIndex(); // general utility
 	private BlockAccessIndex tbai = new BlockAccessIndex(); // getUsedBlock reserved
 	private RecoveryLog ulog;		
-	private long[] nextFreeBlock = new long[DBPhysicalConstants.DTABLESPACES];
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 	static int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 
 	public RecoveryLog getUlog() {
 		return ulog;
+	}
+	
+	public MultithreadedIOManager getIOManager() {
+		return ioManager;
 	}
 	
 	public void checkBufferFlush() throws IOException {
@@ -135,19 +138,9 @@ public class GlobalDBIO {
 		if (Props.toString("L3Cache").equals("MMap"))
 			L3cache = 0;
 		else if (Props.toString("L3Cache").equals("File"))
-			L3cache = 1;
-		// set up proper io module
-		switch (L3cache) {
-			case 0 :
-				ioUnit = new MmapIO[DBPhysicalConstants.DTABLESPACES];
-				break;
-			case 1 :
-				ioUnit = new FileIO[DBPhysicalConstants.DTABLESPACES];
-				break;
-			default :
+				L3cache = 1;
+			else
 				throw new IOException("Unsupported L3 cache type");
-		}
-
 		//
 		Fopen(Name, create);
 
@@ -162,14 +155,15 @@ public class GlobalDBIO {
 			isNew = true;
 			// init the Datablock arrays, create freepool
 			createBuckets();
-			setNextFreeBlocks();
-			create = true;
-		} else {
-			getNextFreeBlocks();
-			create = false;
-		}
+			ioManager.setNextFreeBlocks();
+		} 
 
 	}
+	
+	private boolean isnew() {
+		return ioManager.isNew();
+	}
+
 	/**
 	* Constructor creates DB if not existing, otherwise open
 	* @param dbname Fully qualified path or URL of DB
@@ -180,73 +174,6 @@ public class GlobalDBIO {
 		this(dbname, true, transId);
 	}
 
-	/**
-	* Return the first available block that can be acquired for write
-	* @param tblsp The tablespace
-	* @return The block available
-	* @exception IOException if IO problem
-	*/
-	long getNextFreeBlock(int tblsp) throws IOException {
-		long tsize = ioUnit[tblsp].Fsize();
-		nextFreeBlock[tblsp] += (long) DBPhysicalConstants.DBLOCKSIZ;
-		if (nextFreeBlock[tblsp] >= tsize) {
-			// extend tablespace in pool-size increments
-			long newLen =
-				tsize
-					+ (long) (DBPhysicalConstants.DBLOCKSIZ
-						* DBPhysicalConstants.DBUCKETS);
-			ioUnit[tblsp].Fset_length(newLen);
-			Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
-			while (tsize < newLen) {
-				ioUnit[tblsp].Fseek(tsize);
-				d.write(ioUnit[tblsp]);
-				tsize += (long) DBPhysicalConstants.DBLOCKSIZ;
-			}
-			ioUnit[tblsp].Fforce(); // flush on block creation
-		}
-		return nextFreeBlock[tblsp];
-	}
-	
-	void setNextFreeBlock(int tblsp, long tnextFree) {
-		nextFreeBlock[tblsp] = tnextFree;
-	}
-	/**
-	* Set the initial free blocks after buckets created or bucket initial state
-	* Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
-	*/
-	void setNextFreeBlocks() {
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			if (i == 0)
-				nextFreeBlock[i] = (long) DBPhysicalConstants.DBLOCKSIZ;
-			else
-				nextFreeBlock[i] = 0L;
-	}
-	/**
-	* Set the next free block position from reverse scan of blocks
-	* @exception IOException if seek or size fails
-	*/
-	void getNextFreeBlocks() throws IOException {
-		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
-		long endBlock = (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			long endBl = ioUnit[i].Fsize();
-			while (endBl > endBlock) {
-				ioUnit[i].Fseek(endBl - (long) DBPhysicalConstants.DBLOCKSIZ);
-				d.read(ioUnit[i]);
-				if (d.getPrevblk() == -1L
-					&& d.getNextblk() == -1L
-					&& d.getBytesused() == 0
-					&& d.getBytesinuse() == 0) {
-					endBl -= (long) DBPhysicalConstants.DBLOCKSIZ;
-					continue;
-				} else {
-					// this is it
-					break;
-				}
-			}
-			nextFreeBlock[i] = endBl;
-		}
-	}
 	/**
 	* Get first tablespace
 	* @return the position of the first byte of first tablespace
@@ -262,50 +189,17 @@ public class GlobalDBIO {
 	*/
 	public long nextTableSpace(int prevSpace) throws IOException {
 		int tempSpace = prevSpace;
-		while (++tempSpace < ioUnit.length) {
-			if (ioUnit[tempSpace] != null) {
-				long vBlock = makeVblock(tempSpace, 0L);
-				Fseek(vBlock);
-				return vBlock;
-			}
+		while (++tempSpace < DBPhysicalConstants.DTABLESPACES) {
+				return makeVblock(tempSpace, 0L);
 		}
 		return 0L;
 	}
-	/**
-	* Find the smallest tablespace for storage balance, we will always favor creating one
-	* over extending an old one
-	* @return tablespace
-	* @exception IOException if seeking new tablespace or creating fails
-	*/
-	int findSmallestTablespace() throws IOException {
-		// always make sure we have primary
-		long primarySize = ioUnit[0].Fsize();
-		int smallestTablespace = 0; // default main
-		long smallestSize = primarySize;
-		for (int i = 0; i < ioUnit.length; i++) {
-			if (ioUnit[i] == null) {
-				switch (L3cache) {
-					case 0 :
-						ioUnit[i] = new MmapIO();
-						break;
-					case 1 :
-						ioUnit[i] = new FileIO();
-				}
-				if (!ioUnit[i].Fopen(Name + "." + String.valueOf(i), true))
-					throw new IOException("Cannot create tablespace!");
-				return i;
-			}
-			long fsize = ioUnit[i].Fsize();
-			if (fsize < smallestSize) {
-				smallestSize = fsize;
-				smallestTablespace = i;
-			}
-		}
-		return smallestTablespace;
-	}
+
 	/**
 	* If create is true, create only primary tablespace
 	* else try to open all existing
+	* We are spinning threads in the default executor group composed of an IoWorker for each
+	* tablespace
 	* @param fname String file name
 	* @param create true to create if not existing
 	* @exception IOException if problems opening/creating
@@ -313,207 +207,11 @@ public class GlobalDBIO {
 	* @see IoInterface
 	*/
 	boolean Fopen(String fname, boolean create) throws IOException {
-		for (int i = 0; i < ioUnit.length; i++) {
-			if (ioUnit[i] == null)
-				switch (L3cache) {
-					case 0 :
-						ioUnit[i] = new MmapIO();
-						break;
-					case 1 :
-						ioUnit[i] = new FileIO();
-				}
-			if (!ioUnit[i].Fopen(fname + "." + String.valueOf(i), create))
-				return false;
-		}
-		return true;
+		return ioManager.Fopen(fname, L3cache, create);
 	}
-	
 	
  	void Fopen() throws IOException {
-		for (int i = 0; i < ioUnit.length; i++)
-			if (ioUnit[i] != null && !ioUnit[i].isopen())
-				ioUnit[i].Fopen();
-	}
-	
-	void Fclose() throws IOException {
-		for (int i = 0; i < ioUnit.length; i++)
-			if (ioUnit[i] != null && ioUnit[i].isopen())
-				ioUnit[i].Fclose();
-	}
-	
-	public void Fforce() throws IOException {
-		for (int i = 0; i < ioUnit.length; i++)
-			if (ioUnit[i] != null && ioUnit[i].isopen())
-				ioUnit[i].Fforce();
-	}
-	
-	long Ftell(int ttableSpace) throws IOException {
-		return makeVblock(ttableSpace, ioUnit[ttableSpace].Ftell());
-	}
-	
-	void Fseek(long toffset) throws IOException {
-		int ttableSpace = getTablespace(toffset);
-		long offset = getBlock(toffset);
-		ioUnit[ttableSpace].Fseek(offset);
-	}
-	
-	void Fsync(long toffset) throws IOException {
-		int ttableSpace = getTablespace(toffset);
-		if (ioUnit[ttableSpace] != null && ioUnit[ttableSpace].isopen())
-			ioUnit[ttableSpace].Fforce();
-	}
-	
-	public void FseekAndRead(long toffset, Datablock tblk)
-		throws IOException {
-		int ttableSpace = getTablespace(toffset);
-		long offset = getBlock(toffset);
-		if (ioUnit[ttableSpace] == null) {
-			throw new RuntimeException(
-				"GlobalDBIO.FseekAndRead tablespace null "
-					+ toffset
-					+ " = "
-					+ ttableSpace
-					+ ","
-					+ offset);
-		}
-		if (tblk == null) {
-			throw new RuntimeException(
-				"GlobalDBIO.FseekAndRead Datablock null "
-					+ toffset
-					+ " = "
-					+ ttableSpace
-					+ ","
-					+ offset);
-		}
-		if (tblk.isIncore())
-			throw new RuntimeException(
-				"GlobalDBIO.FseekAndRead block incore preempts read "
-					+ toffset
-					+ " "
-					+ tblk);
-
-		ioUnit[ttableSpace].Fseek(offset);
-		tblk.readUsed(ioUnit[ttableSpace]);
-	}
-	
-	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
-		int ttableSpace = getTablespace(toffset);
-		long offset = getBlock(toffset);
-		ioUnit[ttableSpace].Fseek(offset);
-		tblk.writeUsed(ioUnit[ttableSpace]);
-		tblk.setIncore(false);
-		if( Props.DEBUG ) System.out.println("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString());
-	}
-	
-	
-	void FseekAndReadFully(long toffset, Datablock tblk)
-		throws IOException {
-		int ttableSpace = getTablespace(toffset);
-		long offset = getBlock(toffset);
-		if (tblk.isIncore())
-			throw new RuntimeException(
-				"GlobalDBIO.FseekAndRead: block incore preempts read "
-					+ valueOf(toffset)
-					+ " "
-					+ tblk);
-		ioUnit[ttableSpace].Fseek(offset);
-		tblk.read(ioUnit[ttableSpace]);
-	}
-	
-	void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
-		int ttableSpace = getTablespace(toffset);
-		long offset = getBlock(toffset);
-		ioUnit[ttableSpace].Fseek(offset);
-		tblk.write(ioUnit[ttableSpace]);
-		tblk.setIncore(false);
-		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
-	}
-	
-	/** Transfer tablespace 0 to all others (copy op) */
-	void Ftransfer() throws IOException {
-		FileChannel fFrom = (FileChannel) (ioUnit[0].getChannel());
-		fFrom.force(true);
-		for (int i = 1; i < ioUnit.length; i++) {
-			FileChannel fTo = (FileChannel) (ioUnit[i].getChannel());
-			fFrom.transferTo(0, fFrom.size(), fTo);
-			fTo.force(true);
-		}
-	}
-	
-	void Fset_length(int ttableSpace, long tsize)
-		throws IOException {
-		ioUnit[ttableSpace].Fset_length(tsize);
-	}
-
-	public long Fsize(int ttableSpace) throws IOException {
-		return ioUnit[ttableSpace].Fsize();
-	}
-	
-	// writing..
-	void Fwrite(int ttableSpace, byte[] obuf) throws IOException {
-		ioUnit[ttableSpace].Fwrite(obuf);
-	}
-	
-	void Fwrite(int ttableSpace, byte[] obuf, int osiz)
-		throws IOException {
-		ioUnit[ttableSpace].Fwrite(obuf, osiz);
-	}
-	
-	void Fwrite_long(int ttableSpace, long obuf) throws IOException {
-		ioUnit[ttableSpace].Fwrite_long(obuf);
-	}
-	
-	void Fwrite_short(int ttableSpace, short obuf)
-		throws IOException {
-		ioUnit[ttableSpace].Fwrite_short(obuf);
-	}
-	
-	void Fwrite_int(int ttableSpace, int obuf) throws IOException {
-		ioUnit[ttableSpace].Fwrite_int(obuf);
-	}
-	// reading..
-	int Fread(int ttableSpace, byte[] b, int osiz)
-		throws IOException {
-		return ioUnit[ttableSpace].Fread(b, osiz);
-	}
-	
-	int Fread(int ttableSpace, byte[] b) throws IOException {
-		return ioUnit[ttableSpace].Fread(b);
-	}
-	
-	int Fread_int(int ttableSpace) throws IOException {
-		return ioUnit[ttableSpace].Fread_int();
-	}
-	
-	long Fread_long(int ttableSpace) throws IOException {
-		return ioUnit[ttableSpace].Fread_long();
-	}
-	
-	short Fread_short(int ttableSpace) throws IOException {
-		return ioUnit[ttableSpace].Fread_short();
-	}
-	
-	void Fdelete(int ttableSpace) {
-		ioUnit[ttableSpace].Fdelete();
-	}
-	
-	// misc..
-	String Fname(int ttableSpace) {
-		synchronized (ioUnit[ttableSpace]) {
-			return ioUnit[ttableSpace].Fname();
-		}
-	}
-	
-	boolean isopen(int ttableSpace) {
-		return ioUnit[ttableSpace].isopen();
-	}
-	
-	boolean isnew() {
-		return ioUnit[0].isnew();
-	}
-
-	boolean iswriteable() {
-		return ioUnit[0].iswriteable();
+ 		ioManager.Fopen();
 	}
 
 	/**
@@ -523,20 +221,7 @@ public class GlobalDBIO {
 		return Name;
 	}
 
-	/**
-	* re-open DB
-	*/
-	public void Open() throws IOException {
-		Fopen();
-	}
 
-	/**
-	* Close DB
-	* @exception IOException if problem closing
-	*/
-	public void Close() throws IOException {
-		Fclose();
-	}
 	/**
 	* Static method for object to serialized byte conversion.
 	* Uses DirectByteArrayOutputStream, which allows underlying buffer to be retrieved without
@@ -777,40 +462,20 @@ public class GlobalDBIO {
 					db.setPageLSN(-1L);
 					System.arraycopy(pb, 0, db.data, 0, pb.length);
 					db.setIncore(true);
-					FseekAndWriteFully(rootbl, db);
+					ioManager.FseekAndWriteFully(rootbl, db);
 					//db.setIncore(false);
 					//Fsync(rootbl);
 					if( DEBUG ) System.out.println("CreateBuckets Added object @ root, bytes:"+pb.length+" data:"+db);
 					broot.setUpdated(false);
 				} else {
-					FseekAndWriteFully(makeVblock(ispace, xsize), d);
+					ioManager.FseekAndWriteFully(makeVblock(ispace, xsize), d);
 				}
 				xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
 			}
 		}
 
 	}
-	/**
-	* Reset the tablespaces and write initial buckets
-	* @exception IOException if buckets cannot be traversed
-	*/
-	private void resetBuckets() throws IOException {
-		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
-		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
-			long xsize = 0L;
-			Fset_length(
-				ispace,
-				DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
-			// rewrite initial bucket setup
-			//	if( ispace == 0 )
-			for (int i = 0; i < DBPhysicalConstants.DBUCKETS; i++) {
-				FseekAndWriteFully(makeVblock(ispace, xsize), d);
-				xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
-			}
-		}
-		//Ftransfer();
-		setNextFreeBlocks();
-	}
+	
 
 	/**
 	 * acquireblk - get block from unused chunk or create chunk and get<br>
@@ -827,7 +492,7 @@ public class GlobalDBIO {
 		// this way puts it all in one tablespace
 		//int tbsp = getTablespace(lastGoodBlk.getBlockNum());
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
-		newblock = makeVblock(tbsp, getNextFreeBlock(tbsp));
+		newblock = makeVblock(tbsp, ioManager.getNextFreeBlock(tbsp));
 		// update old block
 		ablk.getBlk().setNextblk(newblock);
 		ablk.getBlk().setIncore(true);
@@ -859,7 +524,7 @@ public class GlobalDBIO {
 		if (currentBlk != null)
 			dealloc(currentBlk);
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
-		newblock = makeVblock(tbsp, getNextFreeBlock(tbsp));
+		newblock = makeVblock(tbsp, ioManager.getNextFreeBlock(tbsp));
 		// new block number for BlockAccessIndex set in addBlockAccessNoRead
 		BlockAccessIndex dblk = addBlockAccessNoRead(new Long(newblock));
 		dblk.getBlk().setPrevblk(-1L);

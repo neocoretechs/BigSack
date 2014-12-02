@@ -64,9 +64,7 @@ public class Props {
 		try {
 			System.getProperties().load(propFile);
 		} catch (Exception ex) {
-			throw new IOException(
-				"FATAL ERROR:  unable to load "+propsFile+" file "
-					+ ex.toString());
+			throw new IOException("FATAL ERROR:  unable to load "+propsFile+" file " + ex.toString());
 		}
 	}
 
