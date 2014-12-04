@@ -49,26 +49,25 @@ public final class MultithreadedIOManager {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount);
+		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, nextFree[tblsp]);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
-		return iori.getLongReturn();
+		nextFree[tblsp] = iori.getLongReturn();
+		return nextFree[tblsp];
 	}
 	/**
 	* Return the reverse scan of the first free block of each tablespace
-	* queue the request to the proper ioworker, they wait at barrier synch, then activate countdown latch to signal main
-	* @param tblsp The tablespace
-	* @return The block available
+	* queue the request to the proper ioworker, they wait at barrier synch, 
+	* then activate countdown latch to signal main. Result in placed in class level nextFree
 	* @exception IOException if IO problem
 	*/
-	public long[] getNextFreeBlocks() throws IOException {
+	private void getNextFreeBlocks() throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.getNextFreeBlocks ");
 		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
 		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
-		long[] tableBlks = new long[DBPhysicalConstants.DTABLESPACES];
 		// queue to each tablespace
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			iori[i] = new GetNextFreeBlocksRequest(barrierSynch, barrierCount);
@@ -78,9 +77,9 @@ public final class MultithreadedIOManager {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			tableBlks[i] = iori[i].getLongReturn();
+			nextFree[i] = iori[i].getLongReturn();
 		}
-		return tableBlks;
+
 	}
 	
 	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
@@ -127,7 +126,7 @@ public final class MultithreadedIOManager {
 	 * @param tblk The Datablock buffer to read into
 	 * @throws IOException
 	 */
-	public synchronized void FseekAndReaFully(long toffset, Datablock tblk) throws IOException {
+	public synchronized void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
 		//if( DEBUG )
 		//	System.out.println("MultithreadedIOManager.FseekAndReadFully "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -172,7 +171,7 @@ public final class MultithreadedIOManager {
 		long primarySize = ioWorker[0].Fsize();
 		int smallestTablespace = 0; // default main
 		long smallestSize = primarySize;
-		nextFree = getNextFreeBlocks();
+		getNextFreeBlocks();
 		for (int i = 0; i < nextFree.length; i++) {
 			if (nextFree[i] < smallestSize) {
 				smallestSize = nextFree[i];
@@ -238,5 +237,8 @@ public final class MultithreadedIOManager {
 		return ioWorker[0].isnew();
 	}
 	
+	public IoInterface getIOWorker(int tblsp) {
+		return ioWorker[tblsp];
+	}
 
 }

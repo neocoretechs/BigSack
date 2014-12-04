@@ -135,6 +135,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 			dealloc(lbai.getBlockNum());
 		}
 		setLbn(findOrAddBlockAccess(tbn));
+		// suggest a buffer clean up operation
+		requestBufferFlush();
 	}
 	
 	/**

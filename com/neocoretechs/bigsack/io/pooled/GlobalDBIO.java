@@ -3,6 +3,8 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.CountDownLatch;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
@@ -14,6 +16,9 @@ import com.neocoretechs.bigsack.io.MmapIO;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLog;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
+import com.neocoretechs.bigsack.io.request.FSeekAndWriteFullyRequest;
+import com.neocoretechs.bigsack.io.request.FSeekAndWriteRequest;
+import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 /*
@@ -49,18 +54,17 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 
 public class GlobalDBIO {
 	private static final boolean DEBUG = true;
+	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private String Name;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
 	private MultithreadedIOManager ioManager = new MultithreadedIOManager();
-	private MappedBlockBuffer  usedBL = new MappedBlockBuffer(); // block number to Datablock
-	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(); // free blocks
-	private BlockAccessIndex tmpBai = new BlockAccessIndex(); // general utility
-	private BlockAccessIndex tbai = new BlockAccessIndex(); // getUsedBlock reserved
+	private MappedBlockBuffer usedBL; // block number to Datablock
+	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(getMAXBLOCKS()); // free blocks
+	private ThreadLocal<BlockAccessIndex> tmpBai; // general utility
 	private RecoveryLog ulog;		
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
-	static int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 
 	public RecoveryLog getUlog() {
 		return ulog;
@@ -71,19 +75,23 @@ public class GlobalDBIO {
 	}
 	
 	public void checkBufferFlush() throws IOException {
-		usedBL.checkBufferFlush(this, freeBL);
+		usedBL.freeupBlock();
 	}
-
 	public void commitBufferFlush() throws IOException {
-		usedBL.commitBufferFlush(this, freeBL);
+		usedBL.commitBufferFlush();
 	}
-
+	public void requestBufferFlush() {
+		synchronized(usedBL) {
+			usedBL.notify();
+		}
+	}
 	public void rollbackBufferFlush() {
 		forceBufferClear();
 	}
 	public void forceBufferWrite() throws IOException {
-		usedBL.directBufferWrite(this);
+		usedBL.directBufferWrite();
 	}
+	
 	/**
 	* Translate the virtual tablspace (first 3 bits) and block to real block
 	* @param tvblock The virtual block
@@ -142,15 +150,23 @@ public class GlobalDBIO {
 			else
 				throw new IOException("Unsupported L3 cache type");
 		//
+		// set up locally buffered thread instances
+		tmpBai = new ThreadLocal<BlockAccessIndex>();
+		tmpBai.set(new BlockAccessIndex(this));
+	    
 		Fopen(Name, create);
 
 		// MAXBLOCKS may be set by PoolBlocks property
-		MAXBLOCKS = Props.toInt("PoolBlocks");
+		setMAXBLOCKS(Props.toInt("PoolBlocks"));
 		// populate with blocks, they're all free for now
-		for (int i = 0; i < MAXBLOCKS; i++) {
+		for (int i = 0; i < getMAXBLOCKS(); i++) {
 			freeBL.addElement(new BlockAccessIndex(this));
 		}
-
+		usedBL = new MappedBlockBuffer(this, freeBL);
+		// start the thread that manages periodic buffer sweep attempts
+		// call requestBufferFlush to notify thread to start checking used block list
+		ThreadPoolManager.getInstance().spin(usedBL);
+		
 		if (create && isnew()) {
 			isNew = true;
 			// init the Datablock arrays, create freepool
@@ -308,7 +324,7 @@ public class GlobalDBIO {
 	 * @param lbn The block number to allocate
 	 */
 	void alloc(long lbn) throws IOException {
-		tmpBai.setTemplateBlockNumber(lbn);
+		tmpBai.get().setTemplateBlockNumber(lbn);
 		BlockAccessIndex bai = getUsedBlock(tmpBai);
 		alloc(bai);
 	}
@@ -326,11 +342,13 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */
 	public void dealloc(long lbn) throws IOException {
-		tmpBai.setTemplateBlockNumber(lbn);
+		tmpBai.get().setTemplateBlockNumber(lbn);
 		BlockAccessIndex bai = getUsedBlock(tmpBai);
 		if (bai == null) {
-			throw new IOException(
-				"Could not locate " + bai + " for deallocation");
+			// If we get here our threaded buffer manager must have done our job for us
+			//throw new IOException(
+			//	"Could not locate " + lbn + " for deallocation");
+			return;
 		}
 		dealloc(bai);
 	}
@@ -339,19 +357,23 @@ public class GlobalDBIO {
 	}
 
 	/**
-	* We'll do this on a 'clear' of collection, reset all tables
+	* We'll do this on a 'clear' of collection, reset all caches
+	* Take the used block list, reset the blocks, move to to free list, then
+	* finally clear the used block list
 	*/
 	public void forceBufferClear() {
 		//freeBL.clear();
 		// populate with blocks, they're all free for now
-		Set<BlockAccessIndex> sbai = usedBL.keySet();
-		Iterator<BlockAccessIndex> it = sbai.iterator();
-		while(it.hasNext()) {
-			BlockAccessIndex bai = (BlockAccessIndex) it.next();
-			bai.resetBlock();
-			freeBL.addElement(bai);
+		synchronized(usedBL) {
+			Set<BlockAccessIndex> sbai = usedBL.keySet();
+			Iterator<BlockAccessIndex> it = sbai.iterator();
+			while(it.hasNext()) {
+				BlockAccessIndex bai = (BlockAccessIndex) it.next();
+				bai.resetBlock();
+				freeBL.addElement(bai);
+			}
+			usedBL.clear();
 		}
-		usedBL.clear();
 	}
 	/**
 	* Get from free list, puts in used list of block access index.
@@ -361,7 +383,7 @@ public class GlobalDBIO {
 	* @exception IOException if new dblock cannot be created
 	*/
 	private BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
-		// see if we have open slots
+		// make sure we have open slots
 		checkBufferFlush();
 		BlockAccessIndex bai = (freeBL.elementAt(0));
 		freeBL.removeElementAt(0);
@@ -376,7 +398,7 @@ public class GlobalDBIO {
 	* @exception IOException if new dblock cannot be created
 	*/
 	private BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		// see if we have open slots
+		// make sure we have open slots
 		checkBufferFlush();
 		BlockAccessIndex bai = (freeBL.elementAt(0));
 		freeBL.removeElementAt(0);
@@ -392,10 +414,9 @@ public class GlobalDBIO {
 	* @return The index into the block array
 	* @exception IOException if cannot read
 	*/
-	public BlockAccessIndex findOrAddBlockAccess(long bn)
-		throws IOException {
+	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
 		Long Lbn = new Long(bn);
-		tmpBai.setTemplateBlockNumber(bn);
+		tmpBai.get().setTemplateBlockNumber(bn);
 		BlockAccessIndex bai = getUsedBlock(tmpBai);
 		if (bai != null) {
 			return bai;
@@ -414,13 +435,13 @@ public class GlobalDBIO {
 
 	/**
 	* Get a block access control instance from L2 cache
-	* @param bai The template containing the block number, used to locate key
+	* @param tmpBai2 The template containing the block number, used to locate key
 	* @return The key found or whatever set returns otherwise if nothing a null is returned
 	*/
-	public BlockAccessIndex getUsedBlock(BlockAccessIndex bai) {
-		tbai.setTemplateBlockNumber(bai.getBlockNum() + 1L);
-		SortedMap<BlockAccessIndex, ?> sm = usedBL.subMap(bai, tbai);
-		return (sm.isEmpty() ? null : (sm.firstKey()));
+	public BlockAccessIndex getUsedBlock(ThreadLocal<BlockAccessIndex> tmpBai2) {
+		synchronized(usedBL) {
+			return usedBL.ceilingKey(tmpBai2.get());
+		}
 	}
 
 	/**
@@ -475,7 +496,30 @@ public class GlobalDBIO {
 		}
 
 	}
-	
+	/**
+	 * Immediately after log write, we come here to make sure block
+	 * is written back to main store. We do not use the queues as this operation
+	 * is always adjunct to a processed queue request
+	 * @param toffset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+		int tblsp = GlobalDBIO.getTablespace(toffset);
+		long offset = GlobalDBIO.getBlock(toffset);
+		IoInterface iodirect = ioManager.getIOWorker(tblsp);
+		// send write command and queues be damned, writes only happen
+		// immediately after log writes
+		synchronized(iodirect) {
+			iodirect.Fseek(offset);
+			tblk.writeUsed(iodirect);
+			tblk.setIncore(false);
+			iodirect.Fforce();
+		}
+		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+	}	
 
 	/**
 	 * acquireblk - get block from unused chunk or create chunk and get<br>
@@ -553,6 +597,14 @@ public class GlobalDBIO {
 
 	public void setUlog(RecoveryLog ulog) {
 		this.ulog = ulog;
+	}
+
+	public int getMAXBLOCKS() {
+		return MAXBLOCKS;
+	}
+
+	public void setMAXBLOCKS(int mAXBLOCKS) {
+		MAXBLOCKS = mAXBLOCKS;
 	}
 
 }

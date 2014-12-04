@@ -50,7 +50,12 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	/** This constructor used for setting search templates */
 	public BlockAccessIndex() {
 	}
-
+	/** This method can be used for ThreadLocal post-init after using default ctor */
+	public void init(GlobalDBIO globalIO) {
+		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
+		this.globalIO = globalIO;
+	}
+	
 	public void resetBlock() {
 		blk.resetBlock();
 	}

@@ -7,19 +7,20 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 
-public class GetNextFreeBlockRequest implements IoRequestInterface {
-	private long nextFreeBlock = 0L;
+public final class GetNextFreeBlockRequest implements IoRequestInterface {
 	private IoInterface ioUnit;
 	Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private int tablespace;
+	private long nextFreeBlock = 0L;
 	private CountDownLatch barrierCount;
-	public GetNextFreeBlockRequest(CountDownLatch barrierCount) {
+	public GetNextFreeBlockRequest(CountDownLatch barrierCount, long prevFreeBlk) {
 		this.barrierCount = barrierCount;
+		nextFreeBlock = prevFreeBlk;
 	}
 	
 	@Override
 	public synchronized void process() throws IOException {
-		nextFreeBlock = getNextFreeBlock();
+		getNextFreeBlock();
 		barrierCount.countDown();
 	}
 	/**
@@ -28,7 +29,7 @@ public class GetNextFreeBlockRequest implements IoRequestInterface {
 	* @return The block available as a real, not virtual, block in this tablespace
 	* @exception IOException if IO problem
 	*/
-	private long getNextFreeBlock() throws IOException {
+	private void getNextFreeBlock() throws IOException {
 		long tsize = ioUnit.Fsize();
 		nextFreeBlock  += (long) DBPhysicalConstants.DBLOCKSIZ;
 		if (nextFreeBlock >= tsize) {
@@ -43,7 +44,6 @@ public class GetNextFreeBlockRequest implements IoRequestInterface {
 			}
 			ioUnit.Fforce(); // flush on block creation
 		}
-		return nextFreeBlock;
 	}
 	@Override
 	public synchronized long getLongReturn() {

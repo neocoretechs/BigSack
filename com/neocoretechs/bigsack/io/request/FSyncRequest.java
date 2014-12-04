@@ -19,7 +19,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  * @author jg
  *
  */
-public class FSyncRequest implements IoRequestInterface {
+public final class FSyncRequest implements IoRequestInterface {
 	private IoInterface ioUnit;
 	private Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private CyclicBarrier barrierSynch;

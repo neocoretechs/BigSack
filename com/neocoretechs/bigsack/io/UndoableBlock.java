@@ -50,7 +50,7 @@ public class UndoableBlock implements Undoable, Serializable {
 			System.out.println("UndoableBlock.applyChange: instance:"+instance+" raw store"+blkV2.getBlockNum()+","+blkV2.getBlk());
 		}
 		blkV2.getBlk().setPageLSN(instance.getValueAsLong());
-		xact.getIOManager().FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
+		xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
 	}
 
 	@Override

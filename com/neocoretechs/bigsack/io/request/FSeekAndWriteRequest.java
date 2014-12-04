@@ -12,7 +12,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  * @author jg
  *
  */
-public class FSeekAndWriteRequest implements IoRequestInterface {
+public final class FSeekAndWriteRequest implements IoRequestInterface {
 	private IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;

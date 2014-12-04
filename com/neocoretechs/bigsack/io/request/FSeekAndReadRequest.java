@@ -6,7 +6,7 @@ import java.util.concurrent.CountDownLatch;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 
-public class FSeekAndReadRequest implements IoRequestInterface {
+public final class FSeekAndReadRequest implements IoRequestInterface {
 	private static final boolean DEBUG = false;
 	private IoInterface ioUnit;
 	private long offset;

@@ -21,7 +21,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  * @author jg
  *
  */
-public class GetNextFreeBlocksRequest implements IoRequestInterface {
+public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	private long nextFreeBlock = 0L;
 	private IoInterface ioUnit;
 	private Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
