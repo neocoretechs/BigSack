@@ -39,11 +39,13 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	}
 	/**
 	* Set the next free block position from reverse scan of blocks
+	* next free will be set to -1 if there are no free blocks
 	* @exception IOException if seek or size fails
 	*/
 	private void getNextFreeBlocks() throws IOException {
-		long endBlock = (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
+		long endBlock = 0L;
 		long endBl = ioUnit.Fsize();
+		nextFreeBlock = -1L; // assume there are none
 		while (endBl > endBlock) {
 				ioUnit.Fseek(endBl - (long) DBPhysicalConstants.DBLOCKSIZ);
 				d.read(ioUnit);
@@ -55,10 +57,10 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 					continue;
 				} else {
 					// this is it
+					nextFreeBlock = ioUnit.Ftell();// the read position at the end of the block that is used, the new block
 					break;
 				}
 		}
-		nextFreeBlock = endBl;
 		// wait at the barrier until all other tablespaces arrive at their result
 		try {
 			barrierSynch.await();
@@ -83,7 +85,9 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	public synchronized void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;	
 	}
-	
+	/**
+	 * This method also set by queueRequest
+	 */
 	@Override
 	public synchronized void setTablespace(int tablespace) {
 		this.tablespace = tablespace;

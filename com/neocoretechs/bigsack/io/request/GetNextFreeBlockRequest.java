@@ -30,14 +30,28 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 	* @exception IOException if IO problem
 	*/
 	private void getNextFreeBlock() throws IOException {
-		long tsize = ioUnit.Fsize();
-		nextFreeBlock  += (long) DBPhysicalConstants.DBLOCKSIZ;
-		if (nextFreeBlock >= tsize) {
+		if( nextFreeBlock != -1) {
+			nextFreeBlock  += (long) DBPhysicalConstants.DBLOCKSIZ;
+			long tsize = ioUnit.Fsize();
+			if (nextFreeBlock >= tsize) {
+				// extend tablespace in pool-size increments
+				long newLen = tsize + (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
+				ioUnit.Fset_length(newLen);
+				while (tsize < newLen) {
+					ioUnit.Fseek(tsize);
+					d.write(ioUnit);
+					tsize += (long) DBPhysicalConstants.DBLOCKSIZ;
+				}
+				ioUnit.Fforce(); // flush on block creation
+			}
+		} else {
+			// no next free, extend tablespace and set next free to prev end
+			long tsize = ioUnit.Fsize();
+			nextFreeBlock = tsize;
 			// extend tablespace in pool-size increments
-			long newLen = tsize + (long) (DBPhysicalConstants.DBLOCKSIZ
-						* DBPhysicalConstants.DBUCKETS);
+			long newLen = tsize + (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
 			ioUnit.Fset_length(newLen);
-			while (tsize < newLen) {
+			while(tsize < newLen) {
 				ioUnit.Fseek(tsize);
 				d.write(ioUnit);
 				tsize += (long) DBPhysicalConstants.DBLOCKSIZ;

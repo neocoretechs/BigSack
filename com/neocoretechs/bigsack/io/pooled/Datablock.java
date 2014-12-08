@@ -33,6 +33,10 @@ import com.neocoretechs.bigsack.io.IoInterface;
 /**
 * Datablock - Class for doubly linked list DB block (page)
 * composed of header and data payload whose total size is the constant DBLOCKSIZ
+* The usual pattern is to have these methods call back through an IoInterface to perform
+* specific low level record writes. IoInterface is accessed through a request that has been queued
+* and is being serviced, thus, direct calls back to the file store are appropriate.
+* Copyright (C) NeoCoreTechs 1997,2014
 * @author Groff
 */
 public final class Datablock implements Externalizable {
@@ -64,13 +68,15 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error writing field
 	*/
 	public void write(IoInterface fobj) throws IOException {
-		fobj.Fwrite_long(getPrevblk());
-		fobj.Fwrite_long(getNextblk());
-		fobj.Fwrite_short(getBytesused());
-		fobj.Fwrite_short(getBytesinuse());
-		fobj.Fwrite_long(getWriteid());
-		fobj.Fwrite_long(getPageLSN());
-		fobj.Fwrite(data);
+		synchronized(fobj) {
+			fobj.Fwrite_long(getPrevblk());
+			fobj.Fwrite_long(getNextblk());
+			fobj.Fwrite_short(getBytesused());
+			fobj.Fwrite_short(getBytesinuse());
+			fobj.Fwrite_long(getWriteid());
+			fobj.Fwrite_long(getPageLSN());
+			fobj.Fwrite(data);
+		}
 	}
 	/**
 	* write the header and used data portion to IoInterface implementor
@@ -78,17 +84,20 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error writing field
 	*/
 	public void writeUsed(IoInterface fobj) throws IOException {
-		fobj.Fwrite_long(getPrevblk());
-		fobj.Fwrite_long(getNextblk());
-		fobj.Fwrite_short(getBytesused());
-		fobj.Fwrite_short(getBytesinuse());
-		fobj.Fwrite_long(getWriteid());
-		fobj.Fwrite_long(getPageLSN());
-		if (getBytesused() == datasize)
-			fobj.Fwrite(data);
-		else
-			fobj.Fwrite(data, getBytesused());
+		synchronized(fobj) {
+			fobj.Fwrite_long(getPrevblk());
+			fobj.Fwrite_long(getNextblk());
+			fobj.Fwrite_short(getBytesused());
+			fobj.Fwrite_short(getBytesinuse());
+			fobj.Fwrite_long(getWriteid());
+			fobj.Fwrite_long(getPageLSN());
+			if (getBytesused() == datasize)
+				fobj.Fwrite(data);
+			else
+				fobj.Fwrite(data, getBytesused());
+		}
 	}
+
 	
 	public void resetBlock() {
 		prevblk = -1L;
@@ -129,15 +138,17 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error reading field
 	*/
 	public void read(IoInterface fobj) throws IOException {
-		setPrevblk(fobj.Fread_long());
-		setNextblk(fobj.Fread_long());
-		setBytesused(fobj.Fread_short());
-		setBytesinuse(fobj.Fread_short());
-		setWriteid(fobj.Fread_long());
-		setPageLSN(fobj.Fread_long());
-		if (fobj.Fread(data, datasize) != datasize) {
-			throw new IOException(
-				"Datablock read size invalid " + this.toString());
+		synchronized(fobj) {
+			setPrevblk(fobj.Fread_long());
+			setNextblk(fobj.Fread_long());
+			setBytesused(fobj.Fread_short());
+			setBytesinuse(fobj.Fread_short());
+			setWriteid(fobj.Fread_long());
+			setPageLSN(fobj.Fread_long());
+			if (fobj.Fread(data, datasize) != datasize) {
+				throw new IOException(
+						"Datablock read size invalid " + this.toString());
+			}
 		}
 	}
 	/**
@@ -146,27 +157,29 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error reading field
 	*/
 	public void readUsed(IoInterface fobj) throws IOException {
-		setPrevblk(fobj.Fread_long());
-		setNextblk(fobj.Fread_long());
-		setBytesused(fobj.Fread_short());
-		setBytesinuse(fobj.Fread_short());
-		setWriteid(fobj.Fread_long());
-		setPageLSN(fobj.Fread_long());
-		if (getBytesused() > datasize) {
-			throw new IOException("block inconsistency " + this.toString());
-		}
-		if (getBytesused() == datasize) {
-			if (fobj.Fread(data) != datasize) {
-				throw new IOException(
-					"Datablock read size invalid " + this.toString());
+		synchronized(fobj) {
+			setPrevblk(fobj.Fread_long());
+			setNextblk(fobj.Fread_long());
+			setBytesused(fobj.Fread_short());
+			setBytesinuse(fobj.Fread_short());
+			setWriteid(fobj.Fread_long());
+			setPageLSN(fobj.Fread_long());
+			if (getBytesused() > datasize) {
+				throw new IOException("block inconsistency " + this.toString());
 			}
-		} else {
-			if (fobj.Fread(data, getBytesused()) != getBytesused()) {
-				throw new IOException(
+			if (getBytesused() == datasize) {
+				if (fobj.Fread(data) != datasize) {
+					throw new IOException(
+							"Datablock read size invalid " + this.toString());
+				}
+			} else {
+				if (fobj.Fread(data, getBytesused()) != getBytesused()) { 
+					throw new IOException(
 					"Datablock read error bytesused="
 						+ String.valueOf(getBytesused())
 						+ " bytesinuse="
 						+ String.valueOf(getBytesinuse()));
+				}
 			}
 		}
 	}
@@ -275,13 +288,13 @@ public final class Datablock implements Externalizable {
 				+ isIncore();
 		return o;
 	}
-	public short getBytesinuse() {
+	public synchronized short getBytesinuse() {
 		return bytesinuse;
 	}
-	public void setBytesinuse(short bytesinuse) {
+	public synchronized void setBytesinuse(short bytesinuse) {
 		this.bytesinuse = bytesinuse;
 	}
-	public String toBriefString() {
+	public synchronized String toBriefString() {
 		return ( getPrevblk() !=-1 || getNextblk() !=-1 || getBytesused() != 0 || bytesinuse != 0 || 
 				getWriteid() !=0 || getPageLSN() != -1 || isIncore()) ?
 				"prev = "
@@ -300,7 +313,7 @@ public final class Datablock implements Externalizable {
 					+ isIncore()
 			: "";
 	}
-	public String toVblockBriefString() {
+	public synchronized String toVblockBriefString() {
 		return ( getPrevblk() !=-1 || getNextblk() !=-1 || getBytesused() != 0 || bytesinuse != 0 || 
 				getWriteid() !=0 || getPageLSN() != -1 || isIncore()) ?
 				"prev = "
@@ -325,16 +338,16 @@ public final class Datablock implements Externalizable {
 	public void setIncore(boolean incore) {
 		this.incore = incore;
 	}
-	public long getPrevblk() {
+	public synchronized long getPrevblk() {
 		return prevblk;
 	}
-	public void setPrevblk(long prevblk) {
+	public synchronized void setPrevblk(long prevblk) {
 		this.prevblk = prevblk;
 	}
-	public long getNextblk() {
+	public synchronized long getNextblk() {
 		return nextblk;
 	}
-	public void setNextblk(long nextblk) {
+	public synchronized void setNextblk(long nextblk) {
 		this.nextblk = nextblk;
 	}
 	public short getBytesused() {
@@ -343,16 +356,16 @@ public final class Datablock implements Externalizable {
 	public void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
-	public long getWriteid() {
+	public synchronized long getWriteid() {
 		return writeid;
 	}
-	public void setWriteid(long writeid) {
+	public synchronized void setWriteid(long writeid) {
 		this.writeid = writeid;
 	}
-	public long getPageLSN() {
+	public synchronized long getPageLSN() {
 		return pageLSN;
 	}
-	public void setPageLSN(long version) {
+	public synchronized void setPageLSN(long version) {
 		this.pageLSN = version;
 	}
 	public boolean isInlog() {

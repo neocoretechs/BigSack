@@ -53,7 +53,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private String Name;
 	private long transId;
@@ -61,7 +61,7 @@ public class GlobalDBIO {
 	private MultithreadedIOManager ioManager = new MultithreadedIOManager();
 	private MappedBlockBuffer usedBL; // block number to Datablock
 	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(getMAXBLOCKS()); // free blocks
-	private ThreadLocal<BlockAccessIndex> tmpBai; // general utility
+	private BlockAccessIndex tmpBai; // general utility
 	private RecoveryLog ulog;		
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
@@ -151,8 +151,7 @@ public class GlobalDBIO {
 				throw new IOException("Unsupported L3 cache type");
 		//
 		// set up locally buffered thread instances
-		tmpBai = new ThreadLocal<BlockAccessIndex>();
-		tmpBai.set(new BlockAccessIndex(this));
+		tmpBai = new BlockAccessIndex(this);
 	    
 		Fopen(Name, create);
 
@@ -287,15 +286,6 @@ public class GlobalDBIO {
 		try {
 			ObjectInputStream s;
 			ByteArrayInputStream bais = new ByteArrayInputStream(obuf);
-			//if (sdbio.isCustomClassLoader())
-			//	s = new CObjectInputStream(bais, sdbio.getCustomClassLoader());
-			//else
-			//	s = new ObjectInputStream(bais);
-			//Od = s.readObject();
-			//s.close();
-			//bais.close();
-			//--------------------
-			//ByteBuffer bb = ByteBuffer.wrap(obuf);
 			ReadableByteChannel rbc = Channels.newChannel(bais);
 			if (sdbio.isCustomClassLoader())
 				s = new CObjectInputStream(Channels.newInputStream(rbc), sdbio.getCustomClassLoader());
@@ -323,9 +313,8 @@ public class GlobalDBIO {
 	 * Latching block
 	 * @param lbn The block number to allocate
 	 */
-	void alloc(long lbn) throws IOException {
-		tmpBai.get().setTemplateBlockNumber(lbn);
-		BlockAccessIndex bai = getUsedBlock(tmpBai);
+	protected void alloc(long lbn) throws IOException {
+		BlockAccessIndex bai = getUsedBlock(lbn);
 		alloc(bai);
 	}
 
@@ -333,7 +322,7 @@ public class GlobalDBIO {
 	* Latching block, increment access count
 	* @param bai The block access and index object
 	*/
-	public void alloc(BlockAccessIndex bai) throws IOException {
+	protected void alloc(BlockAccessIndex bai) throws IOException {
 		bai.addAccess();
 	}
 	/**
@@ -341,9 +330,8 @@ public class GlobalDBIO {
 	 * @param lbn
 	 * @throws IOException
 	 */
-	public void dealloc(long lbn) throws IOException {
-		tmpBai.get().setTemplateBlockNumber(lbn);
-		BlockAccessIndex bai = getUsedBlock(tmpBai);
+	protected void dealloc(long lbn) throws IOException {
+		BlockAccessIndex bai = getUsedBlock(lbn);
 		if (bai == null) {
 			// If we get here our threaded buffer manager must have done our job for us
 			//throw new IOException(
@@ -352,28 +340,23 @@ public class GlobalDBIO {
 		}
 		dealloc(bai);
 	}
-	public void dealloc(BlockAccessIndex bai) throws IOException {
+	protected void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
 
 	/**
 	* We'll do this on a 'clear' of collection, reset all caches
 	* Take the used block list, reset the blocks, move to to free list, then
-	* finally clear the used block list
+	* finally clear the used block list. We do this during rollback to remove any modified
 	*/
 	public void forceBufferClear() {
-		//freeBL.clear();
-		// populate with blocks, they're all free for now
-		synchronized(usedBL) {
-			Set<BlockAccessIndex> sbai = usedBL.keySet();
-			Iterator<BlockAccessIndex> it = sbai.iterator();
+			Iterator<BlockAccessIndex> it = usedBL.iterator();//sbai.iterator();
 			while(it.hasNext()) {
-				BlockAccessIndex bai = (BlockAccessIndex) it.next();
-				bai.resetBlock();
-				freeBL.addElement(bai);
+					BlockAccessIndex bai = (BlockAccessIndex) it.next();
+					bai.resetBlock();
+					freeBL.addElement(bai);
 			}
 			usedBL.clear();
-		}
 	}
 	/**
 	* Get from free list, puts in used list of block access index.
@@ -384,11 +367,17 @@ public class GlobalDBIO {
 	*/
 	private BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
 		// make sure we have open slots
+		if( DEBUG ) {
+			System.out.println("GlobalDBIO.addBlockAccess "+valueOf(Lbn));
+		}
 		checkBufferFlush();
 		BlockAccessIndex bai = (freeBL.elementAt(0));
 		freeBL.removeElementAt(0);
 		bai.setBlockNum(Lbn.longValue());
-		usedBL.put(bai, null);
+		usedBL.add(bai);
+		if( DEBUG ) {
+				System.out.println("GlobalDBIO.addBlockAccess "+valueOf(Lbn)+" returning after freeBL take "+bai);
+		}
 		return bai;
 	}
 	/**
@@ -403,7 +392,7 @@ public class GlobalDBIO {
 		BlockAccessIndex bai = (freeBL.elementAt(0));
 		freeBL.removeElementAt(0);
 		bai.setTemplateBlockNumber(Lbn.longValue());
-		usedBL.put(bai, null);
+		usedBL.add(bai);//put(bai, null);
 		return bai;
 	}
 
@@ -414,23 +403,20 @@ public class GlobalDBIO {
 	* @return The index into the block array
 	* @exception IOException if cannot read
 	*/
-	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+	protected BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+		if( DEBUG ) {
+			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn));
+		}
 		Long Lbn = new Long(bn);
-		tmpBai.get().setTemplateBlockNumber(bn);
-		BlockAccessIndex bai = getUsedBlock(tmpBai);
+		BlockAccessIndex bai = getUsedBlock(bn);
+		if( DEBUG ) {
+			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn)+" got block "+bai);
+		}
 		if (bai != null) {
 			return bai;
 		}
 		// didn't find it, we must add
 		return addBlockAccess(Lbn);
-	}
-	/**
-	* @param tlbn The block number to retrieve 
-	* @return actual Datablock to caller via findoradd
-	* @exception IOException if cannot read
-	*/
-	Datablock getDatablock(Long tlbn) throws IOException {
-		return findOrAddBlockAccess(tlbn.longValue()).getBlk();
 	}
 
 	/**
@@ -438,9 +424,13 @@ public class GlobalDBIO {
 	* @param tmpBai2 The template containing the block number, used to locate key
 	* @return The key found or whatever set returns otherwise if nothing a null is returned
 	*/
-	public BlockAccessIndex getUsedBlock(ThreadLocal<BlockAccessIndex> tmpBai2) {
+	private BlockAccessIndex getUsedBlock(long loc) {
 		synchronized(usedBL) {
-			return usedBL.ceilingKey(tmpBai2.get());
+			tmpBai.setTemplateBlockNumber(loc);
+			int idex = usedBL.indexOf(tmpBai);//.ceilingKey(tmpBai);
+			if(idex == -1)
+				return null;
+			return usedBL.get(idex);
 		}
 	}
 
@@ -505,8 +495,8 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */
 	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
-		if( DEBUG )
-			System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+		//if( DEBUG )
+		//	System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 		int tblsp = GlobalDBIO.getTablespace(toffset);
 		long offset = GlobalDBIO.getBlock(toffset);
 		IoInterface iodirect = ioManager.getIOWorker(tblsp);
@@ -528,9 +518,7 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex
 	 * @exception IOException if db not open or can't get block
 	 */
-	public BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk)
-		throws IOException {
-		//synchronized(globalPool) {
+	protected BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
 		long newblock;
 		BlockAccessIndex ablk = lastGoodBlk;
 		// this way puts it all in one tablespace
@@ -563,7 +551,7 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex of stolen blk
 	 * @exception IOException if db not open or can't get block
 	 */
-	public BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
+	protected BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
 		long newblock;
 		if (currentBlk != null)
 			dealloc(currentBlk);
@@ -582,12 +570,11 @@ public class GlobalDBIO {
 		return dblk;
 	}
 
-
-	public long getNew_node_pos_blk() {
+	protected long getNew_node_pos_blk() {
 		return new_node_pos_blk;
 	}
 
-	public void setNew_node_pos_blk(long new_node_pos_blk) {
+	protected void setNew_node_pos_blk(long new_node_pos_blk) {
 		this.new_node_pos_blk = new_node_pos_blk;
 	}
 

@@ -10,6 +10,7 @@ import com.neocoretechs.bigsack.io.stream.DBInputStream;
 import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
+	private static final boolean DEBUG = false;
 	// DataStream for DB I/O
 	private DataInputStream DBInput;
 	private DataOutputStream DBOutput;
@@ -257,30 +258,6 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		return true;
 	}
 	
-	/**
-	* objseek - seek to offset within block
-	* @param adr block/offset to seek to
-	* @exception IOException If problem seeking block
-	* @see Optr
-	*/
-	public void objseek(Optr adr) throws IOException {
-		if (adr.getBlock() == -1L)
-			throw new IOException("Sentinel block seek error");
-		findOrAddBlock(adr.getBlock());
-		this.setByteindex(adr.getOffset());
-	}
-	/**
-	* objseek - seek to offset within block
-	* @param adr long block to seek to
-	* @exception IOException If problem seeking block
-	* @see Optr
-	*/
-	public void objseek(long adr) throws IOException {
-		if (adr == -1L)
-			throw new IOException("Sentinel block seek error");
-		findOrAddBlock(adr);
-		this.setByteindex((short) 0);
-	}
 
 	@Override
 	public void setByteindex(short tindex) {

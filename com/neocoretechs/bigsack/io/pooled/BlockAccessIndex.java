@@ -93,6 +93,12 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public long getBlockNum() {
 		return blockNum;
 	}
+	/**
+	 * Through GlobalIO.addBlockAccess to here, we set up the block, and if necessary get it
+	 * via IOManager.FSeekAndRead request
+	 * @param bnum
+	 * @throws IOException
+	 */
 	public void setBlockNum(long bnum) throws IOException {
 		assert (blockNum != -1L);
 		if (bnum == blockNum) {

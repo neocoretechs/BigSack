@@ -41,6 +41,7 @@ import com.neocoretechs.bigsack.io.RecoveryLog;
 * @author Groff
 */
 public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
+	private static final boolean DEBUG = false;
 	private BlockAccessIndex lbai  = null;
 
 	protected Datablock getBlk() { return lbai.getBlk(); }
@@ -127,8 +128,12 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @exception IOException If low-level access fails
 	*/
 	public void findOrAddBlock(long tbn) throws IOException {
+		if( DEBUG )
+			System.out.println("BlockDBIO.findOrAddBlock:"+valueOf(tbn)+" current:"+lbai);
 		if (lbai != null) {
 			if (tbn == lbai.getBlockNum()) {
+				if( DEBUG )
+					System.out.println("BlockDBIO.findOrAddBlock:"+valueOf(tbn)+" target = current "+lbai);
 				lbai.setByteindex((short) 0);
 				return;
 			}
@@ -171,6 +176,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	*/
 	public boolean getnextblk() throws IOException {
 		if (lbai.getBlk().getNextblk() == -1L) {
+			if( DEBUG )
+				System.out.println("BlockDBIO.getnextblk returning with no next block "+lbai);
 			return false;
 		}
 		findOrAddBlock(lbai.getBlk().getNextblk());

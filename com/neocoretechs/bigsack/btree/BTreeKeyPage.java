@@ -3,7 +3,6 @@ import java.io.IOException;
 import java.io.Serializable;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
@@ -192,17 +191,28 @@ public class BTreeKeyPage implements Serializable {
 		//}
 	}
 	/**
-	* Retrieve a page based on an index to this page containing a page 
-	* location.
+	* Retrieve a page based on an index to this page containing a page.
+	* In effect, this is our lazy initialization of the 'pageArray' and we strictly
+	* work in pageArray in this method. If the pageIdArray contains a valid non -1 entry, then
+	* we retrieve and deserialize that virtual block to an entry in the pageArray at the index passed in the params
+	* location. If we retrieve an instance we also fill in the transient fields from our current data
 	* @param sdbio The session database io instance
-	* @param index The index to the page array on this page that contains the location 
+	* @param index The index to the page array on this page that contains the virtual record to deserialize.
 	* @return The deserialized page instance
 	* @exception IOException If retrieval fails
 	*/
 	public BTreeKeyPage getPage(ObjectDBIO sdbio, int index) throws IOException {
 		if (pageArray[index] == null && pageIdArray[index] != -1L) {
+			// eligible to retrieve page
+			if( DEBUG ) {
+				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index]));
+			}
 			pageArray[index] =
 				(BTreeKeyPage) (sdbio.deserializeObject(pageIdArray[index]));
+			if( DEBUG ) {
+				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" page:"+pageArray[index]);
+			}
+			// set up all the transient fields
 			pageArray[index].pageId = pageIdArray[index];
 			pageArray[index].pageArray = new BTreeKeyPage[MAXKEYS + 1];
 			pageArray[index].dataArray = new Object[MAXKEYS];
@@ -212,8 +222,12 @@ public class BTreeKeyPage implements Serializable {
 	}
 
 	/**
-	* Primarily for root where we don't have an index on a page that contains a 
-	* location.  Otherwise, we use the overloaded getPage with index
+	* Primarily for getting root at boot where we don't have an index on a page that contains a 
+	* location.  Otherwise, we use the overloaded getPage with index. This method
+	* can be used to locate a block which has an index record on its boundary and deserialize that.
+	* It starts somewhat from baseline as it initializes all the internal BTreeKeyPage structures.
+	* No effort is made to guarantee the record being accessed is a viable BtreeKeyPage, that is assumed.
+	* A getPage is performed after page setup.
 	* @param sdbio The session database io instance
 	* @param pos The block containing page
 	* @return The deserialized page instance
@@ -222,15 +236,18 @@ public class BTreeKeyPage implements Serializable {
 	static BTreeKeyPage getPageFromPool(ObjectDBIO sdbio, long pos) throws IOException {
 		if (pos == -1L)
 			throw new IOException("Page index invalid in getPage");
-		//sdbio.findOrAddBlock(pos);
+		sdbio.findOrAddBlock(pos);
 		BTreeKeyPage btk =
 			(BTreeKeyPage) (sdbio.deserializeObject(pos));
-		if( DEBUG ) System.out.println("BTreeKeyPage "+pos+" "+btk);
+		if( DEBUG ) System.out.println("BTreeKeyPage.getPageFromPool "+pos);//+" "+btk);
 		// initialize transients
 		btk.pageId = pos;
 		btk.pageArray = new BTreeKeyPage[MAXKEYS + 1];
 		btk.dataArray = new Object[MAXKEYS];
 		btk.dataUpdatedArray = new boolean[MAXKEYS];
+		//for(int i = 0; i <= MAXKEYS; i++) {
+		//	btk.pageArray[i] = btk.getPage(sdbio,i);
+		//}
 		return btk;
 	}
 	/**
@@ -240,7 +257,7 @@ public class BTreeKeyPage implements Serializable {
 	 */
 	public void putPage(ObjectDBIO sdbio) throws IOException {
 		if (!isUpdated()) {
-			//if( Props.DEBUG ) System.out.println("page not updated, returning from putPage");
+			if( DEBUG ) System.out.println("page not updated, returning from putPage");
 			return;
 		}
 		byte[] pb = GlobalDBIO.getObjectAsBytes(this);
@@ -250,7 +267,7 @@ public class BTreeKeyPage implements Serializable {
 			if( DEBUG ) System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
 		}
 		sdbio.add_object(Optr.valueOf(pageId), pb, pb.length);
-		if( DEBUG ) System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length);
+		if( DEBUG ) System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length+" page:"+this);
 		setUpdated(false);
 	}
 	/**
@@ -322,7 +339,7 @@ public class BTreeKeyPage implements Serializable {
 		StringBuffer sb = new StringBuffer();
 		//sb.append("Page ");
 		//sb.append(hashCode());
-		sb.append("BTreeKeyPage Id:");
+		sb.append("<<<<<<<<<<BTreeKeyPage Id:");
 		sb.append(GlobalDBIO.valueOf(pageId));
 		sb.append(" Numkeys:");
 		sb.append(String.valueOf(numKeys));
@@ -343,10 +360,13 @@ public class BTreeKeyPage implements Serializable {
 		if( pageArray == null ) {
 			sb.append("PAGE ARRAY IS NULL\r\n");
 		} else {
-			for (int i = 0; i < pageArray.length; i++) {
-				sb.append(i+"=");
-				sb.append(pageArray[i]+"\r\n");
+			int j = 0;
+			for (int i = 0 ; i < pageArray.length; i++) {
+			//	sb.append(i+"=");
+			//	sb.append(pageArray[i]+"\r\n");
+				if(pageArray[i] != null) ++j;
 			}
+			sb.append("Page Array Non null for "+j+" members");
 		}
 		sb.append("BTree Page IDs:\r\n");
 		if( pageIdArray == null ) {
@@ -360,7 +380,7 @@ public class BTreeKeyPage implements Serializable {
 				sb.append("\r\n");
 			}
 		}
-		
+		/*
 		sb.append("Data Array:\r\n");
 		if(dataArray==null) {
 			sb.append(" DATA ARRAY NULL\r\n");
@@ -383,8 +403,10 @@ public class BTreeKeyPage implements Serializable {
 				sb.append("\r\n");
 			}
 		}
-		
-		sb.append("--End\r\n");
+		*/
+		sb.append(GlobalDBIO.valueOf(pageId));
+		sb.append(" >>>>>>>>>>>>>>End ");
+		sb.append("\r\n");
 		return sb.toString();
 	}
 

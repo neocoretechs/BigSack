@@ -25,7 +25,7 @@ public class BatteryBigSack3 {
 	static String val = "Of a BigSack K/V pair!yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0;
-	static int max = 40;
+	static int max = 16;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -39,7 +39,7 @@ public class BatteryBigSack3 {
 		//BufferedTreeSet session = new BufferedTreeSet(argv[0],l3CacheSize);
 		TransactionalTreeSet session = new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
-		battery1E(session, argv);
+		battery1(session, argv);
 		//battery1A(session, argv);
 		//battery1B(session, argv);
 		//battery1D(session, argv);
@@ -50,7 +50,7 @@ public class BatteryBigSack3 {
 		//battery4(session, argv);
 		//battery5(session, argv);
 		//SessionManager.stopCheckpointDaemon(argv[0]);
-		//session.commit();
+		session.commit();
 		System.out.println("TEST BATTERY 3 COMPLETE.");
 		
 	}
@@ -60,7 +60,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery1(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
 			session.add(key + String.format(uniqKeyFmt, i));

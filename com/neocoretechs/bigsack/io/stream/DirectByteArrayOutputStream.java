@@ -1,8 +1,12 @@
 package com.neocoretechs.bigsack.io.stream;
 
 import java.io.ByteArrayOutputStream;
-
-public class DirectByteArrayOutputStream  extends ByteArrayOutputStream {
+/**
+ * Implementation of ByteArrayOutputStream that does NOT copy the backing store
+ * @author jg
+ *
+ */
+public final class DirectByteArrayOutputStream  extends ByteArrayOutputStream {
 		  public DirectByteArrayOutputStream() {
 		  }
 

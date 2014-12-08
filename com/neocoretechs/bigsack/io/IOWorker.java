@@ -9,7 +9,7 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 
 public class IOWorker implements Runnable, IoInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private IoInterface ioUnit;
 	private long nextFreeBlock = 0L;
 	private BlockingQueue<IoRequestInterface> requestQueue;

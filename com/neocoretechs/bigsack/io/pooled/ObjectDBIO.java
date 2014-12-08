@@ -10,12 +10,11 @@ import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 
-public class ObjectDBIO extends OffsetDBIO {
+public final class ObjectDBIO extends OffsetDBIO {
 	private static boolean DEBUG = false;
 	public ObjectDBIO(String objname, boolean create, long transId) throws IOException {
 		super(objname, create, transId);
-		// create or read the initial directory struct
-		createOrLoad(create);
+		setNew_node_pos_blk(-1L);
 	}
 
 	// Are we using custom class loader for serialized versions?
@@ -74,7 +73,7 @@ public class ObjectDBIO extends OffsetDBIO {
 				cnf.toString()
 					+ ": Class Not found, may have been modified beyond version compatibility "+GlobalDBIO.valueOf(iloc)+" in "+getDBName());
 		}
-		if( Props.DEBUG ) System.out.println("From ptr "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
+		if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
 		return Od;
 	}
 	/**
@@ -107,23 +106,8 @@ public class ObjectDBIO extends OffsetDBIO {
 				cnf.toString()
 					+ ": Class Not found, may have been modified beyond version compatibility "+iloc+" in "+getDBName());
 		}
-		if( Props.DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
+		if( DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
 		return Od;
-	}
-	
-	/**
-	* create the directory linked list of blocks,
-	* start a system-level session to do it
-	* a setRoot is performed in the BtreeMain constructor after getPageFromPool in constructor
-	* @param create true to create initial root
-	* @exception IOException if we cannot create it
-	*/
-	public void createOrLoad(boolean create) throws IOException {
-		if ( create && isNew ) { // determined in globalio ctor
-
-		} //else
-			//deallocOutstandingNoCommit();
-		setNew_node_pos_blk(-1L);
 	}
 	
 	public boolean isCustomClassLoader() {

@@ -1,14 +1,12 @@
 package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
-import java.nio.channels.Channel;
-import java.nio.channels.FileChannel;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
-import com.neocoretechs.bigsack.io.pooled.BlockDBIOInterface;
+
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.FSeekAndReadFullyRequest;
@@ -32,7 +30,7 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  *
  */
 public final class MultithreadedIOManager {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	final CyclicBarrier barrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	public MultithreadedIOManager() {}
 	private IOWorker ioWorker[] = new IOWorker[DBPhysicalConstants.DTABLESPACES];
@@ -109,8 +107,8 @@ public final class MultithreadedIOManager {
 	 * @throws IOException
 	 */
 	public synchronized void FseekAndRead(long toffset, Datablock tblk) throws IOException {
-		//if( DEBUG )
-		//	System.out.println("MultithreadedIOManager.FseekAndRead "+toffset);
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.FseekAndRead "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
@@ -127,8 +125,8 @@ public final class MultithreadedIOManager {
 	 * @throws IOException
 	 */
 	public synchronized void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
-		//if( DEBUG )
-		//	System.out.println("MultithreadedIOManager.FseekAndReadFully "+toffset);
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.FseekAndReadFully "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
@@ -173,7 +171,7 @@ public final class MultithreadedIOManager {
 		long smallestSize = primarySize;
 		getNextFreeBlocks();
 		for (int i = 0; i < nextFree.length; i++) {
-			if (nextFree[i] < smallestSize) {
+			if(nextFree[i] != -1 && nextFree[i] < smallestSize) {
 				smallestSize = nextFree[i];
 				smallestTablespace = i;
 			}
@@ -181,7 +179,6 @@ public final class MultithreadedIOManager {
 		return smallestTablespace;
 	}
 	
-
 	/**
 	* If create is true, create only primary tablespace
 	* else try to open all existing

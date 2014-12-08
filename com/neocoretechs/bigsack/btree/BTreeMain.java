@@ -60,7 +60,6 @@ public final class BTreeMain {
 		this.sdbio = sdbio;
 		keyPageStack = new BTreeKeyPage[MAXSTACK];
 		indexStack = new int[MAXSTACK];
-		//currentPage = setRoot(BTreeKeyPage.getPageFromPool(sdbio, 0L));
 		currentPage = setRoot(BTreeKeyPage.getPageFromPool(sdbio, 0L));
 		if( DEBUG ) System.out.println("Root BTreeKeyPage: "+currentPage);
 		currentIndex = 0;
@@ -72,7 +71,7 @@ public final class BTreeMain {
 		int i;
 		long tim = System.currentTimeMillis();
 		while ((i = gotoNextKey()) == 0) {
-				//if( Props.DEBUG ) System.out.println("gotoNextKey returned: "+i);
+				if( DEBUG ) System.out.println("gotoNextKey returned: "+i);
 				++numKeys;
 		}
 		System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
@@ -195,11 +194,12 @@ public final class BTreeMain {
 			// Try to pop. If we can't pop, make a new root
 		} while (pop());
 		getRoot().pageId = -1L;
-		setRoot(currentPage = new BTreeKeyPage(0L));
+		currentPage = new BTreeKeyPage(0L);
+		setRoot(currentPage);
 		currentIndex = 0;
-		getRoot().insert(newKey, newObject, currentIndex);
-		getRoot().putPageToArray(leftPagePtr, 0);
-		getRoot().putPageToArray(rightPagePtr, 1);
+		root.insert(newKey, newObject, currentIndex);
+		root.putPageToArray(leftPagePtr, 0);
+		root.putPageToArray(rightPagePtr, 1);
 		++numKeys;
 		return 0;
 	}
@@ -297,11 +297,12 @@ public final class BTreeMain {
 			// Try to pop. If we can't pop, make a new root
 		} while (pop());
 		getRoot().pageId = -1L;
-		setRoot(currentPage = new BTreeKeyPage(0L));
+		currentPage = new BTreeKeyPage(0L);
+		setRoot(currentPage);
 		currentIndex = 0;
-		getRoot().insert(newKey, null, currentIndex);
-		getRoot().putPageToArray(leftPagePtr, 0);
-		getRoot().putPageToArray(rightPagePtr, 1);
+		root.insert(newKey, null, currentIndex);
+		root.putPageToArray(leftPagePtr, 0);
+		root.putPageToArray(rightPagePtr, 1);
 		++numKeys;
 		return 0;
 	}
@@ -556,8 +557,11 @@ public final class BTreeMain {
 		currentPage = getRoot();
 		currentIndex = 0;
 		clearStack();
-		if (currentPage.getPage(getIO(), currentIndex) != null)
-				seekLeftTree();
+		if (currentPage.getPage(getIO(), currentIndex) != null) {
+			if( DEBUG )
+				System.out.println("BTreeMain.rewind about to seek left tree using "+currentPage);
+			seekLeftTree();
+		}
 		atKey = false;
 	}
 
@@ -592,17 +596,27 @@ public final class BTreeMain {
 		// If we are at a key, then advance the index
 		if (atKey)
 			currentIndex++;
-
+		
+		if( DEBUG ) {
+			System.out.println("BTreeMain.gotoNextKey "/*page:"+currentPage+*/+" index "+currentIndex);
+		}
 		// If we are not at a key, then see if the pointer is null.
-		if (currentPage.getPage(getIO(), currentIndex) == null)
+		if (currentPage.getPage(getIO(), currentIndex) == null) {
 			// Pointer is null, is it the last one on the page?
+			if( DEBUG ) {
+				System.out.println("BTreeMain.gotoNextKey index "+currentIndex+" pointer is null");
+			}
 			if (currentIndex == currentPage.numKeys) {
 				// Last pointer on page. We have to pop up
-				while (pop())
+				while (pop()) {
+					if( DEBUG ) {
+						System.out.println("BTreeMain.gotoNextKey POP index "+currentIndex+/*" "+currentPage+*/" working toward keys:"+currentPage.numKeys);
+					}
 					if (currentIndex != currentPage.numKeys) {
 						setCurrent();
 						return (0);
 					}
+				}
 				atKey = false;
 				return (EOF);
 			} else { // Not last pointer on page.
@@ -610,6 +624,7 @@ public final class BTreeMain {
 				setCurrent();
 				return (0);
 			}
+		}
 		// Pointer not null, seek to "leftmost" key in current subtree
 		if (seekLeftTree()) {
 			setCurrent();
@@ -709,8 +724,13 @@ public final class BTreeMain {
 	* Seeks to leftmost key in current subtree
 	*/
 	private boolean seekLeftTree() throws IOException {
+		if( DEBUG ) {
+			System.out.println("BTreeMain.seekLeftTree page:"+currentPage+" index "+currentIndex);
+		}
 		while (push()) {
 			currentPage = currentPage.getPage(getIO(), currentIndex);
+			if( DEBUG )
+				System.out.println("BTreeMain.seekLeftTree PUSH using "+currentPage+" index "+currentIndex);
 			currentIndex = 0;
 			if (currentPage.getPage(getIO(), currentIndex) == null)
 				return (true);
