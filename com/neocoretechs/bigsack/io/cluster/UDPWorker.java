@@ -28,17 +28,19 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  *
  */
 public class UDPWorker extends IOWorker {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static boolean shouldRun = true;
-	public int UDPPORT = 9876;
+	private int MASTERPORT = 9876;
+	private int SLAVEPORT = 9876;
 	public static String remoteMaster = "AMIMASTER";
     private byte[] receiveData = new byte[10000];
     private byte[] sendData;
 	private InetAddress IPAddress = null;
 	
-    public UDPWorker(String dbname, int tablespace, int port, int L3Cache) throws IOException {
+    public UDPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
-    	UDPPORT= port;
+    	MASTERPORT= masterPort;
+    	SLAVEPORT = slavePort;
 		try {
 			if(UDPMaster.TEST) {
 				IPAddress = InetAddress.getLocalHost();
@@ -59,29 +61,27 @@ public class UDPWorker extends IOWorker {
 	 */
 	public synchronized void queueResponse(IoResponseInterface irf) {
 		if( DEBUG ) {
-			System.out.println("Adding response "+irf+" to outbound from worker to "+remoteMaster);
+			System.out.println("Adding response "+irf+" to outbound from worker to "+IPAddress+" port:"+MASTERPORT);
 		}
 		// set up senddata
 		DatagramSocket serverSocket = null;
 		try {
 			serverSocket = new DatagramSocket();
-			serverSocket.connect(IPAddress, UDPPORT);
+			serverSocket.connect(IPAddress, MASTERPORT);
 		} catch (SocketException e) {
-			if( DEBUG )
-				System.out.println("Exception setting up socket to remote master on poert "+UDPPORT+" "+e);
+				System.out.println("Exception setting up socket to remote master port "+MASTERPORT+" on local port "+SLAVEPORT+" "+e);
 		}
 		try {
 			sendData = GlobalDBIO.getObjectAsBytes(irf);
 		} catch (IOException e) {
 			System.out.println("UDPWorker queueResponse "+irf+" cant get serialized form due to "+e);
 		}
-		DatagramPacket sendPacket =
-			new DatagramPacket(sendData, sendData.length, IPAddress, UDPPORT);
+		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, MASTERPORT);
 		try {
 			serverSocket.send(sendPacket);
 		} catch (IOException e) {
 			if( DEBUG )
-				System.out.println("Socket send error "+e+" to address "+remoteMaster+" on port "+UDPPORT);
+				System.out.println("Socket send error "+e+" to address "+IPAddress+" on port "+MASTERPORT);
 		}
 		serverSocket.close();
 	}
@@ -91,22 +91,25 @@ public class UDPWorker extends IOWorker {
      * @throws Exception
      */
 	public static void main(String args[]) throws Exception {
-		if( args.length < 3 ) {
-			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.UDPWorker [database] [tablespace] [port]");
+		if( args.length < 4 ) {
+			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.UDPWorker [database] [tablespace] [master port] [slave port]");
 		}
 		// Use mmap mode 0
-		ThreadPoolManager.getInstance().spin(new UDPWorker(args[0], Integer.valueOf(args[1]), Integer.valueOf(args[2]), 0));
+		ThreadPoolManager.getInstance().spin(new UDPWorker(args[0], Integer.valueOf(args[1]), Integer.valueOf(args[2]), Integer.valueOf(args[3]), 0));
 	}
 	
 	@Override
 	public void run() {
 		while(shouldRun) {
 			try {
-				DatagramSocket serverSocket = new DatagramSocket(UDPPORT);
+				DatagramSocket serverSocket = new DatagramSocket(SLAVEPORT);
 				DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 				serverSocket.receive(receivePacket);
 				byte[] databytes = receivePacket.getData();
 				serverSocket.close();
+				if( DEBUG ) {
+					System.out.println("FROM REMOTE on port:"+SLAVEPORT+" size:"+databytes.length);
+				}
 				// extract the serialized request
 				final CompletionLatchInterface iori = (CompletionLatchInterface) GlobalDBIO.deserializeObject(databytes);
 				iori.setIoInterface(this);
@@ -115,26 +118,31 @@ public class UDPWorker extends IOWorker {
 				// at the UDPMaster level otherwise
 				CountDownLatch cdl = new CountDownLatch(1);
 				iori.setCountDownLatch(cdl);
+				if( DEBUG ) {
+					System.out.println("port:"+SLAVEPORT+" data:"+iori);
+				}
 				// tablespace set before request comes down
 				iori.process();
 				try {
+					if( DEBUG )
+						System.out.println("port:"+SLAVEPORT+" avaiting countdown latch...");
 					cdl.await();
 				} catch (InterruptedException e) {
 				}
 				// we have flipped the latch from the request to the thread waiting here, so send an outbound response
 				// with the result of our work
 				if( DEBUG ) {
-					System.out.println("Local processing complete, queuing response to "+remoteMaster);
+					System.out.println("Local processing complete, queuing response to "+MASTERPORT);
 				}
 				IoResponse ioresp = new IoResponse(iori);
 				// And finally, send the package back up the line
 				queueResponse(ioresp);
 				if( DEBUG ) {
-					System.out.println("Queuing response to "+remoteMaster+" "+ioresp);
+					System.out.println("Response queued to "+IPAddress+" "+ioresp);
 				}
 				
 			} catch(IOException ioe) {
-				System.out.println("UDPWorker receive exception "+ioe);
+				System.out.println("UDPWorker receive exception "+ioe+" on port "+SLAVEPORT);
 			}
 		}
 	}

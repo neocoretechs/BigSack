@@ -37,7 +37,12 @@ public class IoResponse implements IoResponseInterface {
 		return uuid;
 	}
 	@Override
-	public void setUUID(int id) {	
+	public void setUUID(int id) {
+		uuid = id;
+	}
+	@Override
+	public String toString() {
+		return "IoResponse "+uuid+" responseLong:"+responseLong+" responseObject:"+responseObject;
 	}
 
 }

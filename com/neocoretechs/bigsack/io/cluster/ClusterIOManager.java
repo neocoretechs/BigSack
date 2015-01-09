@@ -38,7 +38,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	protected int L3cache = 0;
 	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
 	private static final boolean DEBUG = false;
-	private static int currentPort = 5000; // starting UDP port, increments as assigned
+	private static int currentPort = 10000; // starting UDP port, increments as assigned
 	final CyclicBarrier barrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	/**
 	 * Instantiate our master node array per database that communicate with our worker nodes
@@ -231,10 +231,14 @@ public final class ClusterIOManager implements IoManagerInterface {
 		this.L3cache = L3cache;
 		for (int i = 0; i < ioWorker.length; i++) {
 			if (ioWorker[i] == null) {
-					ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort);
+					ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
 					ThreadPoolManager.getInstance().spin(ioWorker[i]);
 			}
 		}
+		// allow the workers to come up
+		try {
+			Thread.sleep(500);
+		} catch (InterruptedException e) {}
 		return true;
 	}
 	

@@ -39,6 +39,8 @@ public class WorkBoot extends TCPServer {
 					//
                     ObjectInputStream ois = new ObjectInputStream(datasocket.getInputStream());
                     CommandPacketInterface o = (CommandPacketInterface) ois.readObject();
+                    if( DEBUG )
+                    	System.out.println("WorkBoot command received:"+o);
                     //datasocket.close();
                 	// Create a new UDPWorker with database and tablespace
             		// Use mmap mode 0
@@ -50,9 +52,9 @@ public class WorkBoot extends TCPServer {
                     db = (new File(db)).toPath().getParent().toString() + File.separator +
                     		"tablespace"+String.valueOf(o.getTablespace()) + File.separator +
                     		(new File(o.getDatabase()).getName());
-            		ThreadPoolManager.getInstance().spin(new UDPWorker(db, o.getTablespace(), o.getPort(), 0));
+            		ThreadPoolManager.getInstance().spin(new UDPWorker(db, o.getTablespace(), o.getMasterPort(), o.getSlavePort(), 0));
             		if( DEBUG ) {
-            			System.out.println("WorkBoot starting new worker "+db+" tablespace "+o.getTablespace()+" port "+o.getPort());
+            			System.out.println("WorkBoot starting new worker "+db+" tablespace "+o.getTablespace()+" master port:"+o.getMasterPort()+" slave port:"+o.getSlavePort());
             		}
 				} catch(Exception e) {
                     System.out.println("TCPServer socket accept exception "+e);
