@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.Serializable;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
+import com.neocoretechs.arieslogger.core.impl.CompensationBlock;
 import com.neocoretechs.arieslogger.logrecords.Compensation;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;

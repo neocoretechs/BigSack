@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.request;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;

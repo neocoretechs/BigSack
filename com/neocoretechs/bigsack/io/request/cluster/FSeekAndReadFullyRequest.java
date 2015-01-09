@@ -1,19 +1,27 @@
-package com.neocoretechs.bigsack.io.request;
+package com.neocoretechs.bigsack.io.request.cluster;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
 
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
-
-public final class FSeekAndReadFullyRequest implements IoRequestInterface {
-
-	private IoInterface ioUnit;
+import com.neocoretechs.bigsack.io.pooled.Datablock; 
+/**
+ * CompletionLatchInterface extend IORequestInterface to provide access to barrier synch latches from the request.
+ * We isolate the latches before sending request to the nodes. When a response comes back the latches are used to coordinate
+ * the responses.
+ * @author jg
+ *
+ */
+public final class FSeekAndReadFullyRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable {
+	private static final long serialVersionUID = -7042979197184449526L;
+	private transient IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;
 	private int tablespace;
-	private CountDownLatch barrierCount;
+	private transient CountDownLatch barrierCount;
+	public FSeekAndReadFullyRequest() {}
+	
 	public FSeekAndReadFullyRequest(CountDownLatch barrierCount, long offset, Datablock dblk) {
 		this.barrierCount = barrierCount;
 		this.offset = offset;
@@ -78,7 +86,30 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 	}
 	
 	public synchronized String toString() {
-		return "FSeekAndReadFullyRequest for tablespace "+tablespace+" offset "+offset;
+		return getUUID()+",tablespace:"+tablespace+"FSeekAndReadFullyRequest:"+offset;
 	}
+	/**
+	 * The latch will be extracted by the UDPMaster and when a response comes back it will be tripped
+	 */
+	@Override
+	public CountDownLatch getCountDownLatch() {
+		return barrierCount;
+	}
+
+	@Override
+	public void setCountDownLatch(CountDownLatch cdl) {
+		barrierCount = cdl;
+	}
+
+	@Override
+	public void setLongReturn(long val) {
+		offset = val;
+	}
+
+	@Override
+	public void setObjectReturn(Object o) {
+		dblk = (Datablock) o;	
+	}
+
 
 }

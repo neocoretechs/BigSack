@@ -1,4 +1,4 @@
-package com.neocoretechs.bigsack.io.request;
+package com.neocoretechs.bigsack.io.request.cluster;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -7,13 +7,16 @@ import java.util.concurrent.CountDownLatch;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 
-public final class FSeekAndReadRequest implements IoRequestInterface {
+
+public final class FSeekAndReadRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable {
+	private static final long serialVersionUID = 8403024200125854512L;
 	private static final boolean DEBUG = false;
-	private IoInterface ioUnit;
+	private transient IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;
 	private int tablespace;
-	private CountDownLatch barrierCount;
+	private transient CountDownLatch barrierCount;
+	public FSeekAndReadRequest() {}
 	public FSeekAndReadRequest(CountDownLatch barrierCount, long offset, Datablock dblk) {
 		this.barrierCount = barrierCount;
 		this.offset = offset;
@@ -80,7 +83,29 @@ public final class FSeekAndReadRequest implements IoRequestInterface {
 	}
 	
 	public synchronized String toString() {
-		return "FSeekAndReadRequest for tablespace "+tablespace+" offset "+offset;
+		return getUUID()+",tablespace:"+tablespace+"FSeekAndReadRequest:"+offset;
+	}
+	/**
+	 * The latch will be extracted by the UDPMaster and when a response comes back it will be tripped
+	 */
+	@Override
+	public CountDownLatch getCountDownLatch() {
+		return barrierCount;
+	}
+
+	@Override
+	public void setCountDownLatch(CountDownLatch cdl) {
+		barrierCount = cdl;
+	}
+	
+	@Override
+	public void setLongReturn(long val) {
+		offset = val;
+	}
+
+	@Override
+	public void setObjectReturn(Object o) {
+		dblk = (Datablock) o;	
 	}
 
 }

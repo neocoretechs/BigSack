@@ -1,10 +1,8 @@
-package com.neocoretechs.bigsack.io.request;
+package com.neocoretechs.bigsack.io.request.cluster;
 
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
@@ -22,15 +20,16 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  * @author jg
  *
  */
-public final class GetNextFreeBlocksRequest implements IoRequestInterface {
+public final class GetNextFreeBlocksRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable {
+
+	private static final long serialVersionUID = 4504873855639883545L;
 	private long nextFreeBlock = 0L;
-	private IoInterface ioUnit;
+	private transient IoInterface ioUnit;
 	private Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
-	private CyclicBarrier barrierSynch;
 	private int tablespace;
-	private CountDownLatch barrierCount;
-	public GetNextFreeBlocksRequest(CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
-		this.barrierSynch = barrierSynch;
+	private transient CountDownLatch barrierCount;
+	public GetNextFreeBlocksRequest(){}
+	public GetNextFreeBlocksRequest(CountDownLatch barrierCount) {
 		this.barrierCount = barrierCount;
 	}
 	@Override
@@ -62,12 +61,6 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 					break;
 				}
 		}
-		// wait at the barrier until all other tablespaces arrive at their result
-		try {
-			barrierSynch.await();
-		} catch (InterruptedException | BrokenBarrierException e) {
-			throw new IOException(e);
-		}
 	}
 	@Override
 	public synchronized long getLongReturn() {
@@ -93,8 +86,31 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	public synchronized void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
+	
 	public synchronized String toString() {
-		return "GetNextFreeBlocksRequest for tablespace "+tablespace;
+		return getUUID()+",tablespace:"+tablespace+":GetNextFreeBlocksRequest:"+nextFreeBlock;
+	}
+	/**
+	 * The latch will be extracted by the UDPMaster and when a response comes back it will be tripped
+	 */
+	@Override
+	public CountDownLatch getCountDownLatch() {
+		return barrierCount;
+	}
+
+	@Override
+	public void setCountDownLatch(CountDownLatch cdl) {
+		barrierCount = cdl;
+	}
+	
+	@Override
+	public void setLongReturn(long val) {
+		nextFreeBlock = val;
+	}
+
+	@Override
+	public void setObjectReturn(Object o) {
+		nextFreeBlock = (Long) o;	
 	}
 
 }

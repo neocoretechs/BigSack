@@ -1,4 +1,4 @@
-package com.neocoretechs.bigsack.io;
+package com.neocoretechs.arieslogger.core.impl;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -7,6 +7,7 @@ import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.logrecords.Compensation;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
+import com.neocoretechs.bigsack.io.UndoableBlock;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
 import com.neocoretechs.bigsack.io.pooled.Datablock;

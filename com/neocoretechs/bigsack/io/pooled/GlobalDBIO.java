@@ -12,10 +12,13 @@ import com.neocoretechs.bigsack.btree.BTreeKeyPage;
 import com.neocoretechs.bigsack.io.FileIO;
 import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.IoInterface;
+import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MmapIO;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLog;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
+import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
+import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
 import com.neocoretechs.bigsack.io.request.FSeekAndWriteFullyRequest;
 import com.neocoretechs.bigsack.io.request.FSeekAndWriteRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
@@ -53,12 +56,12 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private String Name;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
-	private MultithreadedIOManager ioManager = new MultithreadedIOManager();
+	private IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
 	private MappedBlockBuffer usedBL; // block number to Datablock
 	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(getMAXBLOCKS()); // free blocks
 	private BlockAccessIndex tmpBai; // general utility
@@ -70,7 +73,7 @@ public class GlobalDBIO {
 		return ulog;
 	}
 	
-	public MultithreadedIOManager getIOManager() {
+	public IoManagerInterface getIOManager() {
 		return ioManager;
 	}
 	
@@ -133,7 +136,7 @@ public class GlobalDBIO {
 	/**
 	* Constructor will utilize values from props file to initialize 
 	* global IO.  The level 3 cache type (L3Cache) can currently be MMap
-	* or File.  The number of buffer pool entries is controlled by the PoolBlocks
+	* or File or Cluster.  The number of buffer pool entries is controlled by the PoolBlocks
 	* property. 
 	* @param dbname Fully qualified path of DB
 	* @param create true to create the database if it does not exist
@@ -143,13 +146,26 @@ public class GlobalDBIO {
 	public GlobalDBIO(String dbname, boolean create, long transId) throws IOException {
 		this.transId = transId;
 		Name = dbname;
-		if (Props.toString("L3Cache").equals("MMap"))
+		// Set up the proper IO manager based on the execution model of cluster main cluster node or standalone
+		if (Props.toString("L3Cache").equals("MMap")) {
 			L3cache = 0;
-		else if (Props.toString("L3Cache").equals("File"))
+		} else {
+			if (Props.toString("L3Cache").equals("File")) {
 				L3cache = 1;
-			else
-				throw new IOException("Unsupported L3 cache type");
-		//
+			} else {
+					throw new IOException("Unsupported L3 cache type");
+			}
+		}
+
+		if (Props.toString("Model").equals("Cluster")) {
+			if( DEBUG )
+				System.out.println("Cluster Node IO Manager coming up...");
+			ioManager = new ClusterIOManager();
+		} else {
+			if( DEBUG )
+				System.out.println("Multithreaded IO Manager coming up...");
+			ioManager = new MultithreadedIOManager();
+		}
 		// set up locally buffered thread instances
 		tmpBai = new BlockAccessIndex(this);
 	    
@@ -291,6 +307,38 @@ public class GlobalDBIO {
 				s = new CObjectInputStream(Channels.newInputStream(rbc), sdbio.getCustomClassLoader());
 			else
 				s = new ObjectInputStream(Channels.newInputStream(rbc));
+			Od = s.readObject();
+			s.close();
+			bais.close();
+			rbc.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from buffer of length "
+					+ obuf.length);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
+
+	/**
+	* static method for serialized byte to object conversion
+	* @param sdbio The BlockDBIO which may contain a custom class loader to use
+	* @param obuf the byte buffer containing serialized data
+	* @return Object instance
+	* @exception IOException cannot convert
+	*/
+	public static Object deserializeObject(byte[] obuf) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			ByteArrayInputStream bais = new ByteArrayInputStream(obuf);
+			ReadableByteChannel rbc = Channels.newChannel(bais);
+			s = new ObjectInputStream(Channels.newInputStream(rbc));
 			Od = s.readObject();
 			s.close();
 			bais.close();
@@ -497,17 +545,9 @@ public class GlobalDBIO {
 	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		//if( DEBUG )
 		//	System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
-		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		IoInterface iodirect = ioManager.getIOWorker(tblsp);
 		// send write command and queues be damned, writes only happen
 		// immediately after log writes
-		synchronized(iodirect) {
-			iodirect.Fseek(offset);
-			tblk.writeUsed(iodirect);
-			tblk.setIncore(false);
-			iodirect.Fforce();
-		}
+		ioManager.FseekAndWrite(toffset, tblk);
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}	
 

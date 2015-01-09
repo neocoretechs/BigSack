@@ -5,10 +5,12 @@ import java.nio.channels.Channel;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
+import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
+import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 
-public class IOWorker implements Runnable, IoInterface {
+public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	private static final boolean DEBUG = false;
 	private IoInterface ioUnit;
 	private long nextFreeBlock = 0L;
@@ -16,10 +18,25 @@ public class IOWorker implements Runnable, IoInterface {
 	public boolean shouldRun = true;
 	private int tablespace; // 0-7
 	private String DBName;
-	
+	/**
+	 * Default Constructor. The purpose is to allow a cluster master to boot without
+	 * reference to the locally mapped IO subsystem. We handle UDP traffic to remote
+	 * node instead
+	 */
+	public IOWorker() {
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
+	}
+	/**
+	 * Create an IOWorker for the local store
+	 * @param name
+	 * @param tablespace
+	 * @param L3cache
+	 * @throws IOException
+	 */
 	public IOWorker(String name, int tablespace, int L3cache) throws IOException {
 		this.DBName = name;
 		this.tablespace = tablespace;
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
 		switch (L3cache) {
 			case 0 :
 				ioUnit = new MmapIO();
@@ -32,7 +49,7 @@ public class IOWorker implements Runnable, IoInterface {
 		}
 		if (!ioUnit.Fopen(DBName + "." + String.valueOf(tablespace), true))
 			throw new IOException("Cannot create tablespace!");
-		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
+
 	}
 
 	public long getNextFreeBlock() {
@@ -41,7 +58,9 @@ public class IOWorker implements Runnable, IoInterface {
 	public void setNextFreeBlock(long nextFreeBlock) {
 		this.nextFreeBlock = nextFreeBlock;
 	}
-	
+	public BlockingQueue<IoRequestInterface> getRequestQueue() {
+		return requestQueue;
+	}
 	/**
 	 * Queue a request on this worker, the request is assumed to be on this tablespace
 	 * once the request is processed, a notify is issued on the request object
@@ -73,6 +92,13 @@ public class IOWorker implements Runnable, IoInterface {
 			}
 		}
 
+	}
+	
+	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+		Fseek(toffset);
+		tblk.writeUsed(this);
+		tblk.setIncore(false);
+		Fforce();
 	}
 	
 	@Override
