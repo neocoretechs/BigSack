@@ -8,7 +8,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
-
+/**
+ * This Worker node serves as the queue processing thread for the UDPMaster
+ * instances. It takes requests from the queue and calls 'send' to ship them to the UDPMaster.
+ * Another difference is that a 'context' map of monotonic by worker id's to original request is maintained
+ * to be able to respond to latches waiting on the requests. In general, a wy to map responses to original request
+ * as the 'uuid' is passed around the cluster.
+ * @author jg
+ *
+ */
 public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	private static final boolean DEBUG = true;
 	protected UDPMaster ioUnit;

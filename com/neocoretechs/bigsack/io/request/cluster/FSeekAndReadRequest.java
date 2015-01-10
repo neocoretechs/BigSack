@@ -83,7 +83,7 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 	}
 	
 	public synchronized String toString() {
-		return getUUID()+",tablespace:"+tablespace+"FSeekAndReadRequest:"+offset;
+		return getUUID()+",tablespace:"+tablespace+" FSeekAndReadRequest:"+offset+" data: "+dblk;
 	}
 	/**
 	 * The latch will be extracted by the UDPMaster and when a response comes back it will be tripped

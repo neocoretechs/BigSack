@@ -118,6 +118,9 @@ public class UDPMaster implements Runnable {
 	   	     // set the return values in the original request to our values from remote workers
 	   	     ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
 	   	     ((CompletionLatchInterface)ior).setObjectReturn(iori.getObjectReturn());
+	   	     if( DEBUG ) {
+	   	    	 System.out.println("UDPMaster ready to count down latch with "+ior);
+	   	     }
 	   	     // now add to any latches awaiting
 	   	     CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
 	   	     cdl.countDown();
