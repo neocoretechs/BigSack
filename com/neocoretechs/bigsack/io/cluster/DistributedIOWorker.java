@@ -27,6 +27,8 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	protected String DBName;
 	private ConcurrentHashMap<Integer, IoRequestInterface> requestContext;
 	public DistributedIOWorker(String dbName, int tablespace, int masterPort, int slavePort) throws IOException {
+		this.DBName = dbName;
+		this.tablespace = tablespace;
 		requestContext = new ConcurrentHashMap<Integer,IoRequestInterface>(1024);
 		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
 		ioUnit =  new UDPMaster(dbName, tablespace, masterPort, slavePort, requestContext);

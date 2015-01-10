@@ -50,6 +50,10 @@ public class UDPWorker extends IOWorker {
 		} catch (UnknownHostException e) {
 			throw new RuntimeException("Bad remote master address:"+remoteMaster);
 		}
+		if( DEBUG ) {
+			System.out.println("Worker on port "+SLAVEPORT+" with master "+MASTERPORT+" database:"+dbname+
+					" tablespace "+tablespace+" address:"+IPAddress);
+		}
 	}
     
 	/**

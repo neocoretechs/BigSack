@@ -159,6 +159,9 @@ public final class ClusterIOManager implements IoManagerInterface {
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
+		// original request should contain object from response from remote worker
+		Datablock rblock = (Datablock) iori.getObjectReturn();
+		rblock.doClone(tblk);
 		// remove old requests
 		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
 	}
