@@ -44,3 +44,5 @@
 /WorkBoot.class
 /UDPMaster$1.class
 /WorkBootCommand.class
+/UDPWorkerRequestProcessor.class
+/UDPWorkerRequestProcessor.class

@@ -33,6 +33,7 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 	 * @throws IOException
 	 */
 	private void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
+		/*
 		if (ioUnit == null) {
 			throw new RuntimeException(
 				"FseekAndReadRequest tablespace null "
@@ -47,6 +48,7 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 					+ " = "
 					+ ioUnit);
 		}
+		*/
 		if (tblk.isIncore())
 					throw new RuntimeException(
 						"GlobalDBIO.FseekAndRead: block incore preempts read "

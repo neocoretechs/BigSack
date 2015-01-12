@@ -12,6 +12,7 @@ import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoResponseInterface;
+import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
 
@@ -30,8 +31,8 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
 public class UDPWorker extends IOWorker {
 	private static final boolean DEBUG = true;
 	private static boolean shouldRun = true;
-	private int MASTERPORT = 9876;
-	private int SLAVEPORT = 9876;
+	public int MASTERPORT = 9876;
+	public int SLAVEPORT = 9876;
 	public static String remoteMaster = "AMIMASTER";
     private byte[] receiveData = new byte[10000];
     private byte[] sendData;
@@ -50,6 +51,8 @@ public class UDPWorker extends IOWorker {
 		} catch (UnknownHostException e) {
 			throw new RuntimeException("Bad remote master address:"+remoteMaster);
 		}
+		// spin the request processor thread for the worker
+		ThreadPoolManager.getInstance().spin(new UDPWorkerRequestProcessor(this));
 		if( DEBUG ) {
 			System.out.println("Worker on port "+SLAVEPORT+" with master "+MASTERPORT+" database:"+dbname+
 					" tablespace "+tablespace+" address:"+IPAddress);
@@ -117,34 +120,8 @@ public class UDPWorker extends IOWorker {
 				// extract the serialized request
 				final CompletionLatchInterface iori = (CompletionLatchInterface) GlobalDBIO.deserializeObject(databytes);
 				iori.setIoInterface(this);
-				// Down here at the worker level we only need to set the countdown latch to 1
-				// because all operations are taking place on 1 tablespace and thread with coordination
-				// at the UDPMaster level otherwise
-				CountDownLatch cdl = new CountDownLatch(1);
-				iori.setCountDownLatch(cdl);
-				if( DEBUG ) {
-					System.out.println("port:"+SLAVEPORT+" data:"+iori);
-				}
-				// tablespace set before request comes down
-				iori.process();
-				try {
-					if( DEBUG )
-						System.out.println("port:"+SLAVEPORT+" avaiting countdown latch...");
-					cdl.await();
-				} catch (InterruptedException e) {
-				}
-				// we have flipped the latch from the request to the thread waiting here, so send an outbound response
-				// with the result of our work
-				if( DEBUG ) {
-					System.out.println("Local processing complete, queuing response to "+MASTERPORT);
-				}
-				IoResponse ioresp = new IoResponse(iori);
-				// And finally, send the package back up the line
-				queueResponse(ioresp);
-				if( DEBUG ) {
-					System.out.println("Response queued to "+IPAddress+" "+ioresp);
-				}
-				
+				// put the received request on the processing stack
+				getRequestQueue().add(iori);
 			} catch(IOException ioe) {
 				System.out.println("UDPWorker receive exception "+ioe+" on port "+SLAVEPORT);
 			}

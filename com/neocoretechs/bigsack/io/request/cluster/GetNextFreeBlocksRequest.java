@@ -8,14 +8,9 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**
- * This is an intent parallel computation component of a tablespace wide request.
- * We are using a CyclicBarrier set up with the number of tablepsaces and after each thread
- * computes the size of the tablespace it will await the barrier synch. 
- * Once released from barrier synch a countdown latch is decreased which activates the multi
- * threading IO manager countdown latch waiter when count reaches 0, thereby releasing the thread
- * to accumulate the results from each worker.
- * The barrier synch is present to achieve a consistent state upon the invocation of the 
- * final tally. 
+ * This is a cluster parallel computation component of a tablespace wide request.
+ * We forego the cyclicbarrier in favor of a countdownlatch that waits for responses from the
+ * available masters, after they have received the results from each cluster node.
  * Copyright (C) NeoCoreTechs 2014
  * @author jg
  *

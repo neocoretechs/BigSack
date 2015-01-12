@@ -36,6 +36,7 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 	 * @throws IOException
 	 */
 	private void FseekAndRead(long toffset, Datablock tblk) throws IOException {
+			/*
 			if (ioUnit == null) {
 				throw new RuntimeException(
 					"FseekAndReadRequest tablespace null "
@@ -50,6 +51,7 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 						+ " = "
 						+ ioUnit);
 			}
+			*/
 			if (tblk.isIncore())
 				throw new RuntimeException(
 					"FseekAndReadReuest block incore preempts read "

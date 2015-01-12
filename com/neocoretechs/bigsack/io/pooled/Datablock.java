@@ -257,12 +257,13 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
-
 		d.setWriteid(writeid);
 		d.setPageLSN(pageLSN);
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
-		d.setIncore(true);
+		d.setIncore(incore);
+		d.setInlog(inlog);
 	}
+	
 	public String toString() {
 		//String o = new String("Elems all 0");
 		//for(int i =0;i<datasize;i++) {

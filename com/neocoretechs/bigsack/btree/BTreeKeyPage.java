@@ -43,7 +43,7 @@ public class BTreeKeyPage implements Serializable {
 	static final long serialVersionUID = -2441425588886011772L;
 	static int MAXKEYS = DBPhysicalConstants.DATASIZE / 512; //4;
 	int numKeys = 0;
-	static final boolean DEBUG = false;
+	static final boolean DEBUG = true;
 
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")
@@ -202,6 +202,13 @@ public class BTreeKeyPage implements Serializable {
 	* @exception IOException If retrieval fails
 	*/
 	public BTreeKeyPage getPage(ObjectDBIO sdbio, int index) throws IOException {
+		if(false) {
+			System.out.println("Entering BTreeKeyPage with target index "+index);
+			for(int i = 0; i < pageIdArray.length; i++) {
+				System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
+				System.out.println(pageArray[i]);
+			}
+		}
 		if (pageArray[index] == null && pageIdArray[index] != -1L) {
 			// eligible to retrieve page
 			if( DEBUG ) {
@@ -209,11 +216,12 @@ public class BTreeKeyPage implements Serializable {
 			}
 			pageArray[index] =
 				(BTreeKeyPage) (sdbio.deserializeObject(pageIdArray[index]));
-			if( DEBUG ) {
-				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" page:"+pageArray[index]);
-			}
 			// set up all the transient fields
 			pageArray[index].pageId = pageIdArray[index];
+			if( DEBUG ) {
+				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" target page ID:"+GlobalDBIO.valueOf(pageArray[index].pageId));
+				for(int i = 0; i < pageIdArray.length; i++)System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
+			}
 			pageArray[index].pageArray = new BTreeKeyPage[MAXKEYS + 1];
 			pageArray[index].dataArray = new Object[MAXKEYS];
 			pageArray[index].dataUpdatedArray = new boolean[MAXKEYS];

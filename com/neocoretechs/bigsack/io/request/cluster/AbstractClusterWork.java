@@ -3,6 +3,8 @@ package com.neocoretechs.bigsack.io.request.cluster;
 
 import java.io.Serializable;
 
+import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
+
 
 /**
  * Provides access to a UUID to be carried through a request response sequence in the cluster
@@ -15,10 +17,9 @@ import java.io.Serializable;
 public abstract class AbstractClusterWork implements Serializable {
 	private static final long serialVersionUID = 2631644867376911342L;
 	private int u = 0;
-	private boolean response = true;
 	public AbstractClusterWork() {}
 	public int newUUID() {
-		 ++u;
+		 u = ClusterIOManager.getNextUUID();
 		 return u;
 	 }
 
@@ -26,19 +27,12 @@ public abstract class AbstractClusterWork implements Serializable {
 	public boolean equals(Object o) {
 			return u == ((AbstractClusterWork)o).getUUID();
 	}
-	
+	@Override
+	public int hashCode() {
+		return u;
+	}
 	public int getUUID() {
 		return u;
 	}
-	/**
-	 * Determine whether the master should compute/retain the Id of the request for processing a result.
-	 * If no result is expected, it will prevent the necessity of removing the Id of the request form the requestQueue
-	 * @return
-	 */
-	public boolean isResponse() {
-		return response;
-	}
-	
-	public void setResponse(boolean resp) { this.response = resp; }
 
 }

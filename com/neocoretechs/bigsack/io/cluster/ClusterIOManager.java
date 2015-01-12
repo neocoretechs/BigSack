@@ -39,6 +39,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
 	private static final boolean DEBUG = false;
 	private static int currentPort = 10000; // starting UDP port, increments as assigned
+	private static int messageSeq = 0; // monotonically increasing request id
 	final CyclicBarrier barrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	/**
 	 * Instantiate our master node array per database that communicate with our worker nodes
@@ -96,7 +97,10 @@ public final class ClusterIOManager implements IoManagerInterface {
 		}
 
 	}
-	
+	/**
+	 * Send the request to write the given block at the given location, with
+	 * the number of bytes used written
+	 */
 	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndWrite "+toffset);
@@ -104,11 +108,16 @@ public final class ClusterIOManager implements IoManagerInterface {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, offset, tblk);
-		// no need to wait, let the queue handle serialization
-		((AbstractClusterWork)iori).setResponse(false);
 		ioWorker[tblsp].queueRequest(iori);
+		try {
+			barrierCount.await();
+		} catch (InterruptedException e) {}
+		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
 	}
-	
+	/**
+	 * Send the request to write the entire contents of the given block at the location specified
+	 * Presents a guaranteed write of full block for file extension or other spacing operations
+	 */
 	public void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndWriteFully "+toffset);
@@ -116,8 +125,11 @@ public final class ClusterIOManager implements IoManagerInterface {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndWriteFullyRequest(barrierCount, offset, tblk);
-		((AbstractClusterWork)iori).setResponse(false);
 		ioWorker[tblsp].queueRequest(iori);
+		try {
+			barrierCount.await();
+		} catch (InterruptedException e) {}
+		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
 	}
 	/**
 	 * Queue a request to read int the passed block buffer 
@@ -308,5 +320,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	public IOWorkerInterface getIOWorker(int tblsp) {
 		return ioWorker[tblsp];
 	}
+	
+	public static int getNextUUID() { return ++messageSeq; }
 
 }
