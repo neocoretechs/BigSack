@@ -1,20 +1,26 @@
 package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.util.concurrent.CountDownLatch;
+import java.nio.ByteBuffer;
+import java.nio.channels.ByteChannel;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 
 import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoResponseInterface;
-import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
-import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
+
 
 /**
  * This class functions as the remote IOWorker 
@@ -28,22 +34,30 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  * @author jg
  *
  */
-public class UDPWorker extends IOWorker implements DistributedWorkerResponseInterface {
+public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface {
 	private static final boolean DEBUG = true;
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
 	public static String remoteMaster = "AMIMASTER";
-    private byte[] receiveData = new byte[10000];
     private byte[] sendData;
 	private InetAddress IPAddress = null;
+	//private Socket workerSocket;
+	private ServerSocketChannel workerSocketChannel;
+	private SocketAddress workerSocketAddress;
+	//private Socket masterSocket;
+	private SocketChannel masterSocketChannel;
+	private SocketAddress masterSocketAddress;
+	//private InputStream remoteInStream;
+	//private OutputStream remoteOutStream;
+	private ByteBuffer b = ByteBuffer.allocate(10000);
 	
-    public UDPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
+    public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
     	MASTERPORT= masterPort;
     	SLAVEPORT = slavePort;
 		try {
-			if(UDPMaster.TEST) {
+			if(TCPMaster.TEST) {
 				IPAddress = InetAddress.getLocalHost();
 			} else {
 				IPAddress = InetAddress.getByName(remoteMaster);
@@ -51,6 +65,13 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 		} catch (UnknownHostException e) {
 			throw new RuntimeException("Bad remote master address:"+remoteMaster);
 		}
+		masterSocketAddress = new InetSocketAddress(IPAddress, MASTERPORT);
+		masterSocketChannel = SocketChannel.open(masterSocketAddress);
+		// start listening on the required worker port
+		workerSocketAddress = new InetSocketAddress(SLAVEPORT);
+		workerSocketChannel = ServerSocketChannel.open();
+		workerSocketChannel.bind(workerSocketAddress);
+		//workerSocket = new ServerSocket(SLAVEPORT);
 		// spin the request processor thread for the worker
 		ThreadPoolManager.getInstance().spin(new WorkerRequestProcessor(this));
 		if( DEBUG ) {
@@ -67,30 +88,33 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 	 * @param irf
 	 */
 	public synchronized void queueResponse(IoResponseInterface irf) {
+	
 		if( DEBUG ) {
 			System.out.println("Adding response "+irf+" to outbound from worker to "+IPAddress+" port:"+MASTERPORT);
 		}
 		// set up senddata
-		DatagramSocket serverSocket = null;
 		try {
-			serverSocket = new DatagramSocket();
-			serverSocket.connect(IPAddress, MASTERPORT);
+			// connect to the master and establish persistent connec
+			/*
+			if( masterSocket == null ) {
+				masterSocket = new Socket(IPAddress, MASTERPORT);
+				remoteOutStream = masterSocket.getOutputStream();
+			}
+			sendData = GlobalDBIO.getObjectAsBytes(irf);
+			remoteOutStream.write(sendData);
+			remoteOutStream.flush();
+			*/
+			sendData = GlobalDBIO.getObjectAsBytes(irf);
+			ByteBuffer srcs = ByteBuffer.wrap(sendData);
+			masterSocketChannel.write(srcs);
+			//os.close();
 		} catch (SocketException e) {
 				System.out.println("Exception setting up socket to remote master port "+MASTERPORT+" on local port "+SLAVEPORT+" "+e);
-		}
-		try {
-			sendData = GlobalDBIO.getObjectAsBytes(irf);
+				throw new RuntimeException(e);
 		} catch (IOException e) {
-			System.out.println("UDPWorker queueResponse "+irf+" cant get serialized form due to "+e);
-		}
-		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, MASTERPORT);
-		try {
-			serverSocket.send(sendPacket);
-		} catch (IOException e) {
-			if( DEBUG )
 				System.out.println("Socket send error "+e+" to address "+IPAddress+" on port "+MASTERPORT);
+				throw new RuntimeException(e);
 		}
-		serverSocket.close();
 	}
 	/**
      * Spin the worker, get the tablespace from the cmdl param
@@ -99,33 +123,52 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
      */
 	public static void main(String args[]) throws Exception {
 		if( args.length < 4 ) {
-			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.UDPWorker [database] [tablespace] [master port] [slave port]");
+			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.TCPWorker [database] [tablespace] [master port] [slave port]");
 		}
 		// Use mmap mode 0
-		ThreadPoolManager.getInstance().spin(new UDPWorker(args[0], Integer.valueOf(args[1]), Integer.valueOf(args[2]), Integer.valueOf(args[3]), 0));
+		ThreadPoolManager.getInstance().spin(new TCPWorker(args[0], Integer.valueOf(args[1]), Integer.valueOf(args[2]), Integer.valueOf(args[3]), 0));
 	}
 	
 	@Override
 	public void run() {
+		//Socket s = null;
+		SocketChannel s = null;
+		try {
+			/*
+			s = workerSocket.accept();
+			remoteInStream = s.getInputStream();
+			*/
+			s = workerSocketChannel.accept();
+		} catch (IOException e) {
+			System.out.println("TCPWorker socket accept exception "+e+" on port "+SLAVEPORT);
+			return;
+		}
 		while(shouldRun) {
 			try {
-				DatagramSocket serverSocket = new DatagramSocket(SLAVEPORT);
-				DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-				serverSocket.receive(receivePacket);
-				byte[] databytes = receivePacket.getData();
-				serverSocket.close();
-				if( DEBUG ) {
-					System.out.println("FROM REMOTE on port:"+SLAVEPORT+" size:"+databytes.length);
-				}
+				s.read(b);
 				// extract the serialized request
-				final CompletionLatchInterface iori = (CompletionLatchInterface) GlobalDBIO.deserializeObject(databytes);
+				final CompletionLatchInterface iori = (CompletionLatchInterface)ClusterIOManager.deserializeObject(b);
+				//s.close();
+				if( DEBUG ) {
+					System.out.println("FROM REMOTE on port:"+SLAVEPORT+" "+iori);
+				}
 				iori.setIoInterface(this);
 				// put the received request on the processing stack
 				getRequestQueue().add(iori);
+				b.clear();
 			} catch(IOException ioe) {
-				System.out.println("UDPWorker receive exception "+ioe+" on port "+SLAVEPORT);
-			}
+				System.out.println("TCPWorker receive exception "+ioe+" on port "+SLAVEPORT);
+				break;
+			} 
 		}
+		// thread has been stopped by WorkBoot
+		try {
+			s.close();
+			masterSocketChannel.close();
+			workerSocketChannel.close();
+			//masterSocket.close();
+			//workerSocket.close();
+		} catch (IOException e) {}
 	}
 
 	@Override

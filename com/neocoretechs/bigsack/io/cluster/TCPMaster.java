@@ -1,14 +1,18 @@
 package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketAddress;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.Enumeration;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
@@ -24,7 +28,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * @author jg
  *
  */
-public class UDPMaster implements Runnable, MasterInterface {
+public class TCPMaster implements Runnable, MasterInterface {
 	private static final boolean DEBUG = true;
 	public static final boolean TEST = true;
 	private int MASTERPORT = 9876;
@@ -32,14 +36,22 @@ public class UDPMaster implements Runnable, MasterInterface {
 	private int WORKBOOTPORT = 8000;
 	private static String remoteWorker = "AMI";
 	private InetAddress IPAddress = null;
-	private DatagramSocket clientSocket;
+	//private ServerSocket clientSocket;
+	private Socket workerSocket = null;
+	private InputStream remoteInStream;
+    private OutputStream remoteOutStream;
+	private SocketChannel workerSocketChannel = null;
+	private SocketAddress workerSocketAddress;
+	//private Socket masterSocket;
+	private ServerSocketChannel masterSocketChannel;
+	private SocketAddress masterSocketAddress;
+	ByteBuffer b = ByteBuffer.allocate(10000);
 
 	private String DBName;
 	private int tablespace;
 	private boolean shouldRun = true;
 	private ConcurrentHashMap<Integer, IoRequestInterface> requestContext;
 	
-    private byte[] receiveData = new byte[10000];
 	/**
 	 * Start a master cluster node. The database, tablespace, and listener port are assigned
 	 * by the respective IO manager. The request queue and mapping from request id to original request hashmap
@@ -52,7 +64,7 @@ public class UDPMaster implements Runnable, MasterInterface {
 	 * @param requestContext
 	 * @throws IOException
 	 */
-	public UDPMaster(String dbName, int tablespace, int masterPort, int slavePort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
+	public TCPMaster(String dbName, int tablespace, int masterPort, int slavePort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
 		this.DBName = dbName;
 		this.tablespace = tablespace;
 		this.MASTERPORT = masterPort;
@@ -64,30 +76,28 @@ public class UDPMaster implements Runnable, MasterInterface {
 			IPAddress = InetAddress.getByName(remoteWorker+String.valueOf(tablespace));
 		}
 		if( DEBUG ) {
-			System.out.println("UDPMaster constructed with "+DBName+" "+tablespace+" master port:"+masterPort+" slave:"+slavePort);
+			System.out.println("TCPMaster constructed with "+DBName+" "+tablespace+" master port:"+masterPort+" slave:"+slavePort);
 		}
-		 clientSocket = new DatagramSocket(MASTERPORT);
-	
+		masterSocketAddress = new InetSocketAddress(MASTERPORT);
+		masterSocketChannel = ServerSocketChannel.open();
+		masterSocketChannel.bind(masterSocketAddress);
+		
+		// start listening on the required worker port
+		//clientSocket = new ServerSocket(MASTERPORT);
 	}
 	
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#setMasterPort(int)
-	 */
-	@Override
 	public void setMasterPort(int port) {
 		MASTERPORT = port;
 	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#setSlavePort(int)
-	 */
-	@Override
 	public void setSlavePort(int port) {
 		SLAVEPORT = port;
 	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#setRemoteWorkerName(java.lang.String)
+	/**
+	 * Set the prefix name of the remote worker node that this master communicates with
+	 * This name plus the tablespace identifies each individual worker node
+	 * In test mode, the local host is used for workers and master
+	 * @param rname
 	 */
-	@Override
 	public synchronized void setRemoteWorkerName(String rname) {
 		remoteWorker = rname;
 	}
@@ -98,19 +108,28 @@ public class UDPMaster implements Runnable, MasterInterface {
 	 */
 	@Override
 	public void run() {
+  	    SocketChannel sock;
+		try {
+			//sock = clientSocket.accept();
+			//remoteInStream = sock.getInputStream();
+			sock = masterSocketChannel.accept();
+		} catch (IOException e1) {
+			System.out.println("TCPMaster server socket accept failed with "+e1);
+			return;
+		}
+  	     if( DEBUG ) {
+  	    	 System.out.println("TCPMaster got connection "+sock);
+  	     }
 		while(shouldRun ) {
-	      //DatagramSocket clientSocket;
 			try {
-			 //clientSocket = new DatagramSocket(MASTERPORT);
-	   	     DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-	   	     clientSocket.receive(receivePacket);
-	   	     byte[] b = receivePacket.getData();
-	   	     IoResponseInterface iori = (IoResponseInterface) GlobalDBIO.deserializeObject(b);
+	   	     //sock.setPerformancePreferences(0,1,2);
+	   	     //IoResponseInterface iori = (IoResponseInterface) ClusterIOManager.deserializeObject(remoteInStream);
+			 sock.read(b);
+			 IoResponseInterface iori = (IoResponseInterface) ClusterIOManager.deserializeObject(b);
 	   	     // get the original request from the stored table
 	   	     IoRequestInterface ior = requestContext.get(iori.getUUID());
 	   	     if( DEBUG )
-	   	    	 System.out.println("FROM Remote, size:" + b.length+" response:"+iori+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
-	   	     //clientSocket.close();
+	   	    	 System.out.println("FROM Remote, response:"+iori+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
 	   	     //
 	   	     if( DEBUG ) {
 	   	    	 System.out.println("Extracting latch from original request:"+ior);
@@ -125,47 +144,59 @@ public class UDPMaster implements Runnable, MasterInterface {
 	   	     ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
 	   	     ((CompletionLatchInterface)ior).setObjectReturn(iori.getObjectReturn());
 	   	     if( DEBUG ) {
-	   	    	 System.out.println("UDPMaster ready to count down latch with "+ior);
+	   	    	 System.out.println("TCPMaster ready to count down latch with "+ior);
 	   	     }
 	   	     // now add to any latches awaiting
 	   	     CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
 	   	     cdl.countDown();
+	   	     b.clear();
 			} catch (SocketException e) {
-					System.out.println("UDPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+					System.out.println("TCPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+					break;
 			} catch (IOException e) {
-					System.out.println("UDPMaster receive IO error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+					System.out.println("TCPMaster receive IO error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+					break;
 			}
 	      }	
 	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#send(com.neocoretechs.bigsack.io.request.IoRequestInterface)
+	/**
+	 * Send request to remote worker
+	 * @param iori
 	 */
-	@Override
 	public void send(IoRequestInterface iori) {
-	try {	
 	    byte[] sendData;
-	    DatagramSocket clientSocket;
-		sendData = GlobalDBIO.getObjectAsBytes(iori);
-		clientSocket = new DatagramSocket();
-	    //clientSocket.connect(IPAddress,  SLAVEPORT);
-	    if( DEBUG ) 
-	     		System.out.println("Sending datagram to "+IPAddress+" port "+SLAVEPORT+" of length "+sendData.length);
-	    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, SLAVEPORT);
-	    if( DEBUG ) 
-     		System.out.println("Datagram sent to "+IPAddress+" port "+SLAVEPORT+" of length "+sendData.length);
-	    clientSocket.send(sendPacket);
-	    clientSocket.close();
-	} catch (SocketException e) {
-		System.out.println("UDPMaster send socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);		
-	}  catch (IOException e) {
-		System.out.println("UDPMaster send IO error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);	
-	}
+		try {
+			/*
+			if( workerSocket == null ) {
+				workerSocket = new Socket(IPAddress, SLAVEPORT);
+				remoteOutStream = workerSocket.getOutputStream();
+			}
+			*/
+			if(workerSocketChannel == null ) {
+				workerSocketAddress = new InetSocketAddress(IPAddress, SLAVEPORT);
+				workerSocketChannel = SocketChannel.open(workerSocketAddress);
+			}
+			sendData = GlobalDBIO.getObjectAsBytes(iori);
+			ByteBuffer srcs = ByteBuffer.wrap(sendData);
+			workerSocketChannel.write(srcs);
+			//remoteOutStream.write(sendData);
+			//remoteOutStream.flush();
+			//os.close();
+		} catch (SocketException e) {
+				System.out.println("Exception setting up socket to remote worker port "+SLAVEPORT+" "+e);
+		} catch (IOException e) {
+				System.out.println("Socket send error "+e+" to address "+IPAddress+" on port "+SLAVEPORT);
+		}
 	}
 	
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#Fopen(java.lang.String, boolean)
+	/**
+	 * Open a socket to the remote worker located at 'remoteWorker' with the tablespace appended
+	 * so each node is named [remoteWorker]0 [remoteWorker]1 etc
+	 * @param fname
+	 * @param create
+	 * @return
+	 * @throws IOException
 	 */
-	@Override
 	public boolean Fopen(String fname, boolean create) throws IOException {
 		// send a remote Fopen request to the node
 		// this consists of sending the running WorkBoot a message to start the worker for a particular
@@ -177,7 +208,7 @@ public class UDPMaster implements Runnable, MasterInterface {
 		cpi.setTablespace(tablespace);
 		cpi.setMasterPort(MASTERPORT);
 		cpi.setSlavePort(SLAVEPORT);
-		cpi.setTransport("UDP");
+		cpi.setTransport("TCP");
 		os.write(GlobalDBIO.getObjectAsBytes(cpi));
 		os.flush();
 		os.close();

@@ -1,6 +1,13 @@
 package com.neocoretechs.bigsack.io.cluster;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.ByteChannel;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
@@ -22,6 +29,7 @@ import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlocksRequest;
 import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
+
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
  * In this incarnation the IOWorkers are subclassed to UDPMaster which handles traffic down to 
@@ -56,7 +64,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* @return The block available as a real, not virtual block
 	* @exception IOException if IO problem
 	*/
-	public long getNextFreeBlock(int tblsp) throws IOException {
+	public synchronized long getNextFreeBlock(int tblsp) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
@@ -101,7 +109,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * Send the request to write the given block at the given location, with
 	 * the number of bytes used written
 	 */
-	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndWrite "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -118,7 +126,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * Send the request to write the entire contents of the given block at the location specified
 	 * Presents a guaranteed write of full block for file extension or other spacing operations
 	 */
-	public void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
+	public synchronized void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndWriteFully "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -181,7 +189,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* Set the initial free blocks after buckets created or bucket initial state
 	* Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
 	*/
-	public void setNextFreeBlocks() {
+	public synchronized void setNextFreeBlocks() {
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 			if (i == 0)
 				nextFree[i] = ((long) DBPhysicalConstants.DBLOCKSIZ);
@@ -203,7 +211,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* @return tablespace
 	* @exception IOException if seeking new tablespace or creating fails
 	*/
-	public int findSmallestTablespace() throws IOException {
+	public synchronized int findSmallestTablespace() throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.findSmallestTablespace ");
 		// always make sure we have primary
@@ -245,7 +253,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* @return true if successful
 	* @see IoInterface
 	*/
-	public boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
+	public synchronized boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
 		for (int i = 0; i < ioWorker.length; i++) {
 			if (ioWorker[i] == null) {
@@ -261,10 +269,10 @@ public final class ClusterIOManager implements IoManagerInterface {
 	}
 	
 	
- 	public void Fopen() throws IOException {
+ 	public synchronized void Fopen() throws IOException {
 	}
 	
-	public void Fclose() throws IOException {
+	public synchronized void Fclose() throws IOException {
 		for (int i = 0; i < ioWorker.length; i++)
 			if (ioWorker[i] != null ) {
 				if( ioWorker[i].getRequestQueueLength() != 0 )
@@ -275,7 +283,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		Fforce();
 	}
 	
-	public void Fforce() throws IOException {
+	public synchronized void Fforce() throws IOException {
 		if( DEBUG ) {
 			System.out.println("ClusterIOManager.Fforce ");
 		}
@@ -295,7 +303,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		}
 	}
 	
-	public boolean isNew() {
+	public synchronized boolean isNew() {
 		try {
 			return FisNew(0);
 		} catch (IOException e) {
@@ -322,5 +330,70 @@ public final class ClusterIOManager implements IoManagerInterface {
 	}
 	
 	public static int getNextUUID() { return ++messageSeq; }
+	
+	public static Object deserializeObject(InputStream is) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			ReadableByteChannel rbc = Channels.newChannel(is);
+			s = new ObjectInputStream(Channels.newInputStream(rbc));
+			Od = s.readObject();
+			s.close();
+			rbc.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from inputstream "
+					+ is);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
+	public static Object deserializeObject(ByteChannel rbc) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			s = new ObjectInputStream(Channels.newInputStream(rbc));
+			Od = s.readObject();
+			s.close();
+			rbc.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteChannel "
+					+ rbc);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
+	public static Object deserializeObject(ByteBuffer bb) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			byte[] ba = bb.array();
+			s = new ObjectInputStream(new ByteArrayInputStream(ba));
+			Od = s.readObject();
+			s.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteChannel "
+					+ bb);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
 
 }

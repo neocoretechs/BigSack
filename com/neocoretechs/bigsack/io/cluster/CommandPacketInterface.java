@@ -17,4 +17,6 @@ public interface CommandPacketInterface extends Serializable {
 	public int getSlavePort();
 	public void setMasterPort(int port);
 	public void setSlavePort(int port);
+	public String getTransport();
+	public void setTransport(String transport);
 }

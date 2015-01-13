@@ -46,3 +46,8 @@
 /WorkBootCommand.class
 /UDPWorkerRequestProcessor.class
 /UDPWorkerRequestProcessor.class
+/TCPMaster.class
+/WorkerRequestProcessor.class
+/MasterInterface.class
+/TCPWorker.class
+/DistributedWorkerResponseInterface.class

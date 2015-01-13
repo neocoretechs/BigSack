@@ -43,7 +43,7 @@ public class BTreeKeyPage implements Serializable {
 	static final long serialVersionUID = -2441425588886011772L;
 	static int MAXKEYS = DBPhysicalConstants.DATASIZE / 512; //4;
 	int numKeys = 0;
-	static final boolean DEBUG = true;
+	static final boolean DEBUG = false;
 
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")

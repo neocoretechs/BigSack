@@ -15,6 +15,7 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 	private int tablespace;
 	private int masterPort;
 	private int slavePort;
+	private String transport;
 	
 	public WorkBootCommand(){}
 	
@@ -44,7 +45,7 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 	}
 	@Override
 	public String toString() {
-		return database+" tablespace:"+tablespace+" master port:"+masterPort+" slave:"+slavePort;
+		return database+" tablespace:"+tablespace+" master port:"+masterPort+" slave:"+slavePort+" transport "+transport;
 	}
 	@Override
 	public int getSlavePort() {
@@ -53,6 +54,16 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 	@Override
 	public void setSlavePort(int port) {
 			this.slavePort = port;	
+	}
+
+	@Override
+	public String getTransport() {
+		return transport;
+	}
+
+	@Override
+	public void setTransport(String transport) {
+		this.transport = transport;	
 	}
 	
 }

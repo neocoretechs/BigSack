@@ -1,27 +1,18 @@
 package com.neocoretechs.bigsack.io.pooled;
 import java.io.*;
-import java.nio.ByteBuffer;
+
 import java.nio.channels.*;
 import java.util.*;
-import java.util.Map.Entry;
-import java.util.concurrent.CountDownLatch;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
-import com.neocoretechs.bigsack.io.FileIO;
-import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
-import com.neocoretechs.bigsack.io.MmapIO;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLog;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
-import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
-import com.neocoretechs.bigsack.io.request.FSeekAndWriteFullyRequest;
-import com.neocoretechs.bigsack.io.request.FSeekAndWriteRequest;
-import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 /*
@@ -157,7 +148,7 @@ public class GlobalDBIO {
 			}
 		}
 
-		if (Props.toString("Model").equals("Cluster")) {
+		if (Props.toString("Model").startsWith("Cluster")) {
 			if( DEBUG )
 				System.out.println("Cluster Node IO Manager coming up...");
 			ioManager = new ClusterIOManager();

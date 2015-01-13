@@ -5,21 +5,23 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
 /**
- * This Worker node serves as the queue processing thread for the UDPMaster
- * instances. It takes requests from the queue and calls 'send' to ship them to the UDPMaster.
+ * This Worker node serves as the queue processing thread for the MasterInterface implementors.
+ * UDPMsster and TCPMaster are two examples of the implementors of this interface.
+ * It takes requests from the queue and calls 'send' to ship them to the MasterInterface.
  * Another difference is that a 'context' map of monotonic by worker id's to original request is maintained
- * to be able to respond to latches waiting on the requests. In general, a wy to map responses to original request
+ * to be able to respond to latches waiting on the requests. In general, a way to map responses to original request
  * as the 'uuid' is passed around the cluster.
  * @author jg
  *
  */
 public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	private static final boolean DEBUG = true;
-	protected UDPMaster ioUnit;
+	protected MasterInterface ioUnit;
 	private long nextFreeBlock = 0L;
 	private BlockingQueue<IoRequestInterface> requestQueue;
 	public boolean shouldRun = true;
@@ -31,10 +33,19 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 		this.tablespace = tablespace;
 		requestContext = new ConcurrentHashMap<Integer,IoRequestInterface>(1024);
 		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
-		ioUnit =  new UDPMaster(dbName, tablespace, masterPort, slavePort, requestContext);
-		ThreadPoolManager.getInstance().spin(ioUnit);
-		//ioUnit.Fopen(dbName, true);
-		ioUnit.Fopen(dbName, false);
+		if (Props.toString("Model").endsWith("UDP")) {
+			if( DEBUG )
+				System.out.println("Cluster Transport UDP...");
+			ioUnit =  new UDPMaster(dbName, tablespace, masterPort, slavePort, requestContext);
+		} else {
+			if( DEBUG )
+				System.out.println("Cluster Transport TCP...");
+			ioUnit =  new TCPMaster(dbName, tablespace, masterPort, slavePort, requestContext);
+		}
+	
+		ThreadPoolManager.getInstance().spin((Runnable) ioUnit);
+		ioUnit.Fopen(dbName, true);
+		//ioUnit.Fopen(dbName, false);
 		
 	}
 	/**

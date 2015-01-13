@@ -4,7 +4,9 @@ import java.io.File;
 import java.io.ObjectInputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.util.concurrent.ConcurrentHashMap;
 
+import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 /**
  * Get an UDP address down, at the master we coordinate the assignment of UDP addresses
@@ -14,9 +16,10 @@ import com.neocoretechs.bigsack.io.ThreadPoolManager;
  * @author jg
  *
  */
-public class WorkBoot extends TCPServer {
+public final class WorkBoot extends TCPServer {
 	private static boolean DEBUG = true;
 	public static int port = 8000;
+	private ConcurrentHashMap<String, IOWorker> dbToWorker = new ConcurrentHashMap<String, IOWorker>();
 	/**
 	 * Spin the worker, get the tablespace from the cmdl param
 	 * @param args
@@ -52,10 +55,23 @@ public class WorkBoot extends TCPServer {
                     db = (new File(db)).toPath().getParent().toString() + File.separator +
                     		"tablespace"+String.valueOf(o.getTablespace()) + File.separator +
                     		(new File(o.getDatabase()).getName());
-            		ThreadPoolManager.getInstance().spin(new UDPWorker(db, o.getTablespace(), o.getMasterPort(), o.getSlavePort(), 0));
-            		if( DEBUG ) {
-            			System.out.println("WorkBoot starting new worker "+db+" tablespace "+o.getTablespace()+" master port:"+o.getMasterPort()+" slave port:"+o.getSlavePort());
-            		}
+                    // determine if this worker has started, if so, cancel thread and start a new one.
+                    IOWorker uworker = null;
+                    if( (uworker = dbToWorker.get(db)) != null ) {
+                    	uworker.shouldRun = false;
+                    }
+                    // bring up TCP or UDP worker
+                    if(o.getTransport().equals("UDP")) {
+                    	uworker = new UDPWorker(db, o.getTablespace(), o.getMasterPort(), o.getSlavePort(), 0);
+                    } else {
+                    	uworker = new TCPWorker(db, o.getTablespace(), o.getMasterPort(), o.getSlavePort(), 0);
+                    }
+                    	
+                    dbToWorker.put(db, uworker);
+                    ThreadPoolManager.getInstance().spin(uworker);
+                    if( DEBUG ) {
+                    		System.out.println("WorkBoot starting new worker "+db+" tablespace "+o.getTablespace()+" master port:"+o.getMasterPort()+" slave port:"+o.getSlavePort());
+                    }	
 				} catch(Exception e) {
                     System.out.println("TCPServer socket accept exception "+e);
                     System.out.println(e.getMessage());

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 
+import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
@@ -13,14 +14,14 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  * @author jg
  *
  */
-public final class UDPWorkerRequestProcessor implements Runnable {
+public final class WorkerRequestProcessor implements Runnable {
 	private BlockingQueue<IoRequestInterface> requestQueue;
-	private UDPWorker worker;
+	private DistributedWorkerResponseInterface worker;
 	private boolean shouldRun = true;
 	private static boolean DEBUG = true;
-	public UDPWorkerRequestProcessor(UDPWorker worker) {
+	public WorkerRequestProcessor(DistributedWorkerResponseInterface worker) {
 		this.worker = worker;
-		requestQueue = worker.getRequestQueue();
+		requestQueue = ((IOWorker)worker).getRequestQueue();
 	}
 	@Override
 	public void run() {
@@ -35,7 +36,7 @@ public final class UDPWorkerRequestProcessor implements Runnable {
 		CountDownLatch cdl = new CountDownLatch(1);
 		((CompletionLatchInterface)iori).setCountDownLatch(cdl);
 		if( DEBUG  ) {
-			System.out.println("port:"+worker.SLAVEPORT+" data:"+iori);
+			System.out.println("port:"+worker.getSlavePort()+" data:"+iori);
 		}
 		// tablespace set before request comes down
 		
@@ -43,13 +44,13 @@ public final class UDPWorkerRequestProcessor implements Runnable {
 			iori.process();
 			try {
 				if( DEBUG )
-					System.out.println("port:"+worker.SLAVEPORT+" avaiting countdown latch...");
+					System.out.println("port:"+worker.getSlavePort()+" avaiting countdown latch...");
 				cdl.await();
 			} catch (InterruptedException e) {}
 			// we have flipped the latch from the request to the thread waiting here, so send an outbound response
 			// with the result of our work if a response is required
 			if( DEBUG ) {
-				System.out.println("Local processing complete, queuing response to "+worker.MASTERPORT);
+				System.out.println("Local processing complete, queuing response to "+worker.getMasterPort());
 			}
 			IoResponse ioresp = new IoResponse(iori);
 			// And finally, send the package back up the line
@@ -59,7 +60,7 @@ public final class UDPWorkerRequestProcessor implements Runnable {
 			}
 		} catch (IOException e1) {
 			if( DEBUG ) {
-				System.out.println("***Local processing EXCEPTION "+e1+", queuing fault to "+worker.MASTERPORT);
+				System.out.println("***Local processing EXCEPTION "+e1+", queuing fault to "+worker.getMasterPort());
 			}
 			((CompletionLatchInterface)iori).setObjectReturn(e1);
 			IoResponse ioresp = new IoResponse(iori);
