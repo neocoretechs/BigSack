@@ -20,7 +20,7 @@ import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
  *
  */
 public class DistributedIOWorker implements IOWorkerInterface, Runnable {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	protected MasterInterface ioUnit;
 	private long nextFreeBlock = 0L;
 	private BlockingQueue<IoRequestInterface> requestQueue;

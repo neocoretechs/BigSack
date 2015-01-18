@@ -156,6 +156,12 @@ import java.util.zip.CRC32;
 
 public final class LogToFile implements LogFactory, java.security.PrivilegedExceptionAction
 {
+	private static final boolean DEBUG = true;
+	private static final boolean DUMPLOG = false;
+	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
+	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
+	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
+	
 	private static final long INT_LENGTH = 4L;
 	private static final int FILE_STREAM_LOG_FILE = 0;
 	private static int fid = 1; 
@@ -176,11 +182,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	// Number of bytes overhead of each log record.
 	// 4 bytes of length at the beginning, 8 bytes of log instance,4 bytes ending length for backwards scan
 	public static final int LOG_RECORD_OVERHEAD = 16;
-	private static final boolean DEBUG = false;
-	private static final boolean DUMPLOG = false;
-	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
-	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
-	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
 	private static final boolean MEASURE = false;
 
 	protected static final String LOG_SYNC_STATISTICS = "LogSyncStatistics";
@@ -571,28 +572,30 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				long undoLWM     = LogCounter.INVALID_LOG_INSTANCE;
 
 				StreamLogScan redoScan = null;
-				
+				/*
+				 * If a checkpoint was located then determine first log from there
+				 * if not, get it from the boot time file number
+				 * Open a redo scan from that point on
+				 */
 				if (currentCheckpoint != null) {
 					redoLWM = currentCheckpoint.redoLWM();
 					undoLWM = currentCheckpoint.undoLWM();
 					//if (DEBUG)
 					//{
-						System.out.println("LogToFile.Recover Found checkpoint at " + LogCounter.toDebugString(checkpointInstance) + 
+						System.out.println("LogToFile.recover FOUND CHECKPOINT at " + LogCounter.toDebugString(checkpointInstance) + 
                           " " + currentCheckpoint.toString());
 					//}
 
 					setFirstLogFileNumber(LogCounter.getLogFileNumber(redoLWM));
 
-					// figure out where the first interesting log file is.
+					// If the undo LWM file number is less than first log reported
+					// set the first log to the undoLWM file
 					if (LogCounter.getLogFileNumber(undoLWM) <  getFirstLogFileNumber())
                     {
 						setFirstLogFileNumber(LogCounter.getLogFileNumber(undoLWM));
                     }
 
-					// if the checkpoint record doesn't have a transaction
-					// table, we need to rebuild it by scanning the log from
-					// the undoLWM.  If it does have a transaction table, we
-					// only need to scan the log from the redoLWM
+					// and open the scan forward from the undo LWM
 					redoScan = (StreamLogScan)openForwardScan(undoLWM, (LogInstance)null);
 				}
 				else
@@ -604,7 +607,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
                     // file - assume this is the first log file
 					setFirstLogFileNumber(bootTimeLogFileNumber);
 					//if( DEBUG ) {
-						System.out.println("LogToFile.recover No checkpoint, starting redo from "+bootTimeLogFileNumber+" @ "+LogCounter.toDebugString(start));
+						System.out.println("LogToFile.recover NO CHECKPOINT, starting redo from "+bootTimeLogFileNumber+" @ "+LogCounter.toDebugString(start));
 					//}
 					redoScan = (StreamLogScan)openForwardScan(start, (LogInstance)null);
 				}
@@ -744,7 +747,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						//
 						//find out if log had incomplete log records at the end.
 					if (redoScan.isLogEndFuzzy()) {
-						System.out.println("Fuzzy log end detected, best effort to zero fuzz..");
+						System.out.println("Fuzzy log end detected, best effort to zero fuzz starting at "+endPosition);
 							theLog.seek(endPosition);
 							long eof = theLog.length();
 
@@ -752,7 +755,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 							long nWrites = (eof - endPosition)/logBufferSize;
 							int rBytes = (int)((eof - endPosition) % logBufferSize);
 							byte zeroBuf[]= new byte[logBufferSize];
-							
+							System.out.println("Fuzzy EOF at:"+eof+" buffer size:"+logBufferSize+" nWrites="+nWrites+" rBytes="+rBytes);
 							//write the zeros to file
 							while(nWrites-- > 0)
 								theLog.write(zeroBuf);
@@ -997,10 +1000,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * @throws IllegalAccessException 
 	*/
 
-	public boolean checkpoint(boolean wait) throws IOException, IllegalAccessException {
+	public synchronized boolean checkpoint(boolean wait) throws IOException, IllegalAccessException {
 		if( DEBUG ) 
-			System.out.println("Checkpoint! wait:"+wait+" logOut "+logOut+" corrupt:"+corrupt+" incheckpoint:"+inCheckpoint);
-		LogInstance  redoLWM;
+			System.out.println("Checkpoint! wait:"+wait+" logOut "+logOut+" corrupt:"+corrupt+" incheckpoint:"+inCheckpoint+" end pos:"+endPosition);
+		//LogInstance  redoLWM;
         // we may be called to stop the database after a bad error, make sure
 		// logout is set
 		if (logOut == null)
@@ -1011,28 +1014,21 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		boolean proceed = true;
         do
         {
-            synchronized (this)
-            {
-                if (corrupt != null)
-                {
-                    // someone else found a problem in the raw store.  
-                    throw new IOException(corrupt);
-                }
-                approxLogLength = endPosition; // current end position
-                if (!inCheckpoint)
-                {
+        	if (corrupt != null) {
+                // someone else found a problem in the raw store.  
+                throw new IOException(corrupt);
+            }
+            approxLogLength = endPosition; // current end position
+            if (!inCheckpoint) {
                     // no checkpoint in progress, change status to indicate
                     // this code is doing the checkpoint.
                     inCheckpoint = true;
                     // break out of loop and continue to execute checkpoint
                     // in this routine.
                     break;
-                }
-                else
-                {
+            } else {
                     // There is a checkpoint in progress.
-                    if (wait)
-                    {
+                    if (wait) {
                         // wait until the thread executing the checkpoint 
                         // completes.
                         // In some cases like backup and compress it is not 
@@ -1056,11 +1052,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
                             try
                             {
                                 wait();
-                            }	
-                            catch (InterruptedException ie)
-                            {
-                                
-                            }	
+                            } catch (InterruptedException ie){}	
                         }
                     }
                     else
@@ -1071,25 +1063,24 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
                         proceed = false;
                     }
                 }
-                // don't return from inside of a sync block
-            }
         } while (proceed);
 
 		if (!proceed)
 		{
 			return false;
 		}
-
-
-		if (DEBUG)
-		{
-				System.out.println("Switching log file: Approx log length = " + approxLogLength + " logSwitchInterval = "+logSwitchInterval);
+		
+		if (DEBUG) {
+				System.out.println("LogToFile.checkpoint Switching log file: Approx log length = " + approxLogLength + " logSwitchInterval = "+logSwitchInterval);
 		}
 
 		try
 		{
-			if (approxLogLength > logSwitchInterval)
-			{
+			if (approxLogLength > logSwitchInterval) {
+				if (DEBUG)
+				{
+						System.out.println("LogToFile.checkpoint Switching log file: Approx log length = " + approxLogLength + " logSwitchInterval = "+logSwitchInterval);
+				}
 				switchLogFile();
 
 				//log switch is occurring in conjunction with the 
@@ -1117,28 +1108,22 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			long undoLWM_long;
 			long redoLWM_long;
 
-			synchronized(this)	// we could synchronized on something else, it
-				// doesn't matter as long as logAndDo sync on
-				// the same thing
-			{
-				// The redo LWM is the current log instance.  We are going to 
-                // clean the cache shortly, any log record before this point 
-                // will not ever need to be redone.
-				redoLWM_long = currentInstance();
-				redoLWM = new LogCounter(redoLWM_long);
+			// The redo LWM is the current log instance.  We are going to 
+            // clean the cache shortly, any log record before this point 
+            // will not ever need to be redone.
+			redoLWM_long = currentInstance();
+			//redoLWM = new LogCounter(redoLWM_long);
 
-                // The undo LWM is what we need to rollback all transactions.
-                // Synchronize this with the starting of a new transaction so 
-                // that the transaction factory can have a consistent view
-                // See FileLogger.logAndDo
+            // The undo LWM is what we need to rollback all transactions.
+            // Synchronize this with the starting of a new transaction so 
+            // that the transaction factory can have a consistent view
+            // See FileLogger.logAndDo
 
-				//LogCounter undoLWM = (LogCounter)(tf.firstUpdateInstant());
-				//if (undoLWM == null)
-					undoLWM_long = redoLWM_long; // no active transaction 
-				//else
-				//	undoLWM_long = undoLWM.getValueAsLong();
-
-			}
+			//LogCounter undoLWM = (LogCounter)(tf.firstUpdateInstant());
+			//if (undoLWM == null)
+			undoLWM_long = redoLWM_long; // since we are handling essentially one transaction at a time we reserve this 
+			//else
+			//	undoLWM_long = undoLWM.getValueAsLong();
 
 			/////////////////////////////////////////////////////
 			// clean the buffer cache
@@ -1171,9 +1156,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			// write out the log control file which contains the last
 			// successful checkpoint log record
 			/////////////////////////////////////////////////////
-
-			if (!writeControlFile(getControlFileName(),
-								  checkpointInstance.getValueAsLong()))
+			if (!writeControlFile(getControlFileName(), checkpointInstance.getValueAsLong()))
 			{
 				throw new IOException(getControlFileName().getName());
 			}
@@ -1193,11 +1176,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		}
 		finally 
 		{
-			synchronized(this)
-			{
-				inCheckpoint = false;
-				notifyAll();
-			}
+			inCheckpoint = false;
+			notifyAll();
 
 		}
 		return true;
@@ -1360,57 +1340,36 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		<P>MT - log factory is single threaded thru a log file switch, the log
 		is frozen for the duration of the switch
 	*/
-	public void switchLogFile() throws IOException
+	public synchronized void switchLogFile() throws IOException
 	{
 		if( DEBUG ) System.out.println("Switch log file. logBeingFlushed:"+logBeingFlushed+" frozen:"+isFrozen);
 		boolean switchedOver = false;
-
-		/////////////////////////////////////////////////////
-		// Freeze the log for the switch over to a new log file.
-		// This blocks out any other threads from sending log
-		// record to the log stream.
-		// 
-		// The switching of the log file and checkpoint are really
-		// independent events, they are tied together just because a
-		// checkpoint is the natural place to switch the log and vice
-		// versa.  This could happen before the cache is flushed or
-		// after the checkpoint log record is written.
-		/////////////////////////////////////////////////////
-		synchronized (this) {
-
-			// Make sure that this thread of control is guaranteed to complete
-            // it's work of switching the log file without having to give up
-            // the semaphore to a backup or another flusher.  Do this by looping
-            // until we have the semaphore, the log is not being flushed, and
-            // the log is not frozen for backup.  Track (2985). 
-			while(logBeingFlushed | isFrozen) {
+		while(logBeingFlushed | isFrozen) {
 				try {
 					wait();
 				}
 				catch (InterruptedException ie) {}	
-			}
+		}
 
-			// we have an empty log file here, refuse to switch.
-			if (endPosition == LOG_FILE_HEADER_SIZE)
-			{
-				//if (DEBUG)
-				//{
-					System.out.println("LogToFile.switchLogFile not switching from an empty log file (" + logFileNumber + ")");
-				//}	
-				return;
-			}
+		// we have an empty log file here, refuse to switch.
+		if (endPosition == LOG_FILE_HEADER_SIZE) {
+			//if (DEBUG)
+			//{
+				System.out.println("LogToFile.switchLogFile not switching from an empty log file (" + logFileNumber + ")");
+			//}	
+			return;
+		}
 
-			// log file isn't being flushed right now and logOut is not being
-			// used.
-			File newLogFile = getLogFileName(logFileNumber+1);
+		// log file isn't being flushed right now and logOut is not being
+		// used.
+		File newLogFile = getLogFileName(logFileNumber+1);
 
-			if (logFileNumber+1 >= maxLogFileNumber)
-            {
+		if (logFileNumber+1 >= maxLogFileNumber) {
 				throw new IOException(maxLogFileNumber+" exceeded max. log file number"); 
-            }
+        }
 
-			RandomAccessFile newLog = null;	// the new log file
-			try {
+		RandomAccessFile newLog = null;	// the new log file
+		try {
 				// if the log file exist and cannot be deleted, cannot
 				// switch log right now
                 if (privExists(newLogFile) && !privDelete(newLogFile))
@@ -1421,8 +1380,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 				try {
                     newLog = privRandomAccessFile(newLogFile, "rw");
-				}
-				catch (IOException ioe)
+				} catch (IOException ioe)
 				{
 					System.out.println("LogToFile.switchLogFile IO problem opening new log file "+newLogFile.getPath()+" error "+ioe.getMessage());
 					newLog = null;
@@ -1482,9 +1440,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 					//System.out.println("LogToFile.switchLogFile Cannot create new log file "+newLogFile.getPath()+" returning with fail.");
 
-			}
-			catch (IOException ioe)
-			{
+		} catch (IOException ioe) {
 
 				inLogSwitch = false;
 				// switching log file is an optional operation and there is no direct user
@@ -1515,16 +1471,18 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					// markCorrupt checks logOut for null, calls corrupt, then sets to null
 					throw markCorrupt(ioe);
 				}
-			}
-			
-			inLogSwitch = false;
-		}
-		// unfreezes the log
+		}	
+		inLogSwitch = false;
 	}
 	/**
-	 * Assume we have a randomaccesfile positioned at log header end, header should be in and ready to go
-	 * Set the length, synch, close
+	 * Parameter theLog is assumed to be open log file which is synched and closed.
+	 * logFile is then created as a randomaccessfile opened in RW
+	 * A forceinitLogFile with fileNumber is performed on the logFile
 	 * re-open RW and seek to class variable 'endPosition'
+	 * The end position is set to the current pointer
+	 * The last flush is set with the current pointer
+	 * A sync is done on the file
+	 * A new LogAccessFile is returned with the logFile, new randomaccessfile with logSize
 	 * @param theLog
 	 * @param logFile
 	 * @param logSize 
@@ -1536,8 +1494,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             int currentPostion = (int)theLog.getFilePointer();
             assert(currentPostion == LOG_FILE_HEADER_SIZE) : "New Log File Is not Correctly Initialized";
         //}
-		if( DEBUG)
-			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
+		if( DEBUG) {
+			LogCounter pli = new LogCounter(prevLogInst);
+			System.out.println("LogToFile.allocateNewLogFile Setting log "+logFile.getName()+" file#:"+fileNumber+
+					" length to "+logSize+" end "+endPosition+" previous log instance:"+pli);
+		}
 	    theLog.setLength(logSwitchInterval + LOG_FILE_HEADER_SIZE);
 	    syncFile(theLog);
 	    theLog.close();
@@ -1561,7 +1522,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 */
 	private LogAccessFile allocateExistingLogFile(File logFile, int logSize) throws IOException {
 		if( DEBUG)
-			System.out.println("Setting log "+logFile.getName()+" length to "+(logSwitchInterval + LOG_FILE_HEADER_SIZE+" end "+endPosition));
+			System.out.println("LogToFile.allocateExistingLogFile "+logFile.getName()+" log size "+logSize);
 		RandomAccessFile theLog = privRandomAccessFile(logFile, "rw");
 		return new LogAccessFile(logFile, theLog, logSize);
 	}
@@ -1645,28 +1606,17 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		while(oldFirstLog < firstLogNeeded)
 		{
 			File uselessLogFile = getLogFileName(oldFirstLog);
-            if (privDelete(uselessLogFile))
-			{
-					if (DEBUG)
-					{
-						
-							System.out.println("Truncating useless log file " + uselessLogFile.getPath());
-					}
-			}
-			else
-			{
-					//if (DEBUG)
-					//{
-		
-							System.out.println( "LogToFile.truncateLog Fail to truncate useless log file " + uselessLogFile.getPath());
-					//}
+            if(privDelete(uselessLogFile)) {
+				if (DEBUG) {
+					System.out.println("LogToFile.truncateLog removed obsolete log file " + uselessLogFile.getPath());
+				}
+			} else {
+					System.out.println( "LogToFile.truncateLog Failed to remove obsolete log file " + uselessLogFile.getPath());
 			}
     		oldFirstLog++;
 		}
 
 	}
-
-   
 
     /**
      * Return the "oldest" log file still needed by recovery. 
@@ -1681,18 +1631,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private long getFirstLogNeeded(CheckpointOperation checkpoint)
     {
 		long firstLogNeeded;
-
 		// one truncation at a time
-		synchronized (this)
-		{
-			firstLogNeeded = 
-                (checkpoint != null ? 
-                     LogCounter.getLogFileNumber(checkpoint.undoLWM()) : -1);
-
-			if (DEBUG)
-			{
-                 System.out.println("getfirstLogNeeded: checkpoint:"+checkpoint+
-                		 " first log needed:" +firstLogNeeded+ 
+		synchronized (this) {
+			firstLogNeeded = (checkpoint != null ?  LogCounter.getLogFileNumber(checkpoint.undoLWM()) : -1);
+			if (DEBUG) {
+                 System.out.println("LogToFile.getfirstLogNeeded: checkpoint:"+checkpoint+" first log needed:" +firstLogNeeded+ 
                 		 ",first log FileNumber = " + getFirstLogFileNumber());
 			}
 		}
@@ -1796,8 +1739,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			// write the same data to mirror control file
 			try
 			{
-				logControlFile =
-                    privRandomAccessFile(getMirrorControlFileName(), "rw");
+				logControlFile = privRandomAccessFile(getMirrorControlFileName(), "rw");
 			}
 			catch (IOException ioe)
 			{
@@ -1822,12 +1764,14 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	}
 
-	/*
-		Carefully read the content of the control file.
-
-		<P> MT- read only
-	*/
-	private long readControlFile(File logControlFileName) throws IOException
+	/**
+	 * Read the control file passed in parameter. Return the check point instance as long
+	 * @param logControlFileName
+	 * @return
+	 * @throws IOException
+	 * @throws ChecksumException 
+	 */
+	private long readControlFile(File logControlFileName) throws IOException, ChecksumException
 	{
 		RandomAccessFile logControlFile = null;
 		ByteArrayInputStream bais = null;
@@ -1850,21 +1794,19 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			{
 				barray = new byte[16];
 				logControlFile.readFully(barray);
-			}else if (controlFilelength > 16)
-            {
-				barray = new byte[(int) logControlFile.length() - 8];
-				logControlFile.readFully(barray);
-				onDiskChecksum = logControlFile.readLong();
-				if (onDiskChecksum !=0 )
-				{
-					checksum.reset();
-					checksum.update(barray, 0, barray.length);
+			} else 
+				if (controlFilelength > 16) {
+					barray = new byte[(int) logControlFile.length() - 8];
+					logControlFile.readFully(barray);
+					onDiskChecksum = logControlFile.readLong();
+					if( onDiskChecksum !=0 ) {
+						checksum.reset();
+						checksum.update(barray, 0, barray.length);
+					}
 				}
-			}
 
 			if ( onDiskChecksum == checksum.getValue() || onDiskChecksum ==0)
 			{
-
 				bais = new ByteArrayInputStream(barray);
 				dais = new DataInputStream(bais);
 
@@ -1878,8 +1820,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	
 				if (DEBUG)
 				{
-	                        System.out.println("log control file ckp instance = " + 
-	                        LogCounter.toDebugString(value));
+	              System.out.println("LogToFile.readControlFile checkpoint instance = " + LogCounter.toDebugString(value));
 				}	
 	
 				// an int for storing version and an int for storing checkpoint interval
@@ -1888,14 +1829,15 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				onDiskMinorVersion = dais.readInt();
 				int dbBuildNumber = dais.readInt();
 				int flags = dais.readByte();
-				
-				
+						
 				onDiskBeta = (flags & IS_BETA_FLAG) != 0;
 				if (onDiskBeta)
 				{
 					// if beta, can only be booted by exactly the same version
 				}
 					
+			} else {
+				throw new ChecksumException();
 			}
 		}
 		finally
@@ -2260,26 +2202,40 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		checkpointInstance = LogCounter.INVALID_LOG_INSTANCE;
 
 		File logControlFileName = getControlFileName();
+		if( DEBUG ) {
+			System.out.println("LogToFile.boot control file "+logControlFileName+" for db "+dbName+" create new log:"+createNewLog);
+		}
 		File logFile;
 
 		if (!createNewLog)
 		{
-                if (privExists(logControlFileName))
-				{
-					checkpointInstance = readControlFile(logControlFileName);					
-					if (checkpointInstance == LogCounter.INVALID_LOG_INSTANCE && privExists(getMirrorControlFileName()))
-                    {
-						checkpointInstance = readControlFile(getMirrorControlFileName());
-                    }
+                if (privExists(logControlFileName)) {
+					try {
+						checkpointInstance = readControlFile(logControlFileName);
+					} catch (ChecksumException e) {
+						try {
+							checkpointInstance = readControlFile(getMirrorControlFileName());
+							// at this point we have a bad control file and a good mirror, restore main control file from mirro
+							writeControlFile(logControlFileName,checkpointInstance);
+						} catch (ChecksumException e1) {
+							throw new IOException("Control files for "+dbName+" are corrupt, cannot boot this table");
+						}
+					}					
 
 				}
 
-				if (checkpointInstance != LogCounter.INVALID_LOG_INSTANCE)
+				if (checkpointInstance != LogCounter.INVALID_LOG_INSTANCE) {
 					logFileNumber = LogCounter.getLogFileNumber(checkpointInstance);
-				else
+				} else {
 					logFileNumber = 1;
+				}
 
 				logFile = getLogFileName(logFileNumber);
+				
+				if( DEBUG ) {
+					LogCounter cpi = new LogCounter(checkpointInstance);
+					System.out.println("boot "+dbName+" file#:"+logFileNumber+" found checkpoint instance:"+cpi);
+				}
 
 				// if log file is not there or if it is of the wrong format, create a
 				// brand new log file and do not attempt to recover the database
@@ -2296,66 +2252,54 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
                     {
 						throw new IOException(getDataDirectory());
                     }
-
 					// If logFileNumber > 1, we are not going to write that 
                     // file just yet.  Just leave it be and carry on.  Maybe 
                     // when we get there it can be deleted.
-
 					createNewLog = true;
 				}
 		}
-
-		if (createNewLog)
-		{
-				// brand new log.  Start from log file number 1.
-
-				// create or overwrite the log control file with an invalid
-				// checkpoint instance since there is no checkpoint yet
-				if (writeControlFile(logControlFileName,
-									 LogCounter.INVALID_LOG_INSTANCE)) {
+		if( DEBUG ) {
+			System.out.println("Boot "+dbName+" file:"+logFileNumber+" new log:"+createNewLog);
+		}
+		
+		if (createNewLog) {
+			// brand new log.  Start from log file number 1.
+			if( DEBUG ) {
+				System.out.println("Boot "+dbName+" file:"+logFileNumber+" generate new log from 1");
+			}
+			// create or overwrite the log control file with an invalid
+			// checkpoint instance since there is no checkpoint yet
+			if (writeControlFile(logControlFileName, LogCounter.INVALID_LOG_INSTANCE)) {
 					setFirstLogFileNumber(1);
 					logFileNumber = 1;
 					logFile = getLogFileName(logFileNumber);
-
-                    if (privExists(logFile))
-					{
-                        if (!privDelete(logFile))
-                        {
+                    if (privExists(logFile)) {
+                        if (!privDelete(logFile)) {
 							throw new IOException(getDataDirectory());
                         }
-					}
-                    
+					}    
                     RandomAccessFile firstLog = privRandomAccessFile(logFile, "rw");
         			logOut = allocateNewLogFile(firstLog, logFile, LogCounter.INVALID_LOG_INSTANCE, 
         					logFileNumber, logBufferSize);
-
-					//if (DEBUG)
-					//{
-						assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
-					//}
-				}
-				else
-				{	
+					assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
+			} else {	
 					logOut.close();
 					logOut = null;
 					throw new IOException("Unable to write control file from recovery log boot, critical failure..");
-				}
+			}
 
-				recoveryNeeded = false;
-		}
-		else
-		{
+			recoveryNeeded = false;
+		} else {
 				// log file exist, need to run recovery
-				System.out.println("Recovery indicated for starting log file "+logFileNumber+" end position:"+endPosition);
+				System.out.println("Recovery indicated for "+dbName+" file#:"+logFileNumber+" end position:"+endPosition);
 				recoveryNeeded = true;
 		}
 
 		maxLogFileNumber = LogCounter.MAX_LOGFILE_NUMBER;
-
 		bootTimeLogFileNumber = logFileNumber;
 		
 		if( DEBUG )
-			System.out.println("RecoveryLog boot complete, log file "+logFileNumber+" recovery "+(recoveryNeeded ? "" : "not ")+ "needed");
+			System.out.println("LogToFile boot complete for"+dbName+" log file#:"+logFileNumber+" recovery "+(recoveryNeeded ? "IS " : "NOT ")+ "needed");
 	} // end of boot
 
 	/**
@@ -2382,8 +2326,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			File logFile = getLogFileName(logFileNumber);
             RandomAccessFile firstLog = privRandomAccessFile(logFile, "rw");
             //firstLog.getChannel().truncate(LOG_FILE_HEADER_SIZE);
-			if (!forceInitLogFile(firstLog, logFileNumber, LogCounter.INVALID_LOG_INSTANCE))
-            {
+			if (!forceInitLogFile(firstLog, logFileNumber, LogCounter.INVALID_LOG_INSTANCE)) {
 				IOException ioe = new IOException(logFile.getPath());
 				logErrMsg(ioe);
 				corrupt = ioe;
@@ -2391,8 +2334,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             }
 			setEndPosition(firstLog.getFilePointer());
 			setLastFlush(firstLog.getFilePointer());
-			if (DEBUG)
-			{
+			if (DEBUG) {
 				assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
 			}
 			setFirstLogFileNumber(logFileNumber);
@@ -2420,17 +2362,14 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		// checkpoint instance since there is no checkpoint yet
 		RandomAccessFile firstLog;
 		File logControlFileName = getControlFileName();
-		if (writeControlFile(logControlFileName,
-							 LogCounter.INVALID_LOG_INSTANCE)) {
+		if (writeControlFile(logControlFileName, LogCounter.INVALID_LOG_INSTANCE)) {
 			setFirstLogFileNumber(1);
 			logFileNumber = 1;
 			File logFile = getLogFileName(logFileNumber);
 			logFile = getLogFileName(logFileNumber);
 
-            if (privExists(logFile))
-			{
-                if (!privDelete(logFile))
-                {
+            if (privExists(logFile)) {
+                if (!privDelete(logFile)) {
                 	firstLog = privRandomAccessFile(logFile, "rw");
                 	firstLog.setLength(0);
 					//throw new IOException("LogToFile.initializeLogFileSequence cannot delete "+logFile.getName()+" in "+getDataDirectory());
@@ -2443,14 +2382,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             }
 			logOut = allocateNewLogFile(firstLog, logFile, LogCounter.INVALID_LOG_INSTANCE, logFileNumber, logBufferSize);
 
-			//if (DEBUG)
-			//{
-				assert(endPosition == LOG_FILE_HEADER_SIZE) : 
+			assert(endPosition == LOG_FILE_HEADER_SIZE) : 
 					"LogToFile.initializeLogFileSequence empty log file "+logFile.getName()+" in "+getDataDirectory()+" has wrong size";
-			//}
-		}
-		else
-		{
+		} else {
 			if( logOut != null )
 				logOut.close();
 			logOut = null;
@@ -2472,8 +2406,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			checkpointDaemon = null;
 		}
 
-		synchronized(this)
-		{
+		synchronized(this) {
 			stopped = true;
 			if (logOut != null) {
 				try {
@@ -2550,19 +2483,12 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					if(fileNumber < firstLogNeeded )
 					{
 						uselessLogFile = new File(logDir, logfiles[i]);
-						if (privDelete(uselessLogFile))
-						{
-							if (DEBUG)
-							{
+						if (privDelete(uselessLogFile)) {
+							if (DEBUG) {
 								System.out.println("LogToFile.deleteObsoleteLogFiles truncating obsolete log file " + uselessLogFile.getPath());
 							}
-						}
-						else
-						{
-							//if (DEBUG)
-							//{
+						} else {
 								System.out.println("LogToFile.deleteObsoleteLogFiles Fail to truncate obsolete log file " + uselessLogFile.getPath());
-							//}
 						}
 					}
 				}
@@ -2810,40 +2736,35 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		@exception cannot sync log file
 
 	*/
-	protected void flush(long fileNumber, long wherePosition) throws IOException
+	protected synchronized void flush(long fileNumber, long wherePosition) throws IOException
 	{
 		if( DEBUG ) {
 			System.out.println("LogToFile.flush for file "+fileNumber+" pos "+wherePosition);
 		}
 		long potentialLastFlush = 0;
-		synchronized (this)
-		{
-				if (MEASURE)
+		if (MEASURE)
 					mon_flushCalls++;
-				boolean waited;
-				do
-				{
+		boolean waited;
+		do {
 					// THIS CORRUPT CHECK MUST BE FIRST, before any check that
 					// sees if the log has already been flushed to this
 					// point. This is based upon the assumption that every
 					// dirty page in the cache must call flush() before it is
 					// written out.  has someone else found a problem in the
 					// raw store?
-					if (corrupt != null)
-					{
+					if (corrupt != null) {
 						throw new IOException(corrupt);
 					}
 					// now check if database is frozen
-					while (isFrozen)
-					{
-						try 
-						{
-							System.out.println("Database frozen, wait during flush");
+					while (isFrozen) {
+						try  {
+							if( DEBUG )
+								System.out.println("Database frozen, wait during flush");
 							wait();
+							if( DEBUG )
+								System.out.println("Database thawed");
 						} 
-						catch (InterruptedException ie) 
-						{
-						}
+						catch (InterruptedException ie) {}
 					}
 
 					// if we are just testing to see to see the database is 
@@ -2852,10 +2773,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					// if the log file is already flushed up to where we are 
 					// interested in, just return.
 					if (wherePosition == LogCounter.INVALID_LOG_INSTANCE || fileNumber < logFileNumber ||
-						wherePosition < getLastFlush())
-					{
+						wherePosition < getLastFlush()) {
 						if( DEBUG ) {
-							System.out.println("LogToFile.flush: Position @ invalid instance returning from flush");
+							System.out.println("LogToFile.flush: Position @ invalid instance, returning from flush");
 						}
 						return;
 					}
@@ -2873,6 +2793,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						}
 						return;
 					}
+					
 					if (DEBUG)
 					{
 						if (fileNumber > getLogFileNumber())
@@ -2881,11 +2802,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					}
 					// There could be multiple threads who wants to flush the 
                     // log file, see if I can be the one.
-					if (logBeingFlushed)
-					{
+					if (logBeingFlushed) {
 						waited = true;
-						try
-						{
+						try {
 							mon_numLogFlushWaits++;
 							if( DEBUG ) System.out.println("LogToFile.flush Wait on logBeingFlushed "+mon_numLogFlushWaits);
 							wait();	// release log semaphore to let non-flushing
@@ -2893,19 +2812,13 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 							// now we continue back to see if the sync
 							// we waited for, flushed the portion
 							// of log we are interested in.
-						}
-						catch (InterruptedException ie)
-						{
-						}
-					}
-					else
-					{
+						} catch (InterruptedException ie){}
+					} else {
 						waited = false;
-
 						// logBeingFlushed is false, I am flushing the log now.
 						//if(!isWriteSynced)
 						//{
-							if( DEBUG )System.out.println("LogToFile.flush not write synched, flush logOut"); 
+							if( DEBUG )System.out.println("LogToFile.flush not write synched, calling flushLogAccessfile on logOut"); 
 							// Flush any data from the buffered log
 							// flushLogAccessFile(): switchLogBuffer()
 							// 						 flushDirtyBuffers()
@@ -2924,9 +2837,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						logBeingFlushed = true;	
                     }
 
-				} while (waited) ;
-				// iterate and check for a possible flush coming externally
-		} // unfreeze log manager to accept more log records
+		} while (waited);
 
 		boolean syncSuceed = false;
 		try
@@ -2948,8 +2859,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		}
 		finally
 		{
-			synchronized(this)
-			{
+	
 				logBeingFlushed = false; // done flushing
 
 				// update lastFlush under synchronized this instead of synchronized(logOut)
@@ -2961,54 +2871,39 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// may have done a logOut.flushBuffer right before the sync
 				// call. But this is guaranteed to be flushed.
 				notifyAll();
-			}
 		}
-		// get checkpoint Daemon to work
-		if ((logWrittenFromLastCheckPoint + potentialLastFlush) > checkpointInterval &&
-					checkpointDaemon != null &&	!checkpointDaemonCalled && !inLogSwitch)
-		{
+		
+		/*
+		 * We are going to do a checkpoint or a log switch. 
+		 * If we have known log write plus last flush greater than checkpoint interval AND
+		 * checkpoint demon active AND checkpoint demon not called AND not in log switch
+		 */
+		if ( checkpointDaemon != null && !checkpointDaemonCalled && !inLogSwitch &&
+				((logWrittenFromLastCheckPoint + potentialLastFlush) > checkpointInterval) ) {
 			if( DEBUG ) {
 				System.out.println("Attempting checkpoint in log LogToFile.flush for file "+fileNumber+" pos "+wherePosition);
 			}
-			// following synchronized block is required to make 
-			// sure only one checkpoint request get scheduled.
-			synchronized(this)
-			{
-				// recheck if checkpoint is still required, it is possible some other
-				// thread might have already scheduled a checkpoint and completed it. 
-				if ((logWrittenFromLastCheckPoint + potentialLastFlush) > checkpointInterval &&
-					checkpointDaemon != null &&	!checkpointDaemonCalled && !inLogSwitch)
-				{
-					checkpointDaemonCalled = true;
-					checkpointDaemon.serviceNow(myClientNumber);
-				}
-			}
+			checkpointDaemonCalled = true;
+			checkpointDaemon.serviceNow(myClientNumber);
 		} else {
 			if( DEBUG ) {
-				System.out.println("Attempting potential log switch in LogToFile.flush for file "+fileNumber+" pos "+wherePosition);
+				System.out.println("LogToFile.flush last potential flush"+potentialLastFlush+" log switch interval:"+logSwitchInterval+" checkpoint called:"+checkpointDaemonCalled+" log switch currently:"+inLogSwitch);
 			}
 			// switch the log if required, this case will occur 
 			// if log switch interval is less than the checkpoint interval
-			// other wise , checkpoint daemon would be doing log switches along
+			// otherwise, checkpoint daemon would be doing log switches along
 			// with the checkpoints.
 			if( DEBUG ) {
-				System.out.println("LogToFile.flush last:"+potentialLastFlush+" interval:"+logSwitchInterval+" checkpoint:"+checkpointDaemonCalled+" log switch:"+inLogSwitch);
+
 			}
-			if (potentialLastFlush > logSwitchInterval && !checkpointDaemonCalled && !inLogSwitch) {
-				// following synchronized block is required to make sure only
-				// one thread switches the log file at a time.
-				synchronized(this)
-				{
-					// recheck if log switch is still required, it is possible some other
-					// thread might have already switched the log file. 
-					if (potentialLastFlush > logSwitchInterval && !checkpointDaemonCalled && !inLogSwitch)
-					{
-						inLogSwitch = true;
-						switchLogFile();
-					}
-				}
+			if (potentialLastFlush > logSwitchInterval && !inLogSwitch) {
+				if(DEBUG)
+					System.out.println("Attempting potential log switch in LogToFile.flush for file "+fileNumber+" pos "+wherePosition);
+				inLogSwitch = true;
+				switchLogFile();
 			}
 		}
+		
 	}
 
     /**

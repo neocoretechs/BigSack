@@ -21,15 +21,11 @@
 
 package com.neocoretechs.arieslogger.core.impl;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
-import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.io.SyncFailedException;
 import java.nio.ByteBuffer;
-import java.util.LinkedList;
 
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
@@ -88,7 +84,6 @@ public class LogAccessFile
 	private boolean flushInProgress = false;
 	
 	private final RandomAccessFile  log;
-	private final File logFile;
 	// log can be touched only inside synchronized block protected by
 	// logFileSemaphore.
 	private final Object            logFileSemaphore;
@@ -97,14 +92,12 @@ public class LogAccessFile
 	static int                      mon_numBytesToLog;
 
 	private long checksumInstance = -1;
-	private int checksumLength;
 	private int checksumLogRecordSize;      //checksumLength + LOG_RECORD_FIXED_OVERHEAD_SIZE
 	private ChecksumOperation checksumLogOperation;
 	private LogRecord checksumLogRecord;
 		
 	public LogAccessFile(File logFile, RandomAccessFile log, int bufferSize) throws IOException 
     {
-		this.logFile 	= logFile;
 		this.log        = log;
 		logFileSemaphore= log;		
 		currentBuffer = new LogAccessFileBuffer(bufferSize);
@@ -178,7 +171,7 @@ public class LogAccessFile
      *
 	 * @exception  StandardException  Standard exception policy.
      **/
-    public void writeLogRecord(
+    public void writeLogRecord (
     int     length,
     long    instance,
     byte[]  data,
@@ -190,7 +183,7 @@ public class LogAccessFile
         if( DEBUG )
         	System.out.println("LogAccessFile.writeLogRecord instance:"+instance+" len:"+length);
         	
-    	assert(currentBuffer.buffer.limit() > 0 ) : "free bytes less than zero";
+    	assert(currentBuffer.buffer.limit() > 0 ) : "free bytes less than or equal to zero";
     	
         int total_log_record_length = length + LOG_RECORD_FIXED_OVERHEAD_SIZE;
 
@@ -233,13 +226,12 @@ public class LogAccessFile
              * buffer.
              */
 
-            // allocate a byte[] that is big enough to contain the
-            // giant log record:
-            if( DEBUG ) {
-            	System.out.println("LogAccessFile.writeLogRecord: BIG buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" -- "+new String(data)+" len:"+length);
-            }
             // add another log overhead for checksum log record
             int bigBufferLength = checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE + total_log_record_length;
+            
+            if( DEBUG ) {
+            	System.out.println("LogAccessFile.writeLogRecord: BIG buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" len:"+bigBufferLength);
+            }
             
             ByteBuffer bigbuffer = ByteBuffer.allocate(bigBufferLength);
             appendLogRecordToBuffer(bigbuffer, checksumLogRecordSize,
@@ -256,10 +248,10 @@ public class LogAccessFile
             checksumLogOperation.update(bigbuffer.array(), checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE,
                                             total_log_record_length);
 
-            writeChecksumLogRecord(bigbuffer);
+            moveChecksumToBuffer(bigbuffer);
 
             // flush all buffers before writing the bigbuffer to the
-            // log file.
+            // log file. SwitchLogFile, FlushDirtyBuffers
             flushLogAccessFile();
 
             // Note:No Special Synchronization required here , There
@@ -356,36 +348,26 @@ public class LogAccessFile
 	 * that is used to do  buffer management to allow writes 
 	 * to the free buffers when flush is in progress.  
      **/
-	protected void flushDirtyBuffers() throws IOException 
+	protected synchronized void flushDirtyBuffers() throws IOException 
     {
-		if( DEBUG )
-			System.out.println("Flush "+currentBuffer.length+" dirty buffers "+flushInProgress);
-
-			synchronized(this)
-			{
+		if( DEBUG ) {
+			System.out.println("LogAccessFile.flushDirtyBuffers: len:"+currentBuffer.length+" top inst:"+LogCounter.toDebugString(currentBuffer.greatest_instance));
+		}
+		try {
+			// wait out any current flushers
+			while(flushInProgress) {
 				try {
-				/**if some one else flushing wait, otherwise it is possible 
-				 * different threads will get different buffers and order can 
-				 * not be determined.
-				 * 
-				 **/
-				while(flushInProgress) {
-					try {
 						wait();
-					} catch (InterruptedException ie) {}
-				}		
-				flushInProgress = true;
-				if (currentBuffer.length != 0) {
-					if( DEBUG ) {
-						System.out.println("LogAccessFile.flushDirtyBuffers: len:"+currentBuffer.length+" top inst:"+LogCounter.toDebugString(currentBuffer.greatest_instance));
-					}
+				} catch (InterruptedException ie) {}
+			}		
+			flushInProgress = true;
+			if (currentBuffer.length != 0) {
 					writeToLog(currentBuffer.buffer.array(), 0, currentBuffer.length, currentBuffer.greatest_instance);
-				}
-				} finally {
-					flushInProgress = false;
-					notifyAll();
-				}
 			}
+		} finally {
+				flushInProgress = false;
+				notifyAll();
+		}
 	
 	}
 
@@ -403,40 +385,33 @@ public class LogAccessFile
 	 * when flushDirtyBuffers() is invoked
 	 * or when no more free buffers are available. 
 	 */
-	public void switchLogBuffer() throws IOException  
+	public synchronized void switchLogBuffer() throws IOException  
     {
-		
 		if( DEBUG ) System.out.println("LogAccessFile.switchLogBuffer");
-		synchronized(this) {
-			// ignore empty buffer switch requests
-			if( currentBuffer.isBufferEmpty() ) {
+		// ignore empty buffer switch requests
+		if( currentBuffer.isBufferEmpty() ) {
 				if( DEBUG ) {
 					System.out.println("LogAccessFile.switchLogBuffer: returning without switch buffer pos:"+currentBuffer.buffer.position()+" checksum len:"+checksumLogRecordSize);
 				}
 				return;
-			}
-			// calculate the checksum for the current log buffer 
-			// and write the record to the space reserved in 
-			// the beginning of the buffer. 
-
-			checksumLogOperation.reset();
-			checksumLogOperation.update(currentBuffer.buffer.array(), 
+		}
+		// calculate the checksum for the current log buffer 
+		// and write the record to the space reserved in 
+		// the beginning of the buffer. 
+		checksumLogOperation.reset();
+		checksumLogOperation.update(currentBuffer.buffer.array(), 
 						checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE, 
 						currentBuffer.length - (checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE) );
-			writeChecksumLogRecord(currentBuffer.buffer);
-			flushDirtyBuffers();
-			//after the flush call there should be a free buffer
-			//because this is only method that removes items from 
-			//free buffers and removal is in synchronized block. 
-			// there should be free buffer available at this point.
-
-			currentBuffer.init(checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE);
-
-			if (DEBUG)
-			{
+		moveChecksumToBuffer(currentBuffer.buffer);
+		flushDirtyBuffers();
+		//after the flush call there should be a free buffer
+		//because this is only method that removes items from 
+		//free buffers and removal is in synchronized block. 
+		// there should be free buffer available at this point.
+		currentBuffer.init(checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE);
+		if (DEBUG) {
 				assert(currentBuffer.buffer.position()+1 == checksumLogRecordSize+LOG_RECORD_FIXED_OVERHEAD_SIZE);
                 assert(currentBuffer.buffer.remaining() > 0);
-			}
 		}
 		
 	}
@@ -628,7 +603,7 @@ public class LogAccessFile
      * @param bigbuffer The byte[] the checksum is written to. The
      * checksum is always written at the beginning of buffer.
 	 */
-	private void writeChecksumLogRecord(ByteBuffer bigbuffer) throws IOException {
+	private void moveChecksumToBuffer(ByteBuffer bigbuffer) throws IOException {
 		
 		int p = 0; //checksum is written in the beginning of the buffer
 		bigbuffer.position(p);
@@ -659,20 +634,29 @@ public class LogAccessFile
 	}
 
     /** Return the length of a checksum record */
-    public  int getChecksumLogRecordSize() { return checksumLogRecordSize; }
+    public int getChecksumLogRecordSize() { return checksumLogRecordSize; }
 
-
+    /**
+     * Perform a flushLogAccessFile, then put the marker at the current buffer position
+     * and perform a 'writeToLog'
+     * This is typically performed as part of 'switchLogFile'
+     * @param marker
+     * @throws IOException
+     */
 	protected void writeEndMarker(int marker) throws IOException 
 	{
 		//flush all the buffers and then write the end marker.
 		flushLogAccessFile();
-		
 		//end is written in the beginning of the buffer, no
 		//need to checksum a int write.
 		int pos = currentBuffer.buffer.position();
 		currentBuffer.buffer.putInt(marker);
+		// the highest instance is set to -1
 		writeToLog(currentBuffer.buffer.array(), pos, 4, -1); //end marker has no instance
 		currentBuffer.buffer.position(pos);
+		if( DEBUG ) {
+			System.out.println("LogAccessFile.writeEndMarker "+marker+" at position "+pos+" with total:"+currentBuffer.length);
+		}
 	}
 
 

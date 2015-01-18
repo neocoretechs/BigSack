@@ -561,7 +561,6 @@ public class FileLogger implements Logger {
         // the current log instance
 		long instance = LogCounter.INVALID_LOG_INSTANCE;
 
-
 		// use this scan to reconstitute operation to be undone
 		// when we see a CLR in the redo scan
 		StreamLogScan undoScan  = null;

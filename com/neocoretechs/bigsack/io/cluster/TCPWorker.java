@@ -1,17 +1,12 @@
 package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 
@@ -35,21 +30,17 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  *
  */
 public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
 	public static String remoteMaster = "AMIMASTER";
     private byte[] sendData;
 	private InetAddress IPAddress = null;
-	//private Socket workerSocket;
 	private ServerSocketChannel workerSocketChannel;
 	private SocketAddress workerSocketAddress;
-	//private Socket masterSocket;
 	private SocketChannel masterSocketChannel;
 	private SocketAddress masterSocketAddress;
-	//private InputStream remoteInStream;
-	//private OutputStream remoteOutStream;
 	private ByteBuffer b = ByteBuffer.allocate(10000);
 	
     public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
@@ -71,7 +62,6 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		workerSocketAddress = new InetSocketAddress(SLAVEPORT);
 		workerSocketChannel = ServerSocketChannel.open();
 		workerSocketChannel.bind(workerSocketAddress);
-		//workerSocket = new ServerSocket(SLAVEPORT);
 		// spin the request processor thread for the worker
 		ThreadPoolManager.getInstance().spin(new WorkerRequestProcessor(this));
 		if( DEBUG ) {
@@ -92,22 +82,11 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		if( DEBUG ) {
 			System.out.println("Adding response "+irf+" to outbound from worker to "+IPAddress+" port:"+MASTERPORT);
 		}
-		// set up senddata
 		try {
-			// connect to the master and establish persistent connec
-			/*
-			if( masterSocket == null ) {
-				masterSocket = new Socket(IPAddress, MASTERPORT);
-				remoteOutStream = masterSocket.getOutputStream();
-			}
-			sendData = GlobalDBIO.getObjectAsBytes(irf);
-			remoteOutStream.write(sendData);
-			remoteOutStream.flush();
-			*/
+			// connect to the master and establish persistent connect
 			sendData = GlobalDBIO.getObjectAsBytes(irf);
 			ByteBuffer srcs = ByteBuffer.wrap(sendData);
 			masterSocketChannel.write(srcs);
-			//os.close();
 		} catch (SocketException e) {
 				System.out.println("Exception setting up socket to remote master port "+MASTERPORT+" on local port "+SLAVEPORT+" "+e);
 				throw new RuntimeException(e);
@@ -131,13 +110,8 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	
 	@Override
 	public void run() {
-		//Socket s = null;
 		SocketChannel s = null;
 		try {
-			/*
-			s = workerSocket.accept();
-			remoteInStream = s.getInputStream();
-			*/
 			s = workerSocketChannel.accept();
 		} catch (IOException e) {
 			System.out.println("TCPWorker socket accept exception "+e+" on port "+SLAVEPORT);
@@ -166,8 +140,6 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 			s.close();
 			masterSocketChannel.close();
 			workerSocketChannel.close();
-			//masterSocket.close();
-			//workerSocket.close();
 		} catch (IOException e) {}
 	}
 

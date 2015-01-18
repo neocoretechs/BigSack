@@ -47,7 +47,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private String Name;
 	private long transId;

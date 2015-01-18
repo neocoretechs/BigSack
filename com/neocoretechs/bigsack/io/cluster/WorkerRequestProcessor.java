@@ -11,6 +11,8 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
 
 /**
  * Once requests from master are queued we extract them here and process them
+ * This class functions as a generic threaded request processor for entries on a BlockingQueue of 
+ * CompletionLatchInterface implementors managed by a DistributeWorkerResponseInterface implementation.
  * @author jg
  *
  */
@@ -18,7 +20,7 @@ public final class WorkerRequestProcessor implements Runnable {
 	private BlockingQueue<IoRequestInterface> requestQueue;
 	private DistributedWorkerResponseInterface worker;
 	private boolean shouldRun = true;
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	public WorkerRequestProcessor(DistributedWorkerResponseInterface worker) {
 		this.worker = worker;
 		requestQueue = ((IOWorker)worker).getRequestQueue();
@@ -32,7 +34,7 @@ public final class WorkerRequestProcessor implements Runnable {
 		} catch (InterruptedException e1) {}
 		// Down here at the worker level we only need to set the countdown latch to 1
 		// because all operations are taking place on 1 tablespace and thread with coordination
-		// at the UDPMaster level otherwise
+		// at the Master level otherwise
 		CountDownLatch cdl = new CountDownLatch(1);
 		((CompletionLatchInterface)iori).setCountDownLatch(cdl);
 		if( DEBUG  ) {

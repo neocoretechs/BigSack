@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
@@ -29,17 +28,14 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  *
  */
 public class TCPMaster implements Runnable, MasterInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	public static final boolean TEST = true;
 	private int MASTERPORT = 9876;
 	private int SLAVEPORT = 9876;
 	private int WORKBOOTPORT = 8000;
 	private static String remoteWorker = "AMI";
 	private InetAddress IPAddress = null;
-	//private ServerSocket clientSocket;
-	private Socket workerSocket = null;
-	private InputStream remoteInStream;
-    private OutputStream remoteOutStream;
+
 	private SocketChannel workerSocketChannel = null;
 	private SocketAddress workerSocketAddress;
 	//private Socket masterSocket;
@@ -82,8 +78,6 @@ public class TCPMaster implements Runnable, MasterInterface {
 		masterSocketChannel = ServerSocketChannel.open();
 		masterSocketChannel.bind(masterSocketAddress);
 		
-		// start listening on the required worker port
-		//clientSocket = new ServerSocket(MASTERPORT);
 	}
 	
 	public void setMasterPort(int port) {
@@ -110,8 +104,6 @@ public class TCPMaster implements Runnable, MasterInterface {
 	public void run() {
   	    SocketChannel sock;
 		try {
-			//sock = clientSocket.accept();
-			//remoteInStream = sock.getInputStream();
 			sock = masterSocketChannel.accept();
 		} catch (IOException e1) {
 			System.out.println("TCPMaster server socket accept failed with "+e1);
@@ -122,8 +114,6 @@ public class TCPMaster implements Runnable, MasterInterface {
   	     }
 		while(shouldRun ) {
 			try {
-	   	     //sock.setPerformancePreferences(0,1,2);
-	   	     //IoResponseInterface iori = (IoResponseInterface) ClusterIOManager.deserializeObject(remoteInStream);
 			 sock.read(b);
 			 IoResponseInterface iori = (IoResponseInterface) ClusterIOManager.deserializeObject(b);
 	   	     // get the original request from the stored table
@@ -166,12 +156,6 @@ public class TCPMaster implements Runnable, MasterInterface {
 	public void send(IoRequestInterface iori) {
 	    byte[] sendData;
 		try {
-			/*
-			if( workerSocket == null ) {
-				workerSocket = new Socket(IPAddress, SLAVEPORT);
-				remoteOutStream = workerSocket.getOutputStream();
-			}
-			*/
 			if(workerSocketChannel == null ) {
 				workerSocketAddress = new InetSocketAddress(IPAddress, SLAVEPORT);
 				workerSocketChannel = SocketChannel.open(workerSocketAddress);
@@ -179,9 +163,6 @@ public class TCPMaster implements Runnable, MasterInterface {
 			sendData = GlobalDBIO.getObjectAsBytes(iori);
 			ByteBuffer srcs = ByteBuffer.wrap(sendData);
 			workerSocketChannel.write(srcs);
-			//remoteOutStream.write(sendData);
-			//remoteOutStream.flush();
-			//os.close();
 		} catch (SocketException e) {
 				System.out.println("Exception setting up socket to remote worker port "+SLAVEPORT+" "+e);
 		} catch (IOException e) {
