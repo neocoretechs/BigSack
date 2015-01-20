@@ -84,7 +84,7 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex> implements Runna
 	 */
 	public synchronized void directBufferWrite() throws IOException {
 		Iterator<BlockAccessIndex> elbn = this.iterator();
-		if(DEBUG) System.out.println("direct buffer write");
+		if(DEBUG) System.out.println("MappedBlockBuffer.direct buffer write");
 		while (elbn.hasNext()) {
 					BlockAccessIndex ebaii = (elbn.next());
 					if (ebaii.getAccesses() == 0 && ebaii.getBlk().isIncore() ) {

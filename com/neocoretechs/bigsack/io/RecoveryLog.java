@@ -1,16 +1,12 @@
 package com.neocoretechs.bigsack.io;
 import java.io.IOException;
-import java.util.ArrayList;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.impl.FileLogger;
-import com.neocoretechs.arieslogger.core.impl.LogCounter;
 import com.neocoretechs.arieslogger.core.impl.LogToFile;
-import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
 
 /*
 * Copyright (c) 1997,2002,2003,2014 NeoCoreTechs
@@ -134,8 +130,13 @@ public final class RecoveryLog  {
 
 		if( Props.DEBUG ) System.out.println("RecoveryLog cleared");
 	}
-
+	/**
+	 * Take a checkpoint. Force buffer flush, then write checkpoint 
+	 * @throws IllegalAccessException
+	 * @throws IOException
+	 */
 	public void checkpoint() throws IllegalAccessException, IOException {
+		blockIO.forceBufferWrite();
 		ltf.checkpoint(true);
 		if( Props.DEBUG ) System.out.println("Checkpoint taken");
 	}

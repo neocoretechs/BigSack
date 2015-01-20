@@ -29,6 +29,8 @@ import com.neocoretechs.arieslogger.logrecords.ScanHandle;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 public class FlushedScanHandle implements ScanHandle
 {
@@ -36,7 +38,8 @@ public class FlushedScanHandle implements ScanHandle
 	LogFactory lf;
 	StreamLogScan fs;
 	
-	LogRecord lr = null;
+	HashMap<LogInstance, LogRecord> lrx = null;
+	LogRecord lr;
 	boolean readOptionalData = false;
 	int groupsIWant;
 	
@@ -57,8 +60,9 @@ public class FlushedScanHandle implements ScanHandle
 		// interesting groups will be returned
 		try
 		{
-			lr = fs.getNextRecord(rawInput,-1, groupsIWant);
-			if (lr==null) return false; //End of flushed log
+			lrx = fs.getNextRecord(rawInput,-1, groupsIWant);
+			if (lrx == null) return false; //End of flushed log
+			lr = lrx.get(0);
 			if (DEBUG)
             {
                 if ((groupsIWant & lr.group()) == 0)
@@ -93,18 +97,12 @@ public class FlushedScanHandle implements ScanHandle
 	{
 		try {
 			return lr.getLoggable();
-		}
-
-		catch (IOException ioe)
-		{
+		} catch (IOException ioe) {
 			ioe.printStackTrace();
 			fs.close();
 			fs = null;
 			throw lf.markCorrupt(ioe);
-		}
-
-		catch (ClassNotFoundException cnfe)
-		{
+		} catch (ClassNotFoundException cnfe) {
 			fs.close();
 			fs = null;
 			throw lf.markCorrupt(new IOException(cnfe));
@@ -122,13 +120,11 @@ public class FlushedScanHandle implements ScanHandle
 		return rawInput;
 	}
 
-    public LogInstance getInstance() throws IOException
-	{
+    public LogInstance getInstance() throws IOException {
 		return fs.getLogInstance();
 	}
 
-	public Object getTransactionId() throws IOException
-	{  
+	public Object getTransactionId() throws IOException {  
 		try
         {
 			return lr.getTransactionId();
@@ -139,9 +135,7 @@ public class FlushedScanHandle implements ScanHandle
 			fs.close();
 			fs = null;
 			throw lf.markCorrupt(ioe);
-		}
-		catch (ClassNotFoundException cnfe)
-		{
+		} catch (ClassNotFoundException cnfe) {
 			fs.close();
 			fs = null;
 			throw lf.markCorrupt(new IOException( cnfe));

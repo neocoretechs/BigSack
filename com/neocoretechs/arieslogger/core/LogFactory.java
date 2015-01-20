@@ -253,17 +253,6 @@ public interface LogFactory extends Corruptable {
 	public void abortLogBackup();
     
     /*
-     * set up a new log file to start writing 
-     * the log records into the new log file 
-     * after this call.
-     *
-     * <P>MT - synchronization provided by caller - RawStore boot,
-     * This method is called while re-encrypting the database 
-     * at database boot time.
-     */
-    public void startNewLogFile() throws IOException;
-
-    /*
      * find if the checkpoint is in the last log file. 
      *
      * <P>MT - synchronization provided by caller - RawStore boot,

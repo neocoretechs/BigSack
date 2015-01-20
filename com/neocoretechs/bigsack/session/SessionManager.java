@@ -6,11 +6,8 @@ import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Vector;
 
-import com.neocoretechs.arieslogger.core.CheckpointDaemonInterface;
-import com.neocoretechs.arieslogger.core.impl.CheckpointDaemon;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeMain;
-import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -47,7 +44,6 @@ public final class SessionManager {
 	private static Vector<String> OfflineDBs = new Vector<String>();
 	private static String dbPath = "/";
 	private static long globalTransId = System.currentTimeMillis();
-	private static CheckpointDaemonInterface checkpointDaemon = null;
 	//
 	// Sets the maximum number users
 	@SuppressWarnings("unused")
@@ -182,13 +178,6 @@ public final class SessionManager {
 	 */
 	protected static Hashtable<?, ?> getAdminSessionTable() {
 		return AdminSessionTable;
-	}
-	
-	public static CheckpointDaemonInterface getCheckpointDaemon() {
-		//if(checkpointDaemon == null) {
-		//	checkpointDaemon = new CheckpointDaemon();
-		//}
-		return checkpointDaemon;
 	}
 	
 	public static synchronized void stopCheckpointDaemon(String dbname) throws IOException {

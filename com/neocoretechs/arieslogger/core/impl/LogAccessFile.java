@@ -79,14 +79,12 @@ public class LogAccessFile
      **/
     private static final int            LOG_RECORD_FIXED_OVERHEAD_SIZE = 16;
 	private static final boolean DEBUG = false;
+	private boolean MEASURE = false;
 
 	private  LogAccessFileBuffer currentBuffer; //current active buffer
 	private boolean flushInProgress = false;
 	
 	private final RandomAccessFile  log;
-	// log can be touched only inside synchronized block protected by
-	// logFileSemaphore.
-	private final Object            logFileSemaphore;
 
 	static int                      mon_numWritesToLog;
 	static int                      mon_numBytesToLog;
@@ -95,11 +93,11 @@ public class LogAccessFile
 	private int checksumLogRecordSize;      //checksumLength + LOG_RECORD_FIXED_OVERHEAD_SIZE
 	private ChecksumOperation checksumLogOperation;
 	private LogRecord checksumLogRecord;
+
 		
 	public LogAccessFile(File logFile, RandomAccessFile log, int bufferSize) throws IOException 
     {
-		this.log        = log;
-		logFileSemaphore= log;		
+		this.log        = log;	
 		currentBuffer = new LogAccessFileBuffer(bufferSize);
 	
 		/**
@@ -247,7 +245,14 @@ public class LogAccessFile
             checksumLogOperation.reset();
             checksumLogOperation.update(bigbuffer.array(), checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE,
                                             total_log_record_length);
-
+        	// calculate the checksum for the current log buffer 
+    		// and write the record to the space reserved in 
+    		// the beginning of the buffer. 
+    		//checksumLogOperation.reset();
+    		//checksumLogOperation.update(currentBuffer.buffer.array(), 
+    		//				checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE, 
+    		//				currentBuffer.length - (checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE) );
+    		//moveChecksumToBuffer(currentBuffer.buffer);
             moveChecksumToBuffer(bigbuffer);
 
             // flush all buffers before writing the bigbuffer to the
@@ -371,13 +376,6 @@ public class LogAccessFile
 	
 	}
 
-	//flush all the the dirty buffers to disk
-	public void flushLogAccessFile() throws IOException 
-	{
-		switchLogBuffer();
-		flushDirtyBuffers();
-	}
-	
 	/**
 	 * Compute the checksum for the current buffer, write it out
 	 * call flushDirtyBuffers then init the currentBuffer (LogAccessFileBuffer)
@@ -385,8 +383,8 @@ public class LogAccessFile
 	 * when flushDirtyBuffers() is invoked
 	 * or when no more free buffers are available. 
 	 */
-	public synchronized void switchLogBuffer() throws IOException  
-    {
+	public synchronized void flushLogAccessFile() throws IOException 
+	{
 		if( DEBUG ) System.out.println("LogAccessFile.switchLogBuffer");
 		// ignore empty buffer switch requests
 		if( currentBuffer.isBufferEmpty() ) {
@@ -395,18 +393,8 @@ public class LogAccessFile
 				}
 				return;
 		}
-		// calculate the checksum for the current log buffer 
-		// and write the record to the space reserved in 
-		// the beginning of the buffer. 
-		checksumLogOperation.reset();
-		checksumLogOperation.update(currentBuffer.buffer.array(), 
-						checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE, 
-						currentBuffer.length - (checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE) );
-		moveChecksumToBuffer(currentBuffer.buffer);
+	
 		flushDirtyBuffers();
-		//after the flush call there should be a free buffer
-		//because this is only method that removes items from 
-		//free buffers and removal is in synchronized block. 
 		// there should be free buffer available at this point.
 		currentBuffer.init(checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE);
 		if (DEBUG) {
@@ -415,7 +403,6 @@ public class LogAccessFile
 		}
 		
 	}
-
 
     /**
      * Guarantee all writes up to the last call to flushLogAccessFile on disk.
@@ -432,7 +419,7 @@ public class LogAccessFile
      * is to first call switchLogBuffer() and then follow by a call of sync().
      *
      **/
-    public void syncLogAccessFile() throws IOException
+    public synchronized void syncLogAccessFile() throws IOException
     {
         for( int i=0; ; )
         {
@@ -440,11 +427,7 @@ public class LogAccessFile
             // mounted disk.  We re-try to do this 20 times.
             try
             {
-                synchronized( this)
-                {
-                    log.getFD().sync();
-                }
-
+                log.getFD().sync();
                 // the sync succeed, so return
                 break;
             }
@@ -469,20 +452,17 @@ public class LogAccessFile
 		The database is being marked corrupted, get rid of file pointer without
 		writing out anything more.
 	 */
-	public void corrupt() throws IOException
+	public synchronized void corrupt() throws IOException
 	{
-		synchronized(logFileSemaphore)
-		{
 			System.out.println("CORRUPTION detected, log file closing.."+log);
 			if (log != null)
 				log.close();
-		}
 	}
 	/**
 	 * Flush the log via flushLogAccessFile, then call close in log if not null
 	 * @throws IOException
 	 */
-	public void close() throws IOException
+	public synchronized void close() throws IOException
     {
 		if (DEBUG) 
         {
@@ -491,58 +471,20 @@ public class LogAccessFile
                 currentBuffer.buffer.position() +  " " + currentBuffer.buffer.remaining());
 			System.out.println("LogAccessFile.Close file being flushed/closed "+log);
         }
-		
 		flushLogAccessFile();
-		synchronized(logFileSemaphore)
-		{
-			if (log != null)
-				log.close();
-		}
-		
+		if (log != null)
+				log.close();	
 	}
 
 
 	/* write to the log file */
 	private void writeToLog(byte b[], int off, int len, long highestInstance) throws IOException {
 		if( DEBUG ) {
-			System.out.println("LogAccessFile.writeToLog "+log+" offs:"+off+" len:"+len+" hiInst:"+LogCounter.toDebugString(highestInstance));
+			System.out.println("LogAccessFile.writeToLog "+log+" offs:"+off+" len:"+len+" hiInst:"+LogCounter.toDebugString(highestInstance)+" current file pointer:"+log.getFilePointer());
 		}
-		synchronized(logFileSemaphore)
-		{
-            if (log != null)
-            {
-                // Try to handle case where user application is throwing
-                // random interrupts at  threads, retry in the case
-                // of IO exceptions 5 times.  After that hope that it is 
-                // a real disk problem - an IO error in a write to the log file
-                // is going to take down the whole system, so seems worthwhile
-                // to retry.
-                for (int i = 0; ;i++)
-                {
-                    try 
-                    {
-                		if( DEBUG ) {
-                			System.out.println("LogAccessFile.writeToLog writing @ file position:"+log.getFilePointer());
-                		}
-                        log.write(b, off, len);
-                        break;
-                    }
-                    catch (IOException ioe)
-                    {
-                        // just fall through and retry the log write 1st 5 times.
-
-                        if (i >= 5)
-                            throw ioe;
-                    }
-                }
-            } else {
-            	System.out.println("log instance null in LogAccessFile.writeToLog");
-            	throw new IOException("log instance null in LogAccessFile.writeToLog");
-            }  	
-		}
-
-		if (DEBUG) 
-        {
+        assert(log != null);
+        log.write(b, off, len);
+		if(MEASURE) {
 			mon_numWritesToLog++;
 			mon_numBytesToLog += len;
 		}
@@ -580,7 +522,7 @@ public class LogAccessFile
 				// the log record that is going to be written is not 
 				// going to fit in the current buffer, switch the 
 				// log buffer to create buffer space for it. 
-				switchLogBuffer();
+				flushLogAccessFile();
 				// reserve space if log checksum feature is enabled. 
 		}
 		//if (DEBUG) {
@@ -636,28 +578,6 @@ public class LogAccessFile
     /** Return the length of a checksum record */
     public int getChecksumLogRecordSize() { return checksumLogRecordSize; }
 
-    /**
-     * Perform a flushLogAccessFile, then put the marker at the current buffer position
-     * and perform a 'writeToLog'
-     * This is typically performed as part of 'switchLogFile'
-     * @param marker
-     * @throws IOException
-     */
-	protected void writeEndMarker(int marker) throws IOException 
-	{
-		//flush all the buffers and then write the end marker.
-		flushLogAccessFile();
-		//end is written in the beginning of the buffer, no
-		//need to checksum a int write.
-		int pos = currentBuffer.buffer.position();
-		currentBuffer.buffer.putInt(marker);
-		// the highest instance is set to -1
-		writeToLog(currentBuffer.buffer.array(), pos, 4, -1); //end marker has no instance
-		currentBuffer.buffer.position(pos);
-		if( DEBUG ) {
-			System.out.println("LogAccessFile.writeEndMarker "+marker+" at position "+pos+" with total:"+currentBuffer.length);
-		}
-	}
 
 
 	public void write(byte b) {

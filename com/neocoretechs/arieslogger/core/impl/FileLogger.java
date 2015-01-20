@@ -33,6 +33,10 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map.Entry;
 
 
 /**
@@ -277,36 +281,24 @@ public class FileLogger implements Logger {
 								 Compensation compensation,
 								 LogInstance undoInstance,
 								 Object in) throws IOException {
-		boolean inUserCode = false;
 
 			logOutputBuffer.clear();
-
 			long transactionId = xact.getTransId();
-
 			// write out the log header with the operation embedded
-			logRecord.setValue(transactionId, compensation);
-
-			inUserCode = true;
-			logOutputBuffer.put(GlobalDBIO.getObjectAsBytes(logRecord));
-			inUserCode = false;
-
-			// write out the undoInstance
-			logOutputBuffer.putLong(((LogCounter)undoInstance).getValueAsLong());
-
+			CompensationLogRecord clr = new CompensationLogRecord(transactionId, compensation, undoInstance);
+			logOutputBuffer.put(GlobalDBIO.getObjectAsBytes(clr));
 			// in this implementation, there is no optional data for the
 			// compensation operation.  Optional data for the rollback comes
 			// from the undoable operation - and is passed into this call.
 			int completeLength = logOutputBuffer.position();
 			long instance =  logToFile.appendLogRecord(logOutputBuffer.array(), 0, completeLength, null, 0, 0);
 			LogInstance logInstance = new LogCounter(instance);
-
 			if (DEBUG)
 			{
 					System.out.println("FileLogger.logAndUndo: Write CLR: Xact: " + transactionId +" clrInstance: " + logInstance.toString() + 
                         " undoInstance " + undoInstance + "\n");
                 
 			}
-
 			// in and dataLength contains optional data that was written 
 			// to the log during a previous call to logAndDo.
 			compensation.applyChange(xact, logInstance, in);
@@ -410,76 +402,62 @@ public class FileLogger implements Logger {
 			if (DEBUG)
 				assert(scanLog != null) : "cannot open log for undo";
 
-			LogRecord record;
+			HashMap<LogInstance, LogRecord> records;
+			// backward scan records in reverse order
+			while ((records =  scanLog.getNextRecord(rawInput, t.getTransId(), 0)) != null) 
+			{
+				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
+				while(irecs.hasNext()) {
+					Entry<LogInstance, LogRecord> recEntry = irecs.next();
+					LogRecord record = recEntry.getValue();
+					if (DEBUG) {
+						assert(record.getTransactionId() == t.getTransId()) : "getNextRecord return unqualified log record for undo";
+					}
+					logrecordseen++;
+					if (record.isCLR()) {
+						clrskipped++;
+						// cast to CompensationLogRecord so we can get undo instance
+						LogInstance undoInstance = ((CompensationLogRecord)record).getUndoInstance();
+						if (DEBUG) {
+							System.out.println("FileLogger.undo: Skipping over CLRs, reset scan to " + undoInstance);
+						}
+						scanLog.resetPosition(new LogCounter(undoInstance.getValueAsLong()));
+						// scanLog now positioned at the beginning of the log
+						// record that was rolled back by this CLR.
+						// The scan is a backward one so getNextRecord will skip
+						// over the record that was rolled back and go to the one
+						// previous to it
+						continue;
+					}
 
-			while ((record =  scanLog.getNextRecord(rawInput, t.getTransId(), 0)) != null) 
-			{ 
-				if (DEBUG)
-				{
-					assert(record.getTransactionId() == t.getTransId()) : "getNextRecord return unqualified log record for undo";
-				}
+					lop = record.getUndoable();
 
-				logrecordseen++;
+					if (lop != null) {
+						compensation = lop.generateUndo(t, rawInput);
+						if (DEBUG) {
+							System.out.println("FileLogger.undo: Rollback log record at instance " +
+                                LogCounter.toDebugString(scanLog.getLogInstanceAsLong()) + " : " + lop);
+						}
 
-				if (record.isCLR())
-				{
-					clrskipped++;
-					
-					// read the undoInstance
-					long undoInstance = rawInput.getLong();
+						clrgenerated++;
 
-					if (DEBUG)
-                    {
-						System.out.println("FileLogger.undo: Skipping over CLRs, reset scan to " + LogCounter.toDebugString(undoInstance));
-                        
-                    }
-
-					scanLog.resetPosition(new LogCounter(undoInstance));
-
-					// scanLog now positioned at the beginning of the log
-					// record that was rolled back by this CLR.
-					// The scan is a backward one so getNextRecord will skip
-					// over the record that was rolled back and go to the one
-					// previous to it
-
-					continue;
-				}
-
-				lop = record.getUndoable();
-
-				if (lop != null)
-				{
-					int optionalDataLength = rawInput.getInt();
-					//int savePosition = rawInput.getPosition();
-					//rawInput.setLimit(optionalDataLength);
-	
-					compensation = lop.generateUndo(t, rawInput);
-
-					if (DEBUG)
-                    {
-						System.out.println("FileLogger.undo: Rollback log record at instance " +
-                                LogCounter.toDebugString(scanLog.getBlockNumber()) + " : " + lop);
-                    }
-
-					clrgenerated++;
-
-					if (compensation != null)
-					{
+						if (compensation != null) {
 						// generateUndo may have read stuff off the
 						// stream, reset it for the undo operation.
 						//rawInput.setLimit(savePosition, optionalDataLength);
 
 						// log the compensation op that rolls back the 
                         // operation at this instance 
-						logAndUndo(t, compensation, new LogCounter(scanLog.getBlockNumber()), rawInput);
-						compensation.releaseResource(t);
-						compensation = null;
-					}
+							logAndUndo(t, compensation, new LogCounter(scanLog.getLogInstanceAsLong()), rawInput);
+							compensation.releaseResource(t);
+							compensation = null;
+						}
 
-					// if compensation is null, log operation is redo only
-				}
-				// if this is not an undoable operation, continue with next log
-				// record
+						// if compensation is null, log operation is redo only
+					}
+					// if this is not an undoable operation, continue with next log
+					// record
+				} // record iterator
 			}
 		}
 		catch (ClassNotFoundException cnfe)
@@ -573,36 +551,31 @@ public class FileLogger implements Logger {
 				System.out.println("FileLogger.redo entering redo scan with redoLWM:"+LogCounter.toDebugString(redoLWM));
 			}
 			// scan the log forward in redo pass and go to the end
-			LogRecord record;
-			while((record = redoScan.getNextRecord(logOutputBuffer, -1, 0))  != null)
+			HashMap<LogInstance, LogRecord> records;
+			// backward scan records in reverse order
+			while ((records = redoScan.getNextRecord(logOutputBuffer, -1, 0))  != null) 
 			{
-				scanCount++;
-				long undoInstance = 0;
+				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
+				while(irecs.hasNext()) {
+					Entry<LogInstance, LogRecord> recEntry = irecs.next();
+					LogRecord record = recEntry.getValue();
+					scanCount++;
+					long undoInstance = 0;
 
-				// last known good instance
-				instance = redoScan.getBlockNumber();
+					// last known good instance
+					instance = recEntry.getKey().getValueAsLong();
 
-				// last known good log end
-				logEnd = redoScan.getLogRecordEnd();
-
-				if (DEBUG)
-                {
+					if (DEBUG) {
                         op = record.getLoggable();
                         tranId = record.getTransactionId();
-                        if (record.isCLR())	
-                        {
-                            // !!!!!!! this moves the file pointer
-                            //undoInstance = logIn.readLong();
-
+                        if (record.isCLR())	 {
                             System.out.println(
                                 "FileLogger.redo scanned " + tranId + " : " + op + 
                                 " instance = " + 
                                     LogCounter.toDebugString(instance)); //+ 
                                 //" undoInstance : " + 
                                     //LogCounter.toDebugString(undoInstance));
-                        }
-                        else
-                        {
+                        } else {
                             System.out.println(
                                 "FileLogger.redo scanned " + tranId + " : " + op + 
                                 " instance = " + 
@@ -611,120 +584,70 @@ public class FileLogger implements Logger {
                                     LogCounter.toDebugString(logEnd) 
                                 + " available " + logOutputBuffer.remaining());
                         }      
-                }
-
-				// if the redo scan is between the undoLWM and redoLWM, we only
-				// need to redo begin and end tran.  Everything else has
-				// already been flushed by checkpoint.
-				// We dont write the dirty pages list within a Checkpoint record. Instead, during checkpoint, 
-				// we flush all database pages to disk. The redo Low Water Mark (redoLWM) is set to the current instance
-				// when the checkpoint starts. The undo Low Water Mark (undoLWM) is set to the starting instance
-				// of the oldest active transaction. At restart, 
-				// replay the log from redoLWM or undoLWM whichever is earlier. 
-				if (redoLWM != LogCounter.INVALID_LOG_INSTANCE && instance < redoLWM)
-				{
-					if (!(record.isFirst() || record.isComplete() || record.isPrepare()))
-                    {
-						if( DEBUG ) {
-							System.out.println("FileLogger.redo: continuing redo log loop "+record);
-						}
-						continue;
-                    }
-				}
-
-				// get the transaction
-				tranId = record.getTransactionId();
-
-				if (redoLWM != LogCounter.INVALID_LOG_INSTANCE && instance < redoLWM && 
-							(record.isPrepare() || record.isComplete()))
-				{
-					// What is happening here is that a transaction that
-					// started before the undoLWM has committed by the time
-					// the checkpoint undoLWM was taken.  Hence, we only
-					// see the tail end of its log record and its endXact
-                    // record. 
-					// 
-					// NOTE:
-					// Since we didn't see its beginXact, we cannot do the
-					// endXact's applyChange either.  Also if the endXact, is
-                    // actually just a prepare, we don't need to do
-                    // anything as the transaction will commit or abort
-                    // prior to point we are recovering to.
-					// If it is deemed necessary to do the endXact's applyChange, 
-                    // then we should start the transaction right here. 
-                    // For now, just completely ignore this transaction
-					// 
-					etranCount++;
-						continue;
-				}
-
-				btranCount++;
-				// the long transaction ID is embedded in the beginXact log
-				// record.  The short ID is stored in the log record.
-				//long recoveryTransaction =  record.getTransactionId();
-				
-				op = record.getLoggable();
-
-				if (op.needsRedo(blockio))
-				{
-					redoCount++;
-
-					if (record.isCLR())	
-					{
-						clrCount++;
-
-						// the log operation is not complete, the operation to
-						// undo is stashed away at the undoInstance.
-						// Reconstitute that first.
-
-						if (DEBUG)
-							assert(op instanceof Compensation);
-
-                        // this value may be set by sanity xxxx
-						if (undoInstance == 0) 
-							undoInstance = logOutputBuffer.getLong();
-
-						if (undoScan == null)
-						{
-							undoScan = (StreamLogScan)logToFile.openForwardScan(undoInstance,(LogInstance)null);
-						}
-						else
-						{
-							undoScan.resetPosition(new LogCounter(undoInstance));
-						}
-
-						// undoScan now positioned at the beginning of the log
-						// record was rolled back by this CLR.  
-						// The scan is a forward one so getNextRecord will get 
-                        // the log record that needs to be rolled back.
-
-						// reuse the buffer in logOutputBuffer since CLR 
-                        // has no optional data and has no use for it anymore 
-						logOutputBuffer.clear();
-						LogRecord undoRecord = undoScan.getNextRecord(logOutputBuffer, -1, 0);
-
-						Undoable undoOp = undoRecord.getUndoable();
-
-						if (DEBUG)
-						{
-							System.out.println("FileLogger.redo Redoing CLR: undoInstance = " + LogCounter.toDebugString(undoInstance) +
-                                " clrinstance = " +  LogCounter.toDebugString(instance));
-							//assert(undoRecord.getTransactionId() == tranId);
-							assert(undoOp != null);
-						}
-
-						((Compensation)op).setUndoOp(undoOp);
 					}
 
-					// at this point, logIn points to the optional
-					// data of the loggable that is to be redone or to be
-					// rolled back			
-					if (DEBUG)
-                    {
-                            System.out.println( "FileLogger.redo redoing " + op + " instance = " +  LogCounter.toDebugString(instance));
-                    }
+					// if the redo scan is between the undoLWM and redoLWM, we only
+					// need to redo begin and end tran.  Everything else has
+					// already been flushed by checkpoint.
+					// We dont write the dirty pages list within a Checkpoint record. Instead, during checkpoint, 
+					// we flush all database pages to disk. The redo Low Water Mark (redoLWM) is set to the current instance
+					// when the checkpoint starts. The undo Low Water Mark (undoLWM) is set to the starting instance
+					// of the oldest active transaction. At restart, 
+					// replay the log from redoLWM or undoLWM whichever is earlier. 
+					if (redoLWM != LogCounter.INVALID_LOG_INSTANCE && instance < redoLWM) {
+						if ( record.isComplete() || record.isPrepare() ) {
+							if( DEBUG ) {
+								System.out.println("FileLogger.redo: continuing redo log loop with ineligable record "+record +" with instance "+LogCounter.toDebugString(instance));
+							}
+							continue;
+						}
+					}
 
-				}
+					btranCount++;
+					// the long transaction ID is embedded in the beginXact log
+					// record.  The short ID is stored in the log record.
+					//long recoveryTransaction =  record.getTransactionId();
+				
+					op = record.getLoggable();
+
+					if (op.needsRedo(blockio)) {
+						redoCount++;
+						if (record.isCLR())	 {
+							clrCount++;
+							// the log operation is not complete, the operation to
+							// undo is stashed away at the undoInstance.
+							// Reconstitute that first.
+							if (DEBUG)
+								assert(op instanceof Compensation);
+							// cast to CompensationLogRecord so we can get undo instance
+							LogInstance undoInst = ((CompensationLogRecord)record).getUndoInstance();
+							// undoScan now positioned at the beginning of the log
+							// record was rolled back by this CLR.  
+							// The scan is a forward one so getNextRecord will get 
+							// the log record that needs to be rolled back.
+							// reuse the buffer in logOutputBuffer since CLR 
+							// has no optional data and has no use for it anymore 
+							logOutputBuffer.clear();
+							LogRecord undoRecord = LogToFile.getRecord(logToFile, undoInst);
+							Undoable undoOp = undoRecord.getUndoable();
+
+							if (DEBUG) {
+								System.out.println("FileLogger.redo Redoing CLR: undoInstance = " + LogCounter.toDebugString(undoInstance) +
+                                " clrinstance = " +  LogCounter.toDebugString(instance));
+								//assert(undoRecord.getTransactionId() == tranId);
+								assert(undoOp != null);
+							}
+
+							((Compensation)op).setUndoOp(undoOp);
+						}
+
+						// at this point, logIn points to the optional
+						// data of the loggable that is to be redone or to be
+						// rolled back			
+						if (DEBUG) {
+                            System.out.println( "FileLogger.redo redoing " + op + " instance = " +  LogCounter.toDebugString(instance));
+						}
+					} //op.needsRedo
 
 				// RESOLVE: to speed up undo, may want to update the 
 				// LastLogInstance in the transaction table.  
@@ -737,20 +660,15 @@ public class FileLogger implements Logger {
 				// because we already did all the rollback work when redoing
 				// the CLRs.  Commit will only flush the log if this session
 				// has written any transaction, so in this case, it is a noop.
-				if (record.isComplete())
-				{
+				if (record.isComplete()) {
 					etranCount++;
 					//recoveryTransaction.commit();
 				}
-			} // while redoScan.getNextRecord() != null
-
-            // If the scan ended in an empty file, update logEnd to reflect that
-            // in order to avoid to continue logging to an older file
-            long end = redoScan.getLogRecordEnd(); 
-            if (end != LogCounter.INVALID_LOG_INSTANCE && (LogCounter.getLogFileNumber(logEnd) < LogCounter.getLogFileNumber(end))) {
-                logEnd = end;
-            }
-
+			  } // while irecs.hasNext
+			}// while redoScan.getNextRecord() != null
+			
+            logEnd = redoScan.getLogRecordEnd();
+            
 		} finally {
 			// close all the io streams
 			redoScan.close();
@@ -805,39 +723,11 @@ public class FileLogger implements Logger {
 	}
 
 
-	/**
-		Read the next log record from the scan.
-
-		<P>MT - caller must provide synchronization (right now, it is only
-		called in recovery to find the checkpoint log record.  When this method
-		is called by a more general audience, MT must be revisited).
-
-		@param scan an opened log scan
-		@param size estimated size of the log record
-
-		@return the log operation that is the next in the scan, or null if no
-		more log operation in the log scan
-
-		@exception IOException	Error reading the log file
-		@exception StandardException Standard  error policy
-		@exception ClassNotFoundException log corrupted
-	 */
-	protected Loggable readLogRecord(StreamLogScan scan, int size) throws IOException, ClassNotFoundException
-	{
-		Loggable lop = null;
-		logRecordRead.limit(size);
-		LogRecord record = scan.getNextRecord(logRecordRead, -1, 0);
-		if (record != null)
-			lop = record.getLoggable();
-		return lop;
-	}
-
 	@Override
 	public void reprepare(long t, long undoId, LogInstance undoStopAt,LogInstance undoStartAt) throws IOException {
 		// TODO Auto-generated method stub
 		
 	}
-
 
 
 }

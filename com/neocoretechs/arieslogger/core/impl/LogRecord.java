@@ -48,8 +48,7 @@ public class LogRecord implements Externalizable {
 	private static final int LOG_RECORD = 0;
 	private static final boolean DEBUG = false;
 
-	public LogRecord() {
-	}
+	public LogRecord() {}
 
 	public void reset() {
 		xactId = -1;
@@ -140,7 +139,6 @@ public class LogRecord implements Externalizable {
 
 	public Undoable getUndoable() throws IOException, ClassNotFoundException
 	{
-
 		if (op instanceof Undoable)
 			return (Undoable) op;
 		else

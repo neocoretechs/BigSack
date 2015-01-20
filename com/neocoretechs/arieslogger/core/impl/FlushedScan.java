@@ -23,12 +23,15 @@ package com.neocoretechs.arieslogger.core.impl;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.StreamLogScan;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
 
@@ -121,7 +124,7 @@ public class FlushedScan implements StreamLogScan {
 		scan has been reached.
 		@exception IOException
 	*/
-	public LogRecord getNextRecord(ByteBuffer input, long tranId, int groupmask) throws IOException {
+	public HashMap<LogInstance, LogRecord> getNextRecord(ByteBuffer input, long tranId, int groupmask) throws IOException {
 		try
 		{
 			boolean candidate;
@@ -143,7 +146,7 @@ public class FlushedScan implements StreamLogScan {
 				// put the data to 'input'
 				input.put(data);
 				
-				lr = (LogRecord)(new ObjectInputStream(new ByteArrayInputStream(input.array())).readObject());
+				lr = (LogRecord)(GlobalDBIO.deserializeObject(input));
 
 				if (groupmask != 0 || tranId != -1)
 				{
@@ -172,8 +175,9 @@ public class FlushedScan implements StreamLogScan {
 				}
 
 			} while (candidate == false);
-
-			return lr;
+			HashMap<LogInstance, LogRecord> retLog = new HashMap<LogInstance, LogRecord>();
+			retLog.put(new LogCounter(currentInstance), lr);
+			return retLog;
 		}
 		catch (ClassNotFoundException cnfe)
 		{
@@ -219,7 +223,7 @@ public class FlushedScan implements StreamLogScan {
 		Return the log instance (as an integer) the scan is currently on - this is the log
 		instance of the log record that was returned by getNextRecord.
 	*/
-	public long getBlockNumber()
+	public long getLogInstanceAsLong()
 	{
 		return getCurrentInstance();
 	}

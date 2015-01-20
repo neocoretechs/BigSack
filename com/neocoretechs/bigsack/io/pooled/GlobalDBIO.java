@@ -1,6 +1,6 @@
 package com.neocoretechs.bigsack.io.pooled;
 import java.io.*;
-
+import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.*;
 
@@ -340,6 +340,73 @@ public class GlobalDBIO {
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility: from buffer of length "
 					+ obuf.length);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
+	
+	public static Object deserializeObject(InputStream is) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			ReadableByteChannel rbc = Channels.newChannel(is);
+			s = new ObjectInputStream(Channels.newInputStream(rbc));
+			Od = s.readObject();
+			s.close();
+			rbc.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from inputstream "
+					+ is);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
+	
+	public static Object deserializeObject(ByteChannel rbc) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			s = new ObjectInputStream(Channels.newInputStream(rbc));
+			Od = s.readObject();
+			s.close();
+			rbc.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteChannel "
+					+ rbc);
+		} catch (ClassNotFoundException cnf) {
+			throw new IOException(
+				cnf.toString()
+					+ ":Class Not found, may have been modified beyond version compatibility");
+		}
+		return Od;
+	}
+	
+	public static Object deserializeObject(ByteBuffer bb) throws IOException {
+		Object Od;
+		try {
+			ObjectInputStream s;
+			byte[] ba = bb.array();
+			s = new ObjectInputStream(new ByteArrayInputStream(ba));
+			Od = s.readObject();
+			s.close();
+		} catch (IOException ioe) {
+			throw new IOException(
+				"deserializeObject: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteChannel "
+					+ bb);
 		} catch (ClassNotFoundException cnf) {
 			throw new IOException(
 				cnf.toString()

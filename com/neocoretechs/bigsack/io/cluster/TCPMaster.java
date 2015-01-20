@@ -115,7 +115,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 		while(shouldRun ) {
 			try {
 			 sock.read(b);
-			 IoResponseInterface iori = (IoResponseInterface) ClusterIOManager.deserializeObject(b);
+			 IoResponseInterface iori = (IoResponseInterface) GlobalDBIO.deserializeObject(b);
 	   	     // get the original request from the stored table
 	   	     IoRequestInterface ior = requestContext.get(iori.getUUID());
 	   	     if( DEBUG )

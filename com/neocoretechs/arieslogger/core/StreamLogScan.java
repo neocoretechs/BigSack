@@ -23,6 +23,8 @@ package com.neocoretechs.arieslogger.core;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 import com.neocoretechs.arieslogger.core.impl.LogRecord;
 
@@ -58,14 +60,14 @@ public interface StreamLogScan extends LogScan {
 		@exception IOException       Some I/O exception raised during reading 
                                      the log record.
 	*/
-	public LogRecord getNextRecord(ByteBuffer logOutputBuffer,  long tranId,  int groupmask)  throws IOException;
+	public HashMap<LogInstance, LogRecord> getNextRecord(ByteBuffer logOutputBuffer,  long tranId,  int groupmask)  throws IOException;
 
 	/**
 		Get the instance of the record just retrieved with getNextRecord(). 
 		@return INVALID_LOG_INSTANCE if no records have been returned yet or
 		the scan has completed.
 	*/
-	public long getBlockNumber();
+	public long getLogInstanceAsLong();
 
 	/**
 		Get the log instance that is right after the record just retrieved with

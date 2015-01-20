@@ -121,7 +121,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 			try {
 				s.read(b);
 				// extract the serialized request
-				final CompletionLatchInterface iori = (CompletionLatchInterface)ClusterIOManager.deserializeObject(b);
+				final CompletionLatchInterface iori = (CompletionLatchInterface)GlobalDBIO.deserializeObject(b);
 				//s.close();
 				if( DEBUG ) {
 					System.out.println("FROM REMOTE on port:"+SLAVEPORT+" "+iori);
