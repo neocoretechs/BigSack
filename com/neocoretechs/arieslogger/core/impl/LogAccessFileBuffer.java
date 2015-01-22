@@ -15,9 +15,7 @@ final class LogAccessFileBuffer
 
     private static final boolean DEBUG = false;
 	protected ByteBuffer    buffer;
-    protected long      greatest_instance;
-    protected int length;
-    private int reservedLength;
+    protected long      greatestInstance;
 
     /**
      * Allocate size bytes to the NIO ByteBuffer
@@ -35,7 +33,7 @@ final class LogAccessFileBuffer
      * @return
      */
     public boolean isBufferEmpty() {
-    	return reservedLength == length;
+    	return buffer.limit() == 0;
     }
  
     /**
@@ -45,14 +43,12 @@ final class LogAccessFileBuffer
      */
     public void init(int reserve)
     {
-		length = reserve;
-		reservedLength = reserve;
 		if( DEBUG ) {
-			System.out.println("LogAccessFileBuffer.init len:"+length+" cap:"+buffer.capacity()+" res:"+reserve);
+			System.out.println("LogAccessFileBuffer.init len:"+reserve+" cap:"+buffer.capacity()+" res:"+reserve);
 		}
 		buffer.position(reserve);
-        greatest_instance = -1;
-        assert(length > 0) : "initialization to less than zero bytes";
+        greatestInstance = LogToFile.LOG_FILE_HEADER_SIZE;
+        assert(reserve > 0) : "initialization to less than zero bytes";
     }
 
 }

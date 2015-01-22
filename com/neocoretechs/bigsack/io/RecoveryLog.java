@@ -80,7 +80,6 @@ public final class RecoveryLog  {
 			firstTrans = fl.logAndDo(blockIO, undoBlk);
 		else
 			fl.logAndDo(blockIO, undoBlk);
-		fl.flushAll();
 		blk.getBlk().setInlog(true);
 		return;
 	}
@@ -123,8 +122,6 @@ public final class RecoveryLog  {
 	}
 	
 	/**
-	* Clear the undo log for general collection clear
-	* @exception IOException If we can't write the new log header
 	*/
 	private void clear() throws IOException {
 

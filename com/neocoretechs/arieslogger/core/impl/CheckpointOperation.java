@@ -80,15 +80,14 @@ public class CheckpointOperation implements Loggable, Externalizable
 	/**
 	 *	Nothing to do unless we are rollforward recovery;
 	 *  Redoing of checkpoints during rollforward recovery allows us to restart
-	 *  the  roll-forward recovery from the last checkpoint redone during rollforward recovery, if
+	 *  the roll-forward recovery from the last checkpoint redone during rollforward recovery, if
 	 *  we happen to crash during the roll-forward recovery process.
 	*/
 	public void applyChange(BlockDBIO xact, LogInstance instance, Object in) throws IOException
 	{
 		//redo the checkpoint if we are in roll-forward recovery only
 		if(inRollForwardRecovery(xact))
-		{
-			
+		{	
 				checkpointInRollForwardRecovery(instance, redoLWM, undoLWM);
 		}
 		return;

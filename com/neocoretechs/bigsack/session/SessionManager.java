@@ -179,12 +179,6 @@ public final class SessionManager {
 	protected static Hashtable<?, ?> getAdminSessionTable() {
 		return AdminSessionTable;
 	}
-	
-	public static synchronized void stopCheckpointDaemon(String dbname) throws IOException {
-		BigSackSession hps = (SessionTable.get(dbname));
-		if (hps != null) {
-			hps.getBTree().getIO().getUlog().stop();
-		}
-	}
+
 
 }

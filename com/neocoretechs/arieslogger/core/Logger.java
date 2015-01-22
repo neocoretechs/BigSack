@@ -77,14 +77,8 @@ public interface Logger {
 		Flush all unwritten log record up to the log instance indicated to disk.
 		@param where flush log up to here
 	*/
-	public void flush(LogInstance where) throws IOException;
+	public void flush() throws IOException;
 
-
-	/**
-		Flush all unwritten log to disk
-		@exception StandardException cannot flush due to sync error
-	*/
-	public void flushAll() throws IOException;
 
     /**
      * During recovery re-prepare a transaction.

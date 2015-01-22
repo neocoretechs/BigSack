@@ -54,19 +54,6 @@ public interface LogFactory extends Corruptable {
 	/**
 		Checkpoint the rawstore.
 
-		The frequency of checkpoint is determined by 2 persistent service
-		properties,
-		RawStore.LOG_SWITCH_INTERVAL and RawStore.CHECKPOINT_INTERVAL.  
-
-		By default, LOG_SWITCH_INTERVAL is every 1M bytes of log record
-		written.  User can change this value by setting the property to some
-		other values during boot time.   The legal range of LOG_SWITCH_INTERVAL
-		is from 100K to 128M.
-
-		By default, CHECKPOINT_INTERVAL equals 10M, but user
-		can set it to less if more frequent checkpoint is desired.  The legal
-		range of CHECKPOINT_INTERVAL is from 100K to 128M.
-
 		@param wait - if true waits for any existing checkpoint to complete 
                          and then executes and waits for another checkpoint.
                       if false if another thead is executing a checkpoint 
@@ -83,11 +70,9 @@ public interface LogFactory extends Corruptable {
 
 	/**
 		Flush all unwritten log record up to the log instance indicated to disk.
-		@param where flush log up to here
 		@exception Exception cannot flush log file due to sync error
 	*/
-	public void flush(LogInstance where) throws IOException;
-
+	public void flush() throws IOException;
 
 	/**
 		Get a LogScan to scan flushed records from the log.

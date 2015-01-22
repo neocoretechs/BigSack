@@ -240,8 +240,8 @@ public class FileLogger implements Logger {
 									completeLength, preparedLogArray,
 									optionalDataOffset,
 									optionalDataLength); 
-			logToFile.flushAll();
 			logInstance = new LogCounter(instance);
+			logToFile.flush();
 			operation.applyChange(xact, logInstance, logOutputBuffer);
 
 			if (DEBUG) {	    
@@ -310,21 +310,11 @@ public class FileLogger implements Logger {
 		<P>MT - not needed, wrapper method
 		@exception StandardException cannot sync log file
 	*/
-	public void flush(LogInstance where) throws IOException {
+	public void flush() throws IOException {
 		if (DEBUG){
-                System.out.println("FileLogger.flush: Flush log to:" + where.toString());  
+                System.out.println("FileLogger.flush: Flush log to:" + logToFile);  
 		}
-		logToFile.flush(where);
-	}
-
-	/**
-		Flush all outstanding log to disk. calls logToFile(LogToFile).flushAll()
-		<P>MT - not needed, wrapper method
-		@exception StandardException cannot sync log file
-	*/
-	public void flushAll() throws IOException
-	{
-		logToFile.flushAll();
+		logToFile.flush();
 	}
 
   
@@ -338,8 +328,7 @@ public class FileLogger implements Logger {
         synchronize.  The RawTransaction must handle synchronizing with 
         multiple threads during rollback.
 
-		@param t 			the transaction that needs to be rolled back
-		@param undoId 		the transaction ID
+		@param t 			the IO controller
 		@param undoStopAt	the last log record that should be rolled back
 		@param undoStartAt	the first log record that should be rolled back
 
@@ -639,6 +628,8 @@ public class FileLogger implements Logger {
 							}
 
 							((Compensation)op).setUndoOp(undoOp);
+							// call applyChange to roll back the block
+							undoOp.applyChange(blockio, undoInst, null);
 						}
 
 						// at this point, logIn points to the optional
@@ -649,17 +640,6 @@ public class FileLogger implements Logger {
 						}
 					} //op.needsRedo
 
-				// RESOLVE: to speed up undo, may want to update the 
-				// LastLogInstance in the transaction table.  
-				// Right now, undo always start from the end of the log.
-
-				// one last thing, if this is the last log record of the
-				// transaction, then commit the transaction and clean up
-				//
-				// 'commit' even though the transaction may be a rollback
-				// because we already did all the rollback work when redoing
-				// the CLRs.  Commit will only flush the log if this session
-				// has written any transaction, so in this case, it is a noop.
 				if (record.isComplete()) {
 					etranCount++;
 					//recoveryTransaction.commit();
