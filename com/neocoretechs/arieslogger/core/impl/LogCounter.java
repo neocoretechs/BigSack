@@ -68,7 +68,7 @@ public class LogCounter implements LogInstance, Externalizable {
 	// 32 bits are used to store the log file postion
 	private static final long FILE_POSITION_MASK = (long)0x7FFFFFFFL;
 
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 
 	private static final int LOG_COUNTER = 0;
 

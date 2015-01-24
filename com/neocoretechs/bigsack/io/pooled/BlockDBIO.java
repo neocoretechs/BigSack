@@ -63,7 +63,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	public BlockDBIO(String objname, boolean create, long transId) throws IOException {
 		super(objname, create, transId);
 		// create the ARIES protocol recovery log
-		setUlog(new RecoveryLog(this, create));
+		setUlog(new RecoveryLog(this));
 		// attempt recovery if needed
 		getUlog().getLogToFile().recover();
 	}

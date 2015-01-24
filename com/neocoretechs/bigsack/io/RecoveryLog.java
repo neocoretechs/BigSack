@@ -47,12 +47,12 @@ public final class RecoveryLog  {
 		return blockIO;
 	}
 
-	public RecoveryLog(BlockDBIO tglobalio, boolean create) throws IOException {
+	public RecoveryLog(BlockDBIO tglobalio) throws IOException {
 		blockIO = tglobalio;
 		tblk = new BlockAccessIndex(blockIO); // for writeLog reserved
 		ltf = new LogToFile(blockIO);
 		fl = (FileLogger) ltf.getLogger();
-		ltf.boot(create);
+		ltf.boot();
 	}
 	
 	public void stop( ) throws IOException {

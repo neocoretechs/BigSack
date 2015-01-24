@@ -47,7 +47,7 @@ final class LogAccessFileBuffer
 			System.out.println("LogAccessFileBuffer.init len:"+reserve+" cap:"+buffer.capacity()+" res:"+reserve);
 		}
 		buffer.position(reserve);
-        greatestInstance = LogToFile.LOG_FILE_HEADER_SIZE;
+        greatestInstance = LogCounter.makeLogInstanceAsLong(1,LogToFile.LOG_FILE_HEADER_SIZE);
         assert(reserve > 0) : "initialization to less than zero bytes";
     }
 

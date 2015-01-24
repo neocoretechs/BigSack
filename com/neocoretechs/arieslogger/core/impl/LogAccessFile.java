@@ -150,39 +150,43 @@ public class LogAccessFile
     	assert(currentBuffer.buffer.limit() > 0 ) : "free bytes less than or equal to zero";
     	assert(instance != LogCounter.INVALID_LOG_INSTANCE) : "LogAcessFile.writeToLog instance invalid "+LogCounter.toDebugString(instance);
     	
-        int total_log_record_length = length + LOG_RECORD_FIXED_OVERHEAD_SIZE;
+        // now set up checksum in its buffer based on contents
+        logChecksum.getChecksumLogOperation().reset();     
+        logChecksum.getChecksumLogOperation().update(data, data_offset, length);
+        // writes it to internal bytebuffer
+        int fileNum = (int) LogCounter.getLogFileNumber(instance);
+        assert(fileNum != 0 && log.getFilePointer() != 0) : "LogAccessFile.writeLogRecord checksum instance invalid "+fileNum+" "+log.getFilePointer();
+        logChecksum.setChecksumInstance(LogCounter.makeLogInstanceAsLong(fileNum, log.getFilePointer()));
+        // make sure to call updateChecksum last, before processing, as it sets up entire checksum buffer for writing
+        int lenCs = logChecksum.updateChecksum();
+        // write checksum, its ready to go
+        writeToLog(logChecksum.checksumBuffer.array(), 0, lenCs);
+        syncLogAccessFile();
+        // write currentBuffer to log immediately after checksum record
+        int totalLogRecordLength = length + LOG_RECORD_FIXED_OVERHEAD_SIZE;
         // add another log overhead for checksum log record
-        int bigBufferLength = checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE + total_log_record_length;
+   
         if( DEBUG ) {
-        	System.out.println("LogAccessFile.writeLogRecord: BIG buffer reclen/bytes free:"+total_log_record_length+"/"+currentBuffer.buffer.remaining()+" len:"+bigBufferLength);
+        	System.out.println("LogAccessFile.writeLogRecord: BIG buffer reclen/bytes free:"+totalLogRecordLength+"/"+currentBuffer.buffer.remaining());
         } 
-        if( currentBuffer.buffer.capacity() > bigBufferLength ) {
+        if( currentBuffer.buffer.capacity() > totalLogRecordLength ) {
         	currentBuffer.buffer.clear();
         } else {
-    	 currentBuffer.buffer = ByteBuffer.allocate(bigBufferLength);
-        } 
+        	currentBuffer.buffer = ByteBuffer.allocate(totalLogRecordLength);
+        }
+        // set the greatest instance to the next record to be written
+        currentBuffer.greatestInstance = LogCounter.makeLogInstanceAsLong(fileNum, log.getFilePointer());
         // append log record
         appendLogRecordToBuffer(currentBuffer.buffer, 
        		 						0,
                                    length, 
-                                   instance, 
+                                   currentBuffer.greatestInstance, 
                                    data, 
                                    data_offset,
                                    optional_data,
                                    optional_data_offset,
                                    optional_data_length);
-        // now set up checksum in its buffer based on contents
-        logChecksum.getChecksumLogOperation().reset();     
-        logChecksum.getChecksumLogOperation().update(data, data_offset, length);
-        // writes it to internal bytebuffer
-        int lenCs = logChecksum.updateChecksum();
-        int fileNum = (int) LogCounter.getLogFileNumber(instance);
-        assert(fileNum != 0 && log.getFilePointer() != 0) : "LogAccessFile.writeLogRecord checksum instance invalid "+fileNum+" "+log.getFilePointer();
-        logChecksum.setChecksumInstance(LogCounter.makeLogInstanceAsLong(fileNum, log.getFilePointer()));
-        // write checksum, its ready to go
-        writeToLog(logChecksum.checksumBuffer.array(), 0, lenCs);
-        // write currentBuffer to log immediately after checksum record
-        flushBuffers();   
+ 
     }
 
     /**
@@ -234,8 +238,6 @@ public class LogAccessFile
         return buffer.position();
     }
 
-
-
     /**
      * Write data from all dirty buffers into the log file.
      * <p>
@@ -262,7 +264,6 @@ public class LogAccessFile
      **/
 	protected synchronized void flushBuffers() throws IOException 
     {
-	
 		try {
 			// wait out any current flushers
 			while(flushInProgress) {
@@ -281,7 +282,6 @@ public class LogAccessFile
 				notifyAll();
 		}
 	}
-
 
     /**
      * Guarantee all writes up to the last call to flushLogAccessFile on disk.
@@ -350,7 +350,6 @@ public class LogAccessFile
                 currentBuffer.buffer.position() +  " " + currentBuffer.buffer.remaining());
 			System.out.println("LogAccessFile.Close file being flushed/closed "+log);
         }
-		flushBuffers();
 		if (log != null)
 				log.close();	
 	}

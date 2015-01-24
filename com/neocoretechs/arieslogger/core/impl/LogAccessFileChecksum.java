@@ -5,9 +5,14 @@ import java.nio.ByteBuffer;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-
+/**
+ * Maintains the checksum for a given record. All records checksummed and flushed to durable store for logs
+ * make sure to call updateChecksum last, before processing, as it sets up entire checksum buffer for writing
+ * @author jg
+ *
+ */
 public class LogAccessFileChecksum {
-	private long checksumInstance = LogInstance.INVALID_LOG_INSTANCE;
+	private long checksumInstance = LogCounter.makeLogInstanceAsLong(1, LogToFile.LOG_FILE_HEADER_SIZE);
 	private int checksumLogRecordSize;      //checksumLength + LOG_RECORD_FIXED_OVERHEAD_SIZE
 	private ChecksumOperation checksumLogOperation;
 	private LogRecord checksumLogRecord;
@@ -63,6 +68,7 @@ public class LogAccessFileChecksum {
 	 * Generate the checskum log record and write it into the log
 	 * buffer. The checksum applies to all bytes from this checksum
 	 * log record to the next one. 
+	 * NOTE:make sure to call updateChecksum last, before processing, as it sets up entire checksum buffer for writing
      * @param bigbuffer The byte[] the checksum is written to. The
      * checksum is always written at the beginning of buffer.
 	 */
@@ -76,6 +82,7 @@ public class LogAccessFileChecksum {
 		//				currentBuffer.length - (checksumLogRecordSize + LOG_RECORD_FIXED_OVERHEAD_SIZE) );
 		checksumBuffer.clear();
 		checksumBuffer.putInt(checksumLogRecordSize);
+		assert(checksumInstance != LogInstance.INVALID_LOG_INSTANCE);
 		checksumBuffer.putLong(checksumInstance);
 		if( DEBUG )
 			System.out.println("writing checksum log record of size "+checksumLogRecordSize);
@@ -126,7 +133,5 @@ public class LogAccessFileChecksum {
 		}
 		return checksumLogRecordSize;
 	}
-
-
 
 }

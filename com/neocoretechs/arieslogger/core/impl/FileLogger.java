@@ -241,7 +241,7 @@ public class FileLogger implements Logger {
 									optionalDataOffset,
 									optionalDataLength); 
 			logInstance = new LogCounter(instance);
-			logToFile.flush();
+			flush();
 			operation.applyChange(xact, logInstance, logOutputBuffer);
 
 			if (DEBUG) {	    
@@ -281,7 +281,10 @@ public class FileLogger implements Logger {
 								 Compensation compensation,
 								 LogInstance undoInstance,
 								 Object in) throws IOException {
-
+			if (DEBUG){
+				System.out.println("FileLogger.logAndUndo: ENTRY, CLR:"+ compensation + 
+                    " undoInstance " + undoInstance + "\n");
+			}
 			logOutputBuffer.clear();
 			long transactionId = xact.getTransId();
 			// write out the log header with the operation embedded
@@ -292,10 +295,11 @@ public class FileLogger implements Logger {
 			// from the undoable operation - and is passed into this call.
 			int completeLength = logOutputBuffer.position();
 			long instance =  logToFile.appendLogRecord(logOutputBuffer.array(), 0, completeLength, null, 0, 0);
+			flush();
 			LogInstance logInstance = new LogCounter(instance);
 			if (DEBUG)
 			{
-					System.out.println("FileLogger.logAndUndo: Write CLR: Xact: " + transactionId +" clrInstance: " + logInstance.toString() + 
+					System.out.println("FileLogger.logAndUndo: about to applyChange, CLR:"+clr+" " + logInstance.toString() + 
                         " undoInstance " + undoInstance + "\n");
                 
 			}
@@ -528,8 +532,6 @@ public class FileLogger implements Logger {
         // the current log instance
 		long instance = LogCounter.INVALID_LOG_INSTANCE;
 
-		// use this scan to reconstitute operation to be undone
-		// when we see a CLR in the redo scan
 		StreamLogScan undoScan  = null;
 		Loggable      op        = null;
 		long          logEnd    = 0;  // we need to determine the log's true end
@@ -545,6 +547,8 @@ public class FileLogger implements Logger {
 			while ((records = redoScan.getNextRecord(logOutputBuffer, -1, 0))  != null) 
 			{
 				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
+				if( DEBUG )
+					System.out.println("FileLogger.redo scanning returned log records:"+records.size());
 				while(irecs.hasNext()) {
 					Entry<LogInstance, LogRecord> recEntry = irecs.next();
 					LogRecord record = recEntry.getValue();
@@ -580,9 +584,8 @@ public class FileLogger implements Logger {
 					// already been flushed by checkpoint.
 					// We dont write the dirty pages list within a Checkpoint record. Instead, during checkpoint, 
 					// we flush all database pages to disk. The redo Low Water Mark (redoLWM) is set to the current instance
-					// when the checkpoint starts. The undo Low Water Mark (undoLWM) is set to the starting instance
-					// of the oldest active transaction. At restart, 
-					// replay the log from redoLWM or undoLWM whichever is earlier. 
+					// of the instance before checkpoint starts. 
+					// replay the log from redoLWM 
 					if (redoLWM != LogCounter.INVALID_LOG_INSTANCE && instance < redoLWM) {
 						if ( record.isComplete() || record.isPrepare() ) {
 							if( DEBUG ) {
@@ -598,10 +601,18 @@ public class FileLogger implements Logger {
 					//long recoveryTransaction =  record.getTransactionId();
 				
 					op = record.getLoggable();
-
+					if( DEBUG ) {
+						System.out.println("FileLogger.redo got loggable "+op);
+					}
 					if (op.needsRedo(blockio)) {
+						if( DEBUG ) {
+							System.out.println("FileLogger.redo get loggable needing redo "+op);
+						}
 						redoCount++;
 						if (record.isCLR())	 {
+							if( DEBUG ) {
+								System.out.println("FileLogger.redo get loggable needing redo that si CLR"+op);
+							}
 							clrCount++;
 							// the log operation is not complete, the operation to
 							// undo is stashed away at the undoInstance.
@@ -621,8 +632,8 @@ public class FileLogger implements Logger {
 							Undoable undoOp = undoRecord.getUndoable();
 
 							if (DEBUG) {
-								System.out.println("FileLogger.redo Redoing CLR: undoInstance = " + LogCounter.toDebugString(undoInstance) +
-                                " clrinstance = " +  LogCounter.toDebugString(instance));
+								System.out.println("FileLogger.redo Redoing CLR: undoInstance = " + undoInst +
+                                " CLR instance = " +  LogCounter.toDebugString(instance));
 								//assert(undoRecord.getTransactionId() == tranId);
 								assert(undoOp != null);
 							}

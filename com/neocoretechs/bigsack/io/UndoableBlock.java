@@ -21,7 +21,7 @@ import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
  * @author jg
  *
  */
-public class UndoableBlock implements Undoable, Serializable {
+public final class UndoableBlock implements Undoable, Serializable {
 	private static final long serialVersionUID = 3823704109110419908L;
 	private BlockAccessIndex blkV1,blkV2; // utility blocks
 	
