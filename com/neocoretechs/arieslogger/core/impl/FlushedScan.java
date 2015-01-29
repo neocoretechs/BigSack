@@ -432,4 +432,10 @@ public class FlushedScan implements StreamLogScan {
 	public void setLogFactory(LogToFile logFactory) {
 		this.logFactory = logFactory;
 	}
+
+	@Override
+	public void checkFuzzyLogEnd() throws IOException {
+		// TODO Auto-generated method stub
+		
+	}
 }

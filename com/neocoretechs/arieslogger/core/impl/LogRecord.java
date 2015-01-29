@@ -111,7 +111,6 @@ public class LogRecord implements Externalizable {
 		this.group = op.group();
 	}
 
-
 	public static int maxGroupStoredSize()
 	{
 		return Integer.MAX_VALUE;
@@ -121,7 +120,6 @@ public class LogRecord implements Externalizable {
 	{
 		return 8;
 	}
-
 
 	public long getTransactionId() throws IOException, ClassNotFoundException {
 			return xactId;
@@ -135,7 +133,6 @@ public class LogRecord implements Externalizable {
     //{
     //    return((RePreparable) getLoggable());
 	//}
-
 
 	public Undoable getUndoable() throws IOException, ClassNotFoundException
 	{
@@ -193,7 +190,6 @@ public class LogRecord implements Externalizable {
 	{
 		return group;
 	}
-
 
 	public boolean isChecksum()	{
 		return ((group & Loggable.CHECKSUM) != 0);

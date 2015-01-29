@@ -48,10 +48,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Properties;
 import java.util.Set;
 import java.util.zip.CRC32;
-
+import java.util.Collections;
 /**
 
 	This is an implementation of the log using a non-circular file system file.
@@ -188,7 +190,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	//log buffer size values
 	public static final int DEFAULT_LOG_BUFFER_SIZE = 32768; //32K
-	private int logBufferSize = DEFAULT_LOG_BUFFER_SIZE;
+	int logBufferSize = DEFAULT_LOG_BUFFER_SIZE;
 
 	/* Log Control file flags. */
 	private static final byte IS_BETA_FLAG = 0x1;
@@ -441,13 +443,14 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		<BR> <B>Redo pass</B>
 		<BR> In the redo pass, reconstruct the state of the rawstore by
 		repeating exactly what happened before as recorded in the log.
+		In our case just do a scan to recover instances of records to roll back and verify
+		checksums.
 		<BR><B>Undo pass</B>
 		<BR> In the undo pass, all incomplete transactions are rolled back in
-		the order from the most recently started to the oldest.
+		the order from the most recently started to the oldest. Compensation log records are written for each
+		block rolled back.
 
-		<P>MT - synchronization provided by caller - RawStore boot.
-		This method is guaranteed to be the only method being called and can
-		assume single thread access on all fields.
+		<P>MT - synchronized
 
 		@see Loggable#needsRedo
 		@see FileLogger#redo
@@ -581,26 +584,15 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					redoScan = (StreamLogScan)openForwardScan(start, (LogInstance)null);
 				}
 
-
 				/////////////////////////////////////////////////////////////
 				//
 				//  Redo loop - in FileLogger
 				//
 				/////////////////////////////////////////////////////////////
-				//
 				inRedo = true;	
 				long logEnd = logger.redo( blockIO, redoScan, redoLWM, checkpointInstance);
 				inRedo = false;		
-                // Replication slave: When recovery has completed the
-                // redo pass, the database is no longer in replication
-                // slave mode and only the recover thread will access
-                // this object until recover has complete. We
-                // therefore do not need two versions of the log file
-                // number anymore. From this point on, logFileNumber
-                // is used for all references to the current log file
-                // number; bootTimeLogFileNumber is no longer used.
-                logFileNumber = bootTimeLogFileNumber;
-				
+   
 				// if we are only interested in dumping the log, don't alter
 				// the database and prevent anyone from using the log
 				if (DEBUG && DUMPLOG)
@@ -613,93 +605,42 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// determine where the log ends
 				//
 				/////////////////////////////////////////////////////////////
-				File logFile = null;
-				if( DEBUG ) {
-					System.out.println("LogToFile.redo returning from Logger.redo with logEnd="+logEnd);
-				}
 				// if logend == LogCounter.INVALID_LOG_SCAN, that means there 
                 // is no log record in the log - most likely it is corrupted in
                 // some way ...
 				if (logEnd == LogCounter.INVALID_LOG_INSTANCE) {
-					logFile = getLogFileName(logFileNumber);
-                    throw markCorrupt(new IOException(logFile.getPath()));
-				} else {// file position indicates log records present, process
+                    throw markCorrupt(new IOException("Invalid log instance returned from redo scan log end"));
+				} 
+				if( DEBUG ) {
+						System.out.println("LogToFile.recover log records present log file #:"+
+								logFileNumber+" end:"+LogCounter.toDebugString(logEnd)+
+								" current instance:"+LogCounter.toDebugString(currentInstance()));
+				}
+				// The end of the log is at endPosition.  Which is where
+				// the next log should be appending.
+				// if the last log record ends before the end of the
+                // log file, then this log file has a fuzzy end.
+                // Zap all the bytes to between endPosition to EOF to 0.
+				//
+				redoScan.checkFuzzyLogEnd();
 				
-					// logEnd is the instance of the next log record in the log
-					// it is used to determine the last known good position of
-					// the log
-					logFileNumber = LogCounter.getLogFileNumber(logEnd);
-					logFile = getLogFileName(logFileNumber);	
-					if( DEBUG ) {
-						System.out.println("LogToFile.recover log records present "+logFile+" "+logFileNumber+" end:"+logEnd);
-					}
-					logOut = allocateExistingLogFile(logFile, logBufferSize);
-					RandomAccessFile theLog = logOut.getRandomAccessFile();
-					setEndPosition( LogCounter.getLogFilePosition(logEnd) );
-						//
-						// The end of the log is at endPosition.  Which is where
-						// the next log should be appending.
-						//
-						// if the last log record ends before the end of the
-                        // log file, then this log file has a fuzzy end.
-                        // Zap all the bytes to between endPosition to EOF to 0.
-						//
-						// the end log marker is 4 bytes (of zeros)
-						//
-						// if endPosition + 4 == logOut.length, we have a
-                        // properly terminated log file
-						//
-						// if endPosition + 4 is > logOut.length, there are 0,
-                        // 1, 2, or 3 bytes of 'fuzz' at the end of the log. We
-                        // can ignore that because it is guaranteed to be
-                        // overwritten by the next log record.
-						//
-						// if endPosition + 4 is < logOut.length, we have a
-                        // partial log record at the end of the log.
-						//
-						// We need to overwrite all of the incomplete log
-                        // record, because if we start logging but cannot
-                        // 'consume' all the bad log, then the log will truly
-                        // be corrupted if the next 4 bytes (the length of the
-                        // log record) after that is small enough that the next
-                        // time the database is recovered, it will be
-                        // interpreted that the whole log record is in the log
-                        // and will try to objectify, only to get classNotFound
-                        // error or worse.
-						//
-						//find out if log had incomplete log records at the end.
-					if (redoScan.isLogEndFuzzy()) {
-							theLog.seek(endPosition);
-							long eof = theLog.length();
-							System.out.println("Fuzzy log end detected, best effort to zero fuzz starting at "+endPosition+" EOF "+eof);
-							/* Write zeros from incomplete log record to end of file */
-							long nWrites = (eof - endPosition)/logBufferSize;
-							int rBytes = (int)((eof - endPosition) % logBufferSize);
-							byte zeroBuf[]= new byte[logBufferSize];
-							System.out.println("Fuzzy EOF at:"+eof+" buffer size:"+logBufferSize+" nWrites="+nWrites+" rBytes="+rBytes);
-							//write the zeros to file
-							while(nWrites-- > 0)
-								theLog.write(zeroBuf);
-							if(rBytes !=0)
-								theLog.write(zeroBuf, 0, rBytes);
-							syncFile(theLog);
-					} // fuzzy end
-
-					//if (DEBUG)
-					//{
-					if (theLog.length() != endPosition) {
-								assert(theLog.length() > endPosition) : "log end > log file length, bad scan";
-					}
-					//}
-					// set the log to the true end position,and not the end of the file
-					if( DEBUG ) {
-						System.out.println("LogToFile.recover end position:"+endPosition);
-					}
-					setLastFlush(endPosition);
-					theLog.seek(endPosition);
-				} // log records present processing
-				
-	
+				// We should have an undoInstance array that contains the values to
+				// recover. We need to generate the CLR's for them and write those to the end
+				// As we write each record, the undo will be activated
+				// first reverse the scan array as it was forward scanned
+				/*
+				Collections.reverse(undoInstances);
+				Iterator<Long> undoIterator = undoInstances.iterator();
+				while(undoIterator.hasNext()) {
+					long undoInstance = undoIterator.next();
+					LogCounter undoCounter = new LogCounter(undoInstance);
+					LogRecord lr = Scan.getRecord(this, undoCounter);
+					fileLogger.extractUndoable(blockIO, null, lr, undoCounter);
+				}
+				*/
+				// open the backward undo scan from the end to boot time file beginning
+				// no checkpoint
+				logger.undo( blockIO, new LogCounter(logEnd), new LogCounter(bootTimeLogFileNumber, LogToFile.LOG_FILE_HEADER_SIZE));
 				/////////////////////////////////////////////////////////////
 				//
 				// End of recovery.
@@ -1672,7 +1613,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		Given a log file number, return its file name 
 		<P> MT- read only
 	*/
-	private File getLogFileName(long filenumber) throws IOException
+	File getLogFileName(long filenumber) throws IOException
 	{
 		return new File( getLogDirectory() + File.separator + dbName + filenumber + ".log");
 	}
@@ -1709,7 +1650,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 		// backward from end of log
 		if (startAt == LogCounter.INVALID_LOG_INSTANCE)
-			return openBackwardsScan(stopAt);
+			throw new IOException("Backward scan start position invalid");
 
 		return new Scan(this, startAt, stopAt, Scan.BACKWARD);
 	}
@@ -2212,17 +2153,22 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	*/
 
 	/**
-	 * This is the primary workhorse method to insert log records
-	 * It takes into account the addition of checksum records and log switches
-	 * when log size exceeds limit
-		Append length bytes of data to the log prepended by a long log instance
-		and followed by 4 bytes of length information.
-		<P>
-		This method is synchronized to ensure log records are added sequentially
-		to the end of the log.
-		<P>MT- single threaded through this log factory.  Log records are
-		appended one at a time.
-		@exception StandardException Log Full.
+	* This is the primary workhorse method to insert log records.
+	* 
+	* It takes into account the addition of checksum records and log switches
+	* when log size exceeds limit.
+	* The endPosition is set to the file end on completion.
+	* The instance returned is the file position before the current record was written, i.e.
+	* The beginning of the record that was written.
+	* 
+	*	Method will append 'length' bytes of 'data' to the log prepended by 4 bytes of length information.
+	*	and a long log instance that should represent the position of the record.
+	*
+	* This method is synchronized to ensure log records are added sequentially
+	*	to the end of the log.
+	*	MT- single threaded through this log factory.  Log records are
+	*	appended one at a time.
+	*	@exception IOException zero length record, corrupt, logOut null.
 	*/
 	public synchronized long appendLogRecord(byte[] data, int offset, int length,
 			byte[] optionalData, int optionalDataOffset, int optionalDataLength) throws IOException
@@ -2373,7 +2319,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
      * Utility routine to call sync() on the input file descriptor.
      * <p> 
     */
-    private void syncFile(RandomAccessFile theLog)  throws IOException {
+    void syncFile(RandomAccessFile theLog)  throws IOException {
         for( int i=0; ; )
         {
             // 3311: JVM sync call sometimes fails under high load against NFS 
@@ -2409,7 +2355,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	  Open a forward scan of the transaction log.
 
 	  <P> MT- read only
-	  @exception StandardException  Standard  exception policy
+	  @exception IOException  Standard  exception policy
 	*/
 	public synchronized LogScan openForwardFlushedScan(LogInstance startAt) throws IOException
 	{
@@ -2420,7 +2366,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	/**
 	  Get a forwards scan
-	  @exception StandardException Standard  error policy
+	  @exception IOException Standard  error policy
 	  */
 	public synchronized LogScan openForwardScan(LogInstance startAt,LogInstance stopAt) throws IOException
 	{

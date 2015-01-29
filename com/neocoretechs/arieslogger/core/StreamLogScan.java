@@ -109,4 +109,6 @@ public interface StreamLogScan extends LogScan {
 		Close this log scan.
 	*/
 	public void close();
+
+	public void checkFuzzyLogEnd() throws IOException;
 }

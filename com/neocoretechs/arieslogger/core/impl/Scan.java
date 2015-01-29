@@ -21,15 +21,14 @@
 
 package com.neocoretechs.arieslogger.core.impl;
 
-import java.io.ByteArrayInputStream;
+
+import java.io.File;
 import java.io.IOException;
-import java.io.ObjectInputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
+
 import java.util.HashMap;
 
-import com.neocoretechs.arieslogger.core.LogFactory;
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.StreamLogScan;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
@@ -40,6 +39,8 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 		Scan the the log which is implemented by a series of log files.n
 		This log scan knows how to move across log file if it is positioned at
 		the boundary of a log file and needs to getNextRecord.
+		The instances in the log file correspond to the position of the instance record, not the size record
+		This simplifies checks against position, they should flat be the same
 
 	<PRE>
 	4 bytes - length of user data, i.e. N
@@ -86,8 +87,9 @@ public class Scan implements StreamLogScan {
  	                                      //for recovery, if there were
 	                                      //partial writes at the end of the log before crash;
 	                                      //during forward scan for recovery.
+	private long scannedEndInstance;	// end found with forward scan
 
-
+	boolean firstRecord = true; // used to prevent check for zero length end marker
 	/**
 	    For backward scan, we expect a scan positioned at the end of the next log record.
 		For forward scan, we expect a scan positioned at the beginning of the next log record.
@@ -96,7 +98,6 @@ public class Scan implements StreamLogScan {
 		   first not-flushed log record. Like any forward scan, we expect a scan
 		   positioned at the beginning of the next log record.
 
-		@exception StandardException Standard  error policy
 		@exception IOException cannot access the log at the new position.
 	*/
 	public Scan(LogToFile logFactory, long startAt, LogInstance stopAt, byte direction) throws IOException
@@ -113,41 +114,14 @@ public class Scan implements StreamLogScan {
 		else
 			this.stopAt = LogCounter.INVALID_LOG_INSTANCE;
 
-		switch(direction) {
-			case FORWARD:
-				scan =  logFactory.getLogFileAtPosition(startAt);
-				scanDirection = FORWARD;
-				if (DEBUG)
-					if (scan == null)
-						throw new IOException("scan null at " + LogCounter.toDebugString(startAt));
+		scanDirection = direction;
 
-			// NOTE: just get the length of the file without syncing.
-			// this only works because the only place forward scan is used
-			// right now is on recovery redo and nothing is being added to 
-			// the current log file.  When the forward scan is used for some
-			// other purpose, need to sync access to the end of the log
-				currentLogFileLength = scan.length();
-				break;
-
-			case BACKWARD:
-			// startAt is at the front of the log record, for backward
-			// scan we need to be positioned at the end of the log record
-				scan =  logFactory.getLogFileAtPosition(startAt);
-				int logsize = scan.readInt();
-
-			// skip forward over the log record and all the overhead, but remember
-			// we just read an int off the overhead
-				scan.seek(scan.getFilePointer() + logsize + LogToFile.LOG_RECORD_OVERHEAD - 4);
-				scanDirection = BACKWARD;
-				break;
-
-			case BACKWARD_FROM_LOG_END:
-			// startAt is at the end of the log, no need to skip the log record
-				scan =  logFactory.getLogFileAtPosition(startAt);
-				scanDirection = BACKWARD;
-				break;
-
-		}
+		// NOTE: just get the length of the file without syncing.
+		scan =  logFactory.getLogFileAtPosition(startAt);
+		if (scan == null)
+				throw new IOException("scan null at " + LogCounter.toDebugString(startAt));
+		currentLogFileLength = scan.length();
+		scan.seek(LogCounter.getLogFilePosition(startAt));
 		if( DEBUG ) {
 			System.out.println("Scan: "+logFactory.getDBName()+" dir:"+scanDirection+" start:"+ LogCounter.toDebugString(startAt)+" stop:"+stopAt+" current#:"+currentLogFileNumber+" currLen:"+currentLogFileLength);
 		}
@@ -231,68 +205,83 @@ public class Scan implements StreamLogScan {
 		// may need to switch log file
 
 		boolean candidate;
-
 		HashMap<LogInstance, LogRecord> lr = null;
+		
 		long curpos = scan.getFilePointer();
-
+		// startAt positioned at zero marker EOF
+		if( DEBUG )
+			System.out.println("Scan.getNextRecordBackward curpos:"+curpos);
+		if(curpos-4 == LogToFile.LOG_FILE_HEADER_SIZE) {
+			// stopAt is valid and the stopAt number is the current log number and we are at header
+			if (stopAt != LogCounter.INVALID_LOG_INSTANCE &&
+				LogCounter.getLogFileNumber(stopAt) == currentLogFileNumber)
+			{
+				if (DEBUG) {
+                        System.out.println( "stopping at " + currentLogFileNumber);
+                }
+				return null;  // no more log records
+			}		
+			// figure out where the last log record is in the previous
+			// log file
+			if(!moveBackwardFromHeader()) {
+				return null;
+			}
+			// scan is located right past the last byte of the last log
+			// record in the previous log file.  currentLogFileNumber is
+			// set.  We asserted that the scan is not located right at the
+			// end of the file header, in other words, there is at least
+			// one log record in this log file.
+			curpos = scan.getFilePointer();
+		}
+		
+		// skip over the length and zero EOF
+		//if( firstRecord )
+			scan.seek(curpos - 8);
+		//else
+		//	scan.seek(curpos - 4); // just back up to previous length pointer
+		int prevSize = scan.readInt(); // read size of last record positioned from forward scan
+		if( DEBUG ) {
+			System.out.println("Scan.getNextRecordBackward initial size:"+prevSize);
+		}
+		scan.seek(curpos-prevSize-16); // start of record, 16 plus record size
+		curpos = scan.getFilePointer();
+		long recordStartPosition = curpos;
+		int recordLength = prevSize;
+		if( DEBUG ) {
+			System.out.println("Scan.getNextRecordBackward set up at "+curpos+" record size "+prevSize);
+		}
 		do
 		{
 			// this log record is a candidate unless proven otherwise
 			candidate = true; 
 			lr = null;
-			// moving backward, we have hit the header
+			// moving backward, we have hit the header in position yet may have more files
 			// attempt previous file
-			if (curpos == LogToFile.LOG_FILE_HEADER_SIZE)
-			{
-				// 
-				// stopAt is valid and the stopAt number is the current log number and we are at header
-				if (stopAt != LogCounter.INVALID_LOG_INSTANCE &&
-					LogCounter.getLogFileNumber(stopAt) == currentLogFileNumber)
-				{
-					if (DEBUG) {
-                            System.out.println( "stopping at " + currentLogFileNumber);
-                    }
-					return null;  // no more log records
-				}
-				
-				// figure out where the last log record is in the previous
-				// log file
-				if(!moveBackwardFromHeader()) {
-					return null;
-				}
-				// scan is located right past the last byte of the last log
-				// record in the previous log file.  currentLogFileNumber is
-				// set.  We asserted that the scan is not located right at the
-				// end of the file header, in other words, there is at least
-				// one log record in this log file.
-				curpos = scan.getFilePointer();
-
-				// if the log file happens to be empty skip and proceed. 
-				// ideally this case should never occur because log switch is
-				// not suppose to happen on an empty log file. 
-				// But it is safer to put following check incase if it ever
-				// happens to avoid any recovery issues. 
-				if (curpos == LogToFile.LOG_FILE_HEADER_SIZE)
-					continue;
-			}
-			
-			// calculate where this log record started.
-			long recordStartPosition = curpos; 
-			int recordLength = scan.readInt(); // get the length before the log record
-
-			if (recordStartPosition < LogToFile.LOG_FILE_HEADER_SIZE)
-					throw new IOException(
-								 "next position " + recordStartPosition +
-								 " recordLength " + recordLength + 
-								 " current file position " + scan.getFilePointer());
-
+	
+			// read the current log instance - this is the currentInstance if we have not
+			// exceeded the scan limit or some other horror
 			currentInstance = scan.readLong();
+	
+			if (DEBUG) {
+				// sanity check the current instance against the scan position
+				// our records start at the instance for purposes of checks, not at the record size position
+				if (LogCounter.getLogFileNumber(currentInstance) !=
+					currentLogFileNumber ||
+					LogCounter.getLogFilePosition(currentInstance) !=
+					recordStartPosition-4)
+					throw new IOException(
+								 "Wrong LogInstance on log record " +
+								LogCounter.toDebugString(currentInstance) + 
+								 " version real position (" +
+								 currentLogFileNumber + "," +
+								 recordStartPosition + ")");
+			}
 			byte[] data =  new byte[recordLength];
 			scan.readFully(data, 0, recordLength);
 			// read the length after the log record and check it against the
 			// length before the log record
 			int checkLength = scan.readInt();
-			if (checkLength != recordLength)
+			if (!firstRecord && checkLength != recordLength)
 			{
 				long inst = LogCounter.makeLogInstanceAsLong(currentLogFileNumber, recordStartPosition);
 				throw logFactory.markCorrupt(
@@ -302,52 +291,57 @@ public class Scan implements StreamLogScan {
                         new Long(inst)+" "+
                         new Long(currentLogFileNumber)));
 			}
+			firstRecord = false;
 			// put the data to 'input'
-			input.put(data);
+			input = ByteBuffer.wrap(data);
+			
+			if( DEBUG ) {
+				System.out.println("Scan.getNextRecordBackward RecordLength:"+recordLength+" currentInstance:"+LogCounter.toDebugString(currentInstance));
+			}
+			// create the return struc
 			if( lr == null )
 				lr = new HashMap<LogInstance, LogRecord>();
+			
 			LogRecord lrec = (LogRecord)(GlobalDBIO.deserializeObject(input));
-			lr.put(new LogCounter(currentInstance), lrec);
+			
 			// skip the checksum log records, there is no need to look at them 
-			// during backward scans. They are used only in forwardscan during recovery. 
-			if( lrec.isChecksum() || (groupmask != 0 && (groupmask & lrec.group()) == 0) ) {
+			// during backward scans. Presumable they have been reviewd during forward scan during
+			// roll forward or redo log scan recovery
+			if( lrec.isChecksum() || (multiTrans && groupmask != 0 && (groupmask & lrec.group()) == 0) ) {
 				candidate = false; 
 			} else {
-				// go back to the start of the log record so that the next time
-				// this method is called, it is positioned right past the last byte
-				// of the previous record.
-				// skip over the length
-				scan.seek(recordStartPosition-4);
-				int prevSize = scan.readInt();
-				scan.seek(prevSize-16); // start of record, 12 plus 4 we just read
-				// scan is positioned just before the log instance
-				// read the current log instance - this is the currentInstance if we have not
-				// exceeded the scan limit
-				if (DEBUG) {
-				// sanity check the current instance against the scan position
-				if (LogCounter.getLogFileNumber(currentInstance) !=
-					currentLogFileNumber ||
-					LogCounter.getLogFilePosition(currentInstance) !=
-					recordStartPosition)
-					throw new IOException(
-								 "Wrong LogInstance on log record " +
-								LogCounter.toDebugString(currentInstance) + 
-								 " version real position (" +
-								 currentLogFileNumber + "," +
-								 recordStartPosition + ")");
-				}
+				lr.put(new LogCounter(currentInstance), lrec);
 			}
+			// go back to the start of the log record so that the next time
+			// this method is called, it is positioned 2 records back
+			// 
+			// skip over the length
+			recordStartPosition = LogCounter.getLogFilePosition(currentInstance);
+			scan.seek(recordStartPosition-4); // this should be length of previous record
+			prevSize = scan.readInt();
+			if( DEBUG ) {
+				System.out.println("Scan.getNextRecordBackward scanned size of previous record "+prevSize);
+			}
+			scan.seek(recordStartPosition-prevSize-12); // start of size of PREVIOUS record	
+			//}
 	
-		} while (candidate == false);
+		} while (!candidate);
 
 		return lr;
 
 	}
 	/**
+	 * Move to the previous file number while positioned at header of current file
 	 * currentLogFileNumber and scan are reset
+	 * @return false for last file encountered
 	 * @throws IOException
 	 */
 	private boolean moveBackwardFromHeader() throws IOException {
+		if( currentLogFileNumber == 1 ) {
+			if(DEBUG)
+				System.out.println("Scan.moveBackwardFromHeader at log file 1, cannot move back, exiting");
+			return false;
+		}
 		// figure out where the last log record is in the previous
 		// log file
 		scan.seek(LogToFile.LOG_FILE_HEADER_PREVIOUS_LOG_INSTANCE_OFFSET);
@@ -363,8 +357,8 @@ public class Scan implements StreamLogScan {
 
 		assert(LogCounter.getLogFilePosition(previousLogInstance) > LogToFile.LOG_FILE_HEADER_SIZE);//,
 							 //"scanning backward encounter completely empty log file");
-
-		System.out.println("scanning backwards from log file " +
+		if(DEBUG)
+			System.out.println("scanning backwards from log file " +
 							currentLogFileNumber + ", switch to (" + 
 							LogCounter.getLogFileNumber(previousLogInstance) + "," +
 							LogCounter.getLogFilePosition(previousLogInstance) + ")"
@@ -373,6 +367,17 @@ public class Scan implements StreamLogScan {
 		currentLogFileNumber = LogCounter.getLogFileNumber(previousLogInstance);
 
 		scan = logFactory.getLogFileAtPosition(previousLogInstance);
+		// read to end of file to set up backward scan
+		// go back 4 for length
+		long scanPos = scan.getFilePointer();
+		//scan.seek(scanPos-4);
+		int recLen = scan.readInt();
+		if( DEBUG )
+			System.out.println("Scan.moveBackwardFromHeader record length of last instance "+recLen);
+		// move FORWARD 12 + recLen to start, will move back 8 on entry to scan
+		scan.seek(scanPos+recLen+20);
+		if( DEBUG )
+			System.out.println("Scan.moveBackwardFromHeader file position on exit "+scan.getFilePointer());
 		return true;
 
 	}
@@ -381,19 +386,25 @@ public class Scan implements StreamLogScan {
 	 * @throws IOException
 	 */
 	private boolean moveForwardToHeader() throws IOException {
+		File newLogFile = logFactory.getLogFileName(currentLogFileNumber+1);
+		if( !logFactory.privExists(newLogFile)) {
+			if( DEBUG )
+				System.out.println("Scan.moveForwardToHeader encountered last file "+newLogFile);
+			return false;
+		}
 		long previousInstance = currentInstance;
 		// BUMP the current log file number to advance
 		LogCounter li = new LogCounter(currentLogFileNumber+1,LogToFile.LOG_FILE_HEADER_SIZE);
 		if( DEBUG )
-			System.out.println("Scan.getNextRecordForward setting position to "+li+" in response to EOF with previous instance at "+LogCounter.toDebugString(previousInstance));
+			System.out.println("Scan.moveForwardToHeader setting position to "+li+" in response to EOF with previous instance at "+LogCounter.toDebugString(previousInstance));
 		resetPosition(li);
 		if (scan == null) { // we have seen the last log file
 			if( DEBUG )
-				System.out.println("Scan.getNextRecordForward "+li+" passed last file, returning null");
+				System.out.println("Scan.moveForwardToHeader "+li+" passed last file, returning null");
 			return false;
 		}
 		if (DEBUG) {
-			System.out.println("Scan.getNextRecordForward:switched to next log file " + li+ " at position "+ scan.getFilePointer());
+			System.out.println("Scan.moveForwardToHeader:switched to next log file " + li+ " at position "+ scan.getFilePointer());
     	}
 		// should have the correct header instance for previous record
 		long checkInstance = logFactory.getHeaderLogInstance();
@@ -461,9 +472,9 @@ public class Scan implements StreamLogScan {
 			// this log record is a candidate unless proven otherwise
 			candidate = true;
 			lr = null;
-			if( DEBUG ) {
-				System.out.println("Scane.getNextRecordForward resordStartPosition:"+recordStartPosition+" currentLogFileLength:"+currentLogFileLength);
-			}
+			//if( DEBUG ) {
+			//	System.out.println("Scane.getNextRecordForward resordStartPosition:"+recordStartPosition+" currentLogFileLength:"+currentLogFileLength);
+			//}
 			// if we are not right at the end but this position + 4 is at
 			// or exceeds the end, we know we don't have a complete log
 			// record.  This is the log file and chalk it up as the fuzzy
@@ -490,18 +501,23 @@ public class Scan implements StreamLogScan {
 
 			// read in the length before the log record
 			int recordLength = scan.readInt();
-			if( DEBUG )
-				System.out.println("Scan.getNextRecordForward: record len from scan:"+recordLength+
-						" recordStartPosition:"+recordStartPosition+" currentLogFileLength:"+currentLogFileLength);
+			//if( DEBUG )
+			//	System.out.println("Scan.getNextRecordForward: record len from scan:"+recordLength+
+			//			" recordStartPosition:"+recordStartPosition+" currentLogFileLength:"+currentLogFileLength);
 	
 			/**********************************************
 			 * Increment the current log
 			 * record 0, we have to move to next file
 			 */
 			if(recordLength == 0) {
-				moveForwardToHeader();
-				recordStartPosition = scan.getFilePointer();
-				recordLength = scan.readInt();
+				// set the last scanned position in case we finish
+				scannedEndInstance = LogCounter.makeLogInstanceAsLong(currentLogFileNumber, scan.getFilePointer());
+				if( moveForwardToHeader() ) {
+					recordStartPosition = scan.getFilePointer();
+					recordLength = scan.readInt();
+				} else { // false indicates last file passed
+					return logBlock;
+				}
 			} // recordLength == 0
 			
 			/****************************
@@ -521,9 +537,9 @@ public class Scan implements StreamLogScan {
 								 currentLogFileNumber + "," +
 								 recordStartPosition + ")");
 			
-			if( DEBUG )
-				System.out.println("Scan.getNextRecordForward: Current instance: "+
-								 LogCounter.toDebugString(currentInstance));
+			//if( DEBUG )
+			//	System.out.println("Scan.getNextRecordForward: Current instance: "+
+			//					 LogCounter.toDebugString(currentInstance));
 
 			// read in the log record
 			byte[] data = new byte[recordLength];
@@ -534,28 +550,28 @@ public class Scan implements StreamLogScan {
 			//if (groupmask == 0 && tranId == -1)
 			//{
 					// no filter, get the whole thing
-			if( DEBUG ) {
-				System.out.println("Scan.getNextRecordForward reading "+recordLength+" @ "+scan.getFilePointer());
-			}
+			//if( DEBUG ) {
+			//	System.out.println("Scan.getNextRecordForward reading "+recordLength+" @ "+scan.getFilePointer());
+			//}
 			
 			scan.readFully(data, 0, recordLength);
 			
-			if( DEBUG ) {
-				System.out.println("Scan.getNextRecordForward read ended @"+scan.getFilePointer());
-			}
+			//if( DEBUG ) {
+			//	System.out.println("Scan.getNextRecordForward read ended @"+scan.getFilePointer());
+			//}
 			// put the data to 'input'
 			input = ByteBuffer.wrap(data);
 			
-			if( DEBUG ) {
-				System.out.println("Scan.getNextRecordForward: put data, new buffer position:"+input.position()+
-						" new file pos:"+scan.getFilePointer());
-			}
+			//if( DEBUG ) {
+			//	System.out.println("Scan.getNextRecordForward: put data, new buffer position:"+input.position()+
+			//			" new file pos:"+scan.getFilePointer());
+			//}
 			
 			lr = (LogRecord)(GlobalDBIO.deserializeObject(input));
 			
-			if( DEBUG ) {
-				System.out.println("Scan.getNextRecordForward RecordLength:"+recordLength+" rec:"+lr);
-			}
+			//if( DEBUG ) {
+			//	System.out.println("Scan.getNextRecordForward RecordLength:"+recordLength+" rec:"+lr);
+			//}
 			// if multiTrans is active we are processing multiple users
 			if (multiTrans && (groupmask != 0 || tranId != -1))
 			{
@@ -633,22 +649,22 @@ public class Scan implements StreamLogScan {
 				Loggable op = lr.getLoggable(); 
 				ChecksumOperation clop = (ChecksumOperation) op;
 				int ckDataLength =  clop.getDataLength(); 
-				if (DEBUG) {
-						System.out.println( "Scan.getNextRecordForward Log Record is Checksum:"+
-											"scanned " + op + 
-											" instance = " + 
-											LogCounter.toDebugString(currentInstance) + 
-											" record start position:"+
-											recordStartPosition+" checksum data length:"+ckDataLength);
-				}
+				//if (DEBUG) {
+				//		System.out.println( "Scan.getNextRecordForward Log Record is Checksum:"+
+				//							"scanned " + op + 
+				//							" instance = " + 
+				//							LogCounter.toDebugString(currentInstance) + 
+				//							" record start position:"+
+				//							recordStartPosition+" checksum data length:"+ckDataLength);
+				//}
 	
 				// check if the expected number of bytes by the checksum log
 				// record actually exist in the file and then verify if checksum
 				// is valid to identify any incomplete out of order writes.
 				if((recordStartPosition + ckDataLength + LogToFile.LOG_RECORD_OVERHEAD) <= scan.length()){
-					if( DEBUG ) {
-						System.out.println("Scan.getNextRecordForward processing checksum payload start:"+recordStartPosition+" data len:"+ckDataLength+" file pos:"+scan.getFilePointer());
-					}
+					//if( DEBUG ) {
+					//	System.out.println("Scan.getNextRecordForward processing checksum payload start:"+recordStartPosition+" data len:"+ckDataLength+" file pos:"+scan.getFilePointer());
+					//}
 					if( data.length < ckDataLength )
 						data = new byte[ckDataLength];
 					// read the data into the buffer
@@ -672,14 +688,14 @@ public class Scan implements StreamLogScan {
 						// only when the writes are incomplete; this can happen
 						// only when writes at the end of the log were partially
 						// written before the crash. 
-						if (DEBUG) {
-							System.out.println("Scan.getNextRecordForward:"+
-                                "detected fuzzy log end on log file while doing checksum checks " + 
-								currentLogFileNumber + 
-                                " checksum record start position " + recordStartPosition + 
-                                " file length " + currentLogFileLength + 
-								" checksumDataLength=" + ckDataLength);	
-						}
+						//if (DEBUG) {
+						//	System.out.println("Scan.getNextRecordForward:"+
+                        //        "detected fuzzy log end on log file while doing checksum checks " + 
+						//		currentLogFileNumber + 
+                        //        " checksum record start position " + recordStartPosition + 
+                        //        " file length " + currentLogFileLength + 
+						//		" checksumDataLength=" + ckDataLength);	
+						//}
 						fuzzyLogEnd = true;
 						scan.close();
 						scan = null;
@@ -752,19 +768,56 @@ public class Scan implements StreamLogScan {
 			long fpos = ((LogCounter)instance).getLogFilePosition();
 			scan.seek(fpos);
 			//
-			if (DEBUG) {
-                       System.out.println("Scan.resetPosition reset to " + instance);
-			}
-
 			currentInstance = instance_long;
-
-			if (DEBUG)
-            {
-                   System.out.println( "Scan.resetPosition EXIT reset to " + LogCounter.toDebugString(currentInstance));  
+			if (DEBUG) {
+                   System.out.println( "Scan.resetPosition EXIT reset to " + instance);  
 			}
 		}
 	}
-
+	/**
+	 * Gets a record regardless of current log file instance etc.
+	 * Used in recovery where we need to revisit log records for undo
+	 * @param logFactory
+	 * @param instance
+	 * @return
+	 * @throws IOException
+	 */
+	public static LogRecord getRecord(LogToFile logFactory, LogInstance instance) throws IOException
+	{
+		if (DEBUG) {
+			assert(instance != null);
+            System.out.println("Scan.resetPosition resetting to " + instance);
+		}
+		long instance_long = ((LogCounter)instance).getValueAsLong();
+		// if passed instance invalid OR
+		// if stopAt is valid, AND scan direction is forward instance > stopAt OR direction back and stopAt less
+		// toss exception
+		if(instance_long == LogCounter.INVALID_LOG_INSTANCE) 
+		{
+			throw new IOException("Invalid instance in Scan.getRecord "+ instance);
+		}
+		//long fnum = ((LogCounter)instance).getLogFileNumber();
+		RandomAccessFile scan = logFactory.getLogFileAtPosition(instance_long);
+		// If no file exists the n scan will be null and we may return
+		if( scan == null )
+				return null;
+		// other purpose, need to sync access to the end of the log
+		//
+		// although this points to a random record possible, its the best we have until we can scan this
+		// file for records. If we reposition to this file, we have no real way of determining relative log end
+		// so dont completely trust this to be the actual end
+		long fpos = ((LogCounter)instance).getLogFilePosition();
+		scan.seek(fpos);
+		//
+		if (DEBUG) {
+              System.out.println("Scan.getRecord retrieving " + instance);
+		}
+		int recordLength = scan.readInt();
+		scan.skipBytes(8); // instance
+		byte[] data = new byte[recordLength];
+		scan.readFully(data, 0, recordLength);
+		return (LogRecord) GlobalDBIO.deserializeObject(data);
+	}
 	/**
 		Return the log instance (as an integer) the scan is currently on - this is the log
 		instance of the log record that was returned by getNextRecord.
@@ -822,7 +875,8 @@ public class Scan implements StreamLogScan {
 		scanDirection = 0;
 	}
 
-
+	public long getScannedEndInstance() { return scannedEndInstance; }
+			
 	@Override
 	public long getLogRecordEnd() {
 		return logFactory.endPosition;
@@ -832,7 +886,53 @@ public class Scan implements StreamLogScan {
 	public long getLogInstanceAsLong() {
 		return currentInstance;
 	}
-	
 
+	/**
+	 * Check for fuzzy log end, repair if possible by writing zeros after fuzz
+	 * We assume scan is available to use and we have performed a forward scan of records to find
+	 * the bogus end we are working on.
+	 * 	 the end log marker is 4 bytes (of zeros)
+		
+		 if endPosition + 4 == logOut.length, we have a
+         properly terminated log file
+		
+		 if endPosition + 4 is > logOut.length, there are 0,
+         1, 2, or 3 bytes of 'fuzz' at the end of the log. We
+         can ignore that because it is guaranteed to be
+         overwritten by the next log record.
+		
+		 if endPosition + 4 is < logOut.length, we have a
+         partial log record at the end of the log.
+		
+	 * @throws IOException 
+	 */
+	@Override
+	public void checkFuzzyLogEnd() throws IOException {
+		// We need to overwrite all of the incomplete log
+        // record, because if we start logging but cannot
+        // 'consume' all the bad log. If record size is wrong, deserializing the
+		// log instance will cause an exception
+		//
+		//find out if log had incomplete log records at the end.
+		if (isLogEndFuzzy()) {
+			scan = logFactory.getLogFileAtPosition(getScannedEndInstance());
+			long endPosition = scan.getFilePointer();
+			long eof = scan.length();
+			System.out.println("Fuzzy log end detected, best effort to zero fuzz starting at "+endPosition+" EOF "+eof);
+			/* Write zeros from incomplete log record to end of file */
+			long nWrites = (eof - endPosition)/logFactory.logBufferSize;
+			int rBytes = (int)((eof - endPosition) % logFactory.logBufferSize);
+			byte zeroBuf[]= new byte[logFactory.logBufferSize];
+			System.out.println("Fuzzy EOF at:"+eof+" buffer size:"+logFactory.logBufferSize+" nWrites="+nWrites+" rBytes="+rBytes);
+			//write the zeros to file
+			while(nWrites-- > 0)
+				scan.write(zeroBuf);
+			if(rBytes !=0)
+				scan.write(zeroBuf, 0, rBytes);
+			logFactory.syncFile(scan);
+			assert(scan.length() > endPosition) : "log end > log file length, bad scan";
+			scan.close();
+		} // fuzzy end
+	}
 
 }

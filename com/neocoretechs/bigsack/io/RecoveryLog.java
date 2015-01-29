@@ -36,7 +36,6 @@ import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
 * LogToFile is the main ARIES subsystem class used, with FileLogger being the higher level construct
 * @author Groff
 */
-
 public final class RecoveryLog  {
 	private BlockDBIO blockIO;
 	FileLogger fl = null;
@@ -46,7 +45,11 @@ public final class RecoveryLog  {
 	public BlockDBIO getBlockIO() {
 		return blockIO;
 	}
-
+	/**
+	 * Call with IO manager, will create the LogToFile
+	 * @param tglobalio
+	 * @throws IOException
+	 */
 	public RecoveryLog(BlockDBIO tglobalio) throws IOException {
 		blockIO = tglobalio;
 		tblk = new BlockAccessIndex(blockIO); // for writeLog reserved
@@ -54,7 +57,10 @@ public final class RecoveryLog  {
 		fl = (FileLogger) ltf.getLogger();
 		ltf.boot();
 	}
-	
+	/**
+	 * Close the random access files and buffers for recovery log
+	 * @throws IOException
+	 */
 	public void stop( ) throws IOException {
 		ltf.stop();
 	}
@@ -128,7 +134,9 @@ public final class RecoveryLog  {
 		if( Props.DEBUG ) System.out.println("RecoveryLog cleared");
 	}
 	/**
-	 * Take a checkpoint. Force buffer flush, then write checkpoint 
+	 * Take a checkpoint. Force buffer flush, then write checkpoint. A checkpoint demarcates
+	 * a recovery position in logs from which a recovery will roll forward. An undo from a checkpoint
+	 * will restore the raw store to its state at that checkpoint. Use with caution and only with wise counsel. 
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
