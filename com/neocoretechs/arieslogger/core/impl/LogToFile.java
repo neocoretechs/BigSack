@@ -48,12 +48,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Iterator;
+
 import java.util.Properties;
 import java.util.Set;
 import java.util.zip.CRC32;
-import java.util.Collections;
+
 /**
 
 	This is an implementation of the log using a non-circular file system file.
@@ -153,13 +152,12 @@ import java.util.Collections;
 
 public final class LogToFile implements LogFactory, java.security.PrivilegedExceptionAction
 {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final boolean DUMPLOG = false;
 	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
 	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
 	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
 	
-	private static final long INT_LENGTH = 4L;
 	private static final int FILE_STREAM_LOG_FILE = 0;
 	private static int fid = 1; 
 	/**
@@ -650,14 +648,14 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 				// do a checkpoint (will flush the log) if there is any rollback
 				// if can't checkpoint for some reasons, flush log and carry on
-
+				/*
 				if (currentCheckpoint != null ) {
 					if (!checkpoint(false))
 						flush();
 				}
-
+				*/
 				logger.reset();
-
+				initializeLogFileSequence();
 				recoveryNeeded = false;
 			}
 			catch (IOException ioe)
@@ -674,12 +672,14 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				System.out.println("Recovery fault ClassNotFound "+cnfe.getMessage());
 				throw markCorrupt(new IOException(cnfe));
 			}
+			/*
 			catch (IllegalAccessException e) {
 				if (DEBUG)
 					e.printStackTrace();
 				System.out.println("Recovery fault IllegalAccess "+e.getMessage());
 				throw markCorrupt(new IOException(e));
 			}
+			*/
 		} // if recoveryNeeded
 
         // done with recovery        
