@@ -654,7 +654,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						flush();
 				}
 				*/
+				// Finished recovery, instead of a checkpoint our simplified protocol will get rid of old logs
+				// and start the new sequence for processing
 				logger.reset();
+				deleteObsoleteLogfilesOnCommit();
 				initializeLogFileSequence();
 				recoveryNeeded = false;
 			}
@@ -2111,15 +2114,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						}
 						else
 						{
-							// if we cant delete, truncate to header + 0 for EOF
-							if (DEBUG) {
-								System.out.println("LogToFIle.deleteObsoleteLogfilesOnCommit Failed to delete obsolete log file " + uselessLogFile.getPath()+" truncate");
-							}
-							RandomAccessFile tempLog = privRandomAccessFile(uselessLogFile,"rw");
-							tempLog.setLength(logSwitchInterval+LOG_FILE_HEADER_SIZE);
-							tempLog.seek(LOG_FILE_HEADER_SIZE);
-							tempLog.writeInt(0);
-							tempLog.close();
+							// if we cant delete, throw exception
+							// if we try something like truncate to header + 0 for EOF then later
+							// we regret it because we have no previous instance linkage to re-init our file
+							throw new IOException("Cannot delete obsolete log file "+uselessLogFile+", try manual deletion and continue");
 						}
 					}
 				}

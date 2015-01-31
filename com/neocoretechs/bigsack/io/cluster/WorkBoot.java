@@ -57,8 +57,8 @@ public final class WorkBoot extends TCPServer {
                     		(new File(o.getDatabase()).getName());
                     // determine if this worker has started, if so, cancel thread and start a new one.
                     IOWorker uworker = null;
-                    if( (uworker = dbToWorker.get(db)) != null ) {
-                    	uworker.shouldRun = false;
+                    if( (uworker = dbToWorker.get(db)) != null && o.getTransport().equals("TCP")) {
+                    	((TCPWorker)uworker).stopWorker();
                     }
                     // bring up TCP or UDP worker
                     if(o.getTransport().equals("UDP")) {

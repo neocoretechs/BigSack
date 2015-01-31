@@ -10,12 +10,15 @@ import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
 /**
- * This Worker node serves as the queue processing thread for the MasterInterface implementors.
- * UDPMsster and TCPMaster are two examples of the implementors of this interface.
+ * This Worker node serves as the queue processing thread for the MasterInterface implementors
+ * contained in this class.
+ * UDPMaster and TCPMaster are two examples of the implementors of this interface.
  * It takes requests from the queue and calls 'send' to ship them to the MasterInterface.
- * Another difference is that a 'context' map of monotonic by worker id's to original request is maintained
- * to be able to respond to latches waiting on the requests. In general, a way to map responses to original request
- * as the 'uuid' is passed around the cluster.
+ * Another difference from the standalone IOWorker is that a 'context' map of monotonic by 
+ * worker id's to original request is maintained. These Ids are unique to each master/worker and so
+ * can be simple integers monotonically increased for each message.
+ * The ids are used mainly to be able to respond to latches waiting on the requests. 
+ * In general, this class is a way to map responses to original request as the 'uuid' is passed around the cluster.
  * @author jg
  *
  */
@@ -73,10 +76,10 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 		}
 		requestQueue.add(iori);
     }
-	public long getNextFreeBlock() {
+	public synchronized long getNextFreeBlock() {
 		return nextFreeBlock;
 	}
-	public void setNextFreeBlock(long nextFreeBlock) {
+	public synchronized void setNextFreeBlock(long nextFreeBlock) {
 		this.nextFreeBlock = nextFreeBlock;
 	}
 	@Override

@@ -87,7 +87,7 @@ import java.util.Map.Entry;
 	@see LogRecord
 */
 
-public class FileLogger implements Logger {
+public final class FileLogger implements Logger {
 
 	private static final boolean DEBUG = false;
 

@@ -1,7 +1,6 @@
 package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -23,7 +22,9 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * This node functions as the master, in effect, a layer between MultiThreadedIOManager in its incarnation
  * as ClusterIOManager and each IOWorker thread located on a remote node.
  * There will be one of these for each tablespace of each database, so 8 per DB each with its own port
- * The naming convention for the remote nodes is the constant 'remoteWorker' with the tablespace number appended
+ * The naming convention for the remote nodes is the constant 'remoteWorker' with the tablespace number appended.
+ * The 'WorkBoot' process on the remote node is responsible for spinning the workers that communicate with the master.
+ * A back-channel TCP server to the workboot initiates the process
  * @author jg
  *
  */
@@ -98,7 +99,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	
 	/**
 	 * Look for messages coming back from the workers. Extract the UUID of the returned packet
-	 * and get the real request from the COncurrentHashTable buffer
+	 * and get the real request from the ConcurrentHashTable buffer
 	 */
 	@Override
 	public void run() {
@@ -144,8 +145,49 @@ public class TCPMaster implements Runnable, MasterInterface {
 					System.out.println("TCPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
 					break;
 			} catch (IOException e) {
-					System.out.println("TCPMaster receive IO error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
-					break;
+				// we lost the remote, try to close worker and wait for reconnect
+				System.out.println("TCPMaster receive IO error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+				if(workerSocketChannel != null ) {
+						try {
+							workerSocketChannel.close();
+						} catch (IOException e1) {}
+						workerSocketChannel = null;
+				}
+				// re-establish master slave connect
+				if(masterSocketChannel.isOpen())
+					try {
+						masterSocketChannel.close();
+					} catch (IOException e2) {}
+				try {
+					masterSocketChannel = ServerSocketChannel.open();
+					masterSocketChannel.bind(masterSocketAddress);
+				} catch (IOException e3) {
+					System.out.println("TCPMaster server socket RETRY channel open failed with "+e3+" THIS NODE IST KAPUT!");
+					return;
+				}
+				// We have done everything we can to close all open channels, now try to re-open them
+				// Wait in loop contacting WorkBoot until it somehow re-animates, most likely 
+				// through human intervention
+				while(true) {
+					try {
+						Fopen(null, false);
+						break;
+					} catch (IOException e2) {
+						try {
+							Thread.sleep(3000);
+						} catch (InterruptedException e1) {} // every 3 seconds
+					}
+				}
+				// reached the WorkBoot to restart, set up accept
+				try {
+						sock = masterSocketChannel.accept();
+				} catch (IOException e1) {
+						System.out.println("TCPMaster server socket RETRY accept failed with "+e1+" THIS NODE IST KAPUT!");
+						return;
+				}
+			  	if( DEBUG ) {
+			  	    	 System.out.println("TCPMaster got RE-connection "+sock);
+			  	}
 			}
 	      }	
 	}
@@ -153,7 +195,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * Send request to remote worker
 	 * @param iori
 	 */
-	public void send(IoRequestInterface iori) {
+	public synchronized void send(IoRequestInterface iori) {
 	    byte[] sendData;
 		try {
 			if(workerSocketChannel == null ) {
@@ -178,7 +220,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * @return
 	 * @throws IOException
 	 */
-	public boolean Fopen(String fname, boolean create) throws IOException {
+	public synchronized boolean Fopen(String fname, boolean create) throws IOException {
 		// send a remote Fopen request to the node
 		// this consists of sending the running WorkBoot a message to start the worker for a particular
 		// database and tablespace and the node we hand down

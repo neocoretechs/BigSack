@@ -416,9 +416,8 @@ public class Scan implements StreamLogScan {
 		// we have successfully switched to the next log file.
 		// scan is positioned just before the next log record
 
-		System.out.println("Scan.moveForwardToHeader scanning forward to log file " +
-							currentLogFileNumber + ", switched from " + 
-							LogCounter.toDebugString(previousInstance) + " to " +
+		System.out.println("Scan.moveForwardToHeader exiting with current log " +
+							currentLogFileNumber + " header instance " + 
 							LogCounter.toDebugString(checkInstance)
 							);
 		return true;

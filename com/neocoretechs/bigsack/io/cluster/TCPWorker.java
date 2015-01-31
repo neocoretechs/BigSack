@@ -138,8 +138,8 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		// thread has been stopped by WorkBoot
 		try {
 			s.close();
-			masterSocketChannel.close();
-			workerSocketChannel.close();
+			if( masterSocketChannel.isOpen() ) masterSocketChannel.close();
+			if( workerSocketChannel.isOpen() ) workerSocketChannel.close();
 		} catch (IOException e) {}
 	}
 
@@ -153,5 +153,12 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		return SLAVEPORT;
 	}
 
-	
+	public synchronized void stopWorker() {
+		// thread has been stopped by WorkBoot
+		try {
+			if( masterSocketChannel.isOpen() ) masterSocketChannel.close();
+			if( workerSocketChannel.isOpen() ) workerSocketChannel.close();
+			shouldRun = false;
+		} catch (IOException e) {}
+	}
 }

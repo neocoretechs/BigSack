@@ -11,12 +11,12 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
  * @author jg
  *
  */
-public class LogAccessFileChecksum {
+public final class LogAccessFileChecksum {
 	private long checksumInstance = LogCounter.makeLogInstanceAsLong(1, LogToFile.LOG_FILE_HEADER_SIZE);
 	private int checksumLogRecordSize;      //checksumLength + LOG_RECORD_FIXED_OVERHEAD_SIZE
 	private ChecksumOperation checksumLogOperation;
 	private LogRecord checksumLogRecord;
-	private boolean DEBUG = true;
+	private boolean DEBUG = false;
 	ByteBuffer checksumBuffer;
 	public LogAccessFileChecksum() {
 		/**
