@@ -14,6 +14,7 @@ import java.util.Enumeration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
+import com.neocoretechs.arieslogger.core.impl.LogToFile;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.request.IoResponseInterface;
@@ -42,7 +43,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	//private Socket masterSocket;
 	private ServerSocketChannel masterSocketChannel;
 	private SocketAddress masterSocketAddress;
-	ByteBuffer b = ByteBuffer.allocate(10000);
+	ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
 
 	private String DBName;
 	private int tablespace;

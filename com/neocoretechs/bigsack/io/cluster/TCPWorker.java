@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 
+import com.neocoretechs.arieslogger.core.impl.LogToFile;
 import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -41,7 +42,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	private SocketAddress workerSocketAddress;
 	private SocketChannel masterSocketChannel;
 	private SocketAddress masterSocketAddress;
-	private ByteBuffer b = ByteBuffer.allocate(10000);
+	private ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
 	
     public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);

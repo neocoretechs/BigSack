@@ -1,11 +1,7 @@
 package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
-import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.Vector;
 
 /**
@@ -15,31 +11,126 @@ import java.util.Vector;
  * @author jg
  *
  */
-public class MappedBlockBuffer extends Vector<BlockAccessIndex> implements Runnable  {
+public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 	
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
 	private boolean shouldRun = true;
-	private List<BlockAccessIndex> freeBL;
+	private Vector<BlockAccessIndex> freeBL; 
 	private GlobalDBIO globalIO;
-	
-	public MappedBlockBuffer(GlobalDBIO globalIO, List<BlockAccessIndex> freeBL) {
+	private BlockAccessIndex tmpBai; // general utility
+	private int minBufferSize = 10;
+
+	public MappedBlockBuffer(GlobalDBIO globalIO) {
 		this.globalIO = globalIO;
-		this.freeBL = freeBL;
+		this.freeBL = new Vector<BlockAccessIndex>(this.globalIO.getMAXBLOCKS()); // free blocks
+		// populate with blocks, they're all free for now
+		for (int i = 0; i < this.globalIO.getMAXBLOCKS(); i++) {
+			freeBL.addElement(new BlockAccessIndex(globalIO));
+		}
+		// set up locally buffered thread instances
+		tmpBai = new BlockAccessIndex(this.globalIO);
+		minBufferSize = globalIO.getMAXBLOCKS()/10; // we need at least one
+	}
+	/**
+	 * Get an element from free list 0 and remove and return it
+	 * @return
+	 */
+	public synchronized BlockAccessIndex take() {
+		BlockAccessIndex bai = (freeBL.elementAt(0));
+		freeBL.removeElementAt(0);
+		return bai;
+	}
+	
+	public synchronized void put(BlockAccessIndex bai) { freeBL.add(bai); }
+	
+	public synchronized void forceBufferClear() {
+		Iterator<BlockAccessIndex> it = iterator();
+		while(it.hasNext()) {
+				BlockAccessIndex bai = (BlockAccessIndex) it.next();
+				bai.resetBlock();
+				put(bai);
+		}
+		clear();
+	}
+	
+	public synchronized BlockAccessIndex getUsedBlock(long loc) {
+			tmpBai.setTemplateBlockNumber(loc);
+			int idex = indexOf(tmpBai);//.ceilingKey(tmpBai);
+			if(idex == -1)
+					return null;
+			return get(idex);
+	}
+	
+	/**
+	* Get from free list, puts in used list of block access index.
+	* Comes here when we can't find blocknum in table in findOrAddBlock.
+	* New instance of BlockAccessIndex causes allocation
+	* @param Lbn block number to add
+	* @exception IOException if new dblock cannot be created
+	*/
+	public synchronized BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
+		// make sure we have open slots
+		if( DEBUG ) {
+			System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn));
+		}
+		checkBufferFlush();
+		BlockAccessIndex bai = take();
+		bai.setBlockNum(Lbn.longValue());
+		add(bai);
+		if( DEBUG ) {
+				System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn)+" returning after freeBL take "+bai);
+		}
+		return bai;
+	}
+	/**
+	* Add a block to table of blocknums and block access index.
+	* Comes here for acquireBlock. No setting of block in BlockAccessIndex, no initial read
+	* @param Lbn block number to add
+	* @exception IOException if new dblock cannot be created
+	*/
+	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
+		// make sure we have open slots
+		checkBufferFlush();
+		BlockAccessIndex bai = take();
+		bai.setTemplateBlockNumber(Lbn.longValue());
+		add(bai);//put(bai, null);
+		return bai;
+	}
+	
+	public synchronized BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+		if( DEBUG ) {
+			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn));
+		}
+		Long Lbn = new Long(bn);
+		BlockAccessIndex bai = getUsedBlock(bn);
+		if( DEBUG ) {
+			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn)+" got block "+bai);
+		}
+		if (bai != null) {
+			return bai;
+		}
+		// didn't find it, we must add
+		return addBlockAccess(Lbn);
 	}
 	/**
 	* Toss out pool blocks not in use, ignore those bound for write
-	* we will try to allocate 2 free blocks for every block used
-	* We collect the elements and then transfer thenm from used to free block list
-	* outside of the iterator to prevent conc mod ex
+	* we will try to allocate at least 1 free block if size is 0, if we cant, throw exception
+	* If we must sweep buffer, try to fee up at least 1/10 of total
+	* We collect the elements and then transfer them from used to free block list
+	* 
 	*/
-	private synchronized void checkBufferFlush() throws IOException {
+	public synchronized void checkBufferFlush() throws IOException {
+			int bufSize = this.size();
+			if( bufSize < globalIO.getMAXBLOCKS() )
+				return;
 			Iterator<BlockAccessIndex> elbn = this.iterator();
-			int numToGet = 2; // we need at least one
 			int numGot = 0;
-			BlockAccessIndex[] found = new BlockAccessIndex[numToGet];// our candidates
+			BlockAccessIndex[] found = new BlockAccessIndex[minBufferSize];// our candidates
 			while (elbn.hasNext()) {
 				BlockAccessIndex ebaii = (elbn.next());
+				if( DEBUG )
+					System.out.println("MappedBlockBuffer.checkBufferFlush Block buffer "+ebaii);
 				if (ebaii.getAccesses() == 0) {
 					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 						globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
@@ -49,14 +140,18 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex> implements Runna
 					if( ebaii.getBlockNum() == 0L )
 						continue;
 					found[numGot] = ebaii;
-					if( ++numGot == numToGet ) {
+					if( ++numGot == minBufferSize ) {
 						break;
 					}
 				}
 			}
-			for(int i = 0; i < numToGet; i++) {
+			if( numGot == 0 )
+				throw new IOException("Unable to free up blocks in buffer pool");
+			
+			for(int i = 0; i < numGot; i++) {
 				if( found[i] != null ) {
 					this.remove(found[i]);
+					found[i].resetBlock();
 					freeBL.add(found[i]);
 				}
 			}
@@ -123,28 +218,5 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex> implements Runna
 		}
 	}
 	
-	/**
-	 * Our thread will wait until a free block removal signals processing, which
-	 * will result in an attempt to free up 2 unused blocks in the buffer
-	 */
-	@Override
-	public void run() {
-		while(shouldRun ) {
-			synchronized(this) {
-				if(freeBL.size() > 0 ) {
-					try {
-						this.wait();
-					} catch(InterruptedException ie) {}
-				}
-				if( freeBL.size() < globalIO.getMAXBLOCKS()/10 ) {
-					try {
-						checkBufferFlush();
-					} catch (IOException e) {
-						throw new RuntimeException(e);
-					}
-				}
-			}
-	    }
-	}
 
 }

@@ -111,3 +111,12 @@
 /GetNextFreeBlocksRequest.class
 /IoRequestInterface.class
 /IoResponseInterface.class
+/FSeekAndReadFullyRequest.class
+/FSeekAndReadRequest.class
+/FSeekAndWriteFullyRequest.class
+/FSeekAndWriteRequest.class
+/FSyncRequest.class
+/GetNextFreeBlockRequest.class
+/GetNextFreeBlocksRequest.class
+/IoRequestInterface.class
+/IoResponseInterface.class

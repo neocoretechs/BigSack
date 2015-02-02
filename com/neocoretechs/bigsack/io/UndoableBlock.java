@@ -88,7 +88,7 @@ public final class UndoableBlock implements Undoable, Serializable {
 	}
 
 	@Override
-	public Compensation generateUndo(BlockDBIO xact, Object in) throws IOException {
+	public Compensation generateUndo(BlockDBIO xact) throws IOException {
 		return new CompensationBlock();
 	}
 

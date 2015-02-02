@@ -53,12 +53,7 @@ public interface ScanHandle
 	  @exception
 	  */
 	public Loggable getLoggable() throws IOException;
-	/**
-	  Get an InputStream for reading the optional data associated with
-	  the current log record. This may only be called once per log record.
-	  @exception
-	  */
-    public ByteBuffer getOptionalData() throws IOException;
+
 	/**
 	  Get the DatabaseInstant for the current log record.
 	  @exception

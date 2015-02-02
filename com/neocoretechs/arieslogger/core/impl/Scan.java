@@ -58,7 +58,7 @@ public class Scan implements StreamLogScan {
 	public static final byte BACKWARD = 2;
 	public static final byte BACKWARD_FROM_LOG_END = 4;
 	private static final boolean DEBUG = false;
-	private static boolean multiTrans = false;
+	public static boolean multiTrans = false;
 
 	private RandomAccessFile scan;		// an output stream to the log file
 	private LogToFile logFactory; 		// log factory knows how to to skip
@@ -142,7 +142,7 @@ public class Scan implements StreamLogScan {
 
 		@exception StandardException Standard  error policy
 	*/
-	public HashMap<LogInstance, LogRecord> getNextRecord(ByteBuffer input,  long tranId,  int groupmask) throws IOException
+	public HashMap<LogInstance, LogRecord> getNextRecord(int groupmask) throws IOException
 	{
 		if (scan == null)
 			return null;
@@ -151,9 +151,9 @@ public class Scan implements StreamLogScan {
 		try
 		{
 			if (scanDirection == BACKWARD)
-				lr = getNextRecordBackward(input, tranId, groupmask);
+				lr = getNextRecordBackward(groupmask);
 			else if (scanDirection == FORWARD)
-				lr = getNextRecordForward(input, tranId, groupmask);
+				lr = getNextRecordForward(groupmask);
 
 			return lr;
 
@@ -193,9 +193,7 @@ public class Scan implements StreamLogScan {
 		@return the previous LogRecord, or null if the end of the
 		scan has been reached.
 	*/
-	private HashMap<LogInstance, LogRecord> getNextRecordBackward(ByteBuffer input, 
-									  long tranId,  
-									  int groupmask) throws IOException, ClassNotFoundException
+	private HashMap<LogInstance, LogRecord> getNextRecordBackward( int groupmask) throws IOException, ClassNotFoundException
 	{
 		if (DEBUG)
 			assert scanDirection == BACKWARD : "can only called by backward scan";
@@ -293,7 +291,7 @@ public class Scan implements StreamLogScan {
 			}
 			firstRecord = false;
 			// put the data to 'input'
-			input = ByteBuffer.wrap(data);
+			ByteBuffer input = ByteBuffer.wrap(data);
 			
 			if( DEBUG ) {
 				System.out.println("Scan.getNextRecordBackward RecordLength:"+recordLength+" currentInstance:"+LogCounter.toDebugString(currentInstance));
@@ -438,9 +436,7 @@ public class Scan implements StreamLogScan {
 		@return the next LogRecord, or null if the end of the
 		scan has been reached.
 	*/
-	private HashMap<LogInstance, LogRecord> getNextRecordForward(ByteBuffer input, 
-									 long tranId,  
-									 int groupmask) throws IOException, ClassNotFoundException
+	private HashMap<LogInstance, LogRecord> getNextRecordForward(int groupmask) throws IOException, ClassNotFoundException
 	{
 		if (DEBUG) {
 			assert(scanDirection == FORWARD) : "can only called by forward scan";
@@ -559,7 +555,7 @@ public class Scan implements StreamLogScan {
 			//	System.out.println("Scan.getNextRecordForward read ended @"+scan.getFilePointer());
 			//}
 			// put the data to 'input'
-			input = ByteBuffer.wrap(data);
+			ByteBuffer input = ByteBuffer.wrap(data);
 			
 			//if( DEBUG ) {
 			//	System.out.println("Scan.getNextRecordForward: put data, new buffer position:"+input.position()+
@@ -572,20 +568,9 @@ public class Scan implements StreamLogScan {
 			//	System.out.println("Scan.getNextRecordForward RecordLength:"+recordLength+" rec:"+lr);
 			//}
 			// if multiTrans is active we are processing multiple users
-			if (multiTrans && (groupmask != 0 || tranId != -1))
-			{
-				if (groupmask != 0 && (groupmask & lr.group()) == 0) {
+			if(multiTrans && groupmask != 0 && (groupmask & lr.group()) == 0) {
 					candidate = false; // no match, throw this log record out 
 					continue;
-				}
-				if (candidate && tranId != -1)
-				{
-					long tid = lr.getTransactionId();
-					if (tid != tranId) {// nomatch
-						candidate = false; // throw this log record out
-						continue;
-					}
-				}
 			}
 			/*check if the log record length written before and after the 
 			 *log record are equal, if not the end of of the log is reached.

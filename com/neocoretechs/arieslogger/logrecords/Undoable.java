@@ -98,6 +98,6 @@ public interface Undoable extends Loggable {
 		@see Loggable#needsRedo
 
 	*/
-	public Compensation generateUndo(BlockDBIO t, Object in) throws IOException;
+	public Compensation generateUndo(BlockDBIO t) throws IOException;
 
 }

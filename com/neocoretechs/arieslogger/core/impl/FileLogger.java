@@ -318,9 +318,7 @@ public final class FileLogger implements Logger {
 
 		StreamLogScan scanLog;
 		Compensation  compensation = null;
-		// buffer to read the log record - initial size 4096, scanLog needs
-		// to resize if the log record is larger than that.
-		ByteBuffer rawInput = ByteBuffer.allocate(4096);
+
 		try
 		{
 			if (undoStopAt != null && undoStartAt.lessThan(undoStopAt))
@@ -341,7 +339,7 @@ public final class FileLogger implements Logger {
 			HashMap<LogInstance, LogRecord> records;
 			LogInstance undoInstance = null;
 			// backward scan records in reverse order
-			while ((records =  scanLog.getNextRecord(rawInput, t.getTransId(), 0)) != null) 
+			while ((records =  scanLog.getNextRecord(0)) != null) 
 			{
 				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
 				while(irecs.hasNext()) {
@@ -367,7 +365,7 @@ public final class FileLogger implements Logger {
 						continue;
 					}
 					// extract the undoable from the record and generate the CLR
-					if(extractUndoable(t, rawInput, record, scanLog.getLogInstance()))
+					if(extractUndoable(t, record, scanLog.getLogInstance()))
 						clrgenerated++;
 					// if compensation is null, log operation is redo only
 					// if this is not an undoable operation, continue with next log
@@ -391,10 +389,6 @@ public final class FileLogger implements Logger {
 				compensation.releaseResource(t);
             }
 
-			if (rawInput != null)
-			{
-				rawInput.clear();
-			}
 		}
 
 		if (DEBUG)
@@ -468,7 +462,7 @@ public final class FileLogger implements Logger {
 			}
 			// scan the log forward in redo pass and go to the end
 			HashMap<LogInstance, LogRecord> records;
-			while ((records = redoScan.getNextRecord(logOutputBuffer, -1, 0))  != null) 
+			while ((records = redoScan.getNextRecord(0))  != null) 
 			{
 				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
 				//if( DEBUG )
@@ -614,20 +608,19 @@ public final class FileLogger implements Logger {
 	 * @return true if success, false if record.getundoable returns null
 	 */
 	public synchronized boolean extractUndoable(BlockDBIO t, 
-			ByteBuffer rawInput, 
 			LogRecord record, 
 			LogInstance undoInstance) throws IOException, ClassNotFoundException {
 		Undoable lop = record.getUndoable();
 		Compensation compensation;
 		if (lop != null) {
-			compensation = lop.generateUndo(t, rawInput);
+			compensation = lop.generateUndo(t);
 			if (DEBUG) {
 				System.out.println("FileLogger.extractUndoable processing logRecord " +record);
 			}
 			if (compensation != null) {
 			// log the compensation op that rolls back the 
             // operation at this instance 
-				logAndUndo(t, compensation, undoInstance, record, rawInput);
+				logAndUndo(t, compensation, undoInstance, record, null);
 				compensation.releaseResource(t);
 				return true;
 			}

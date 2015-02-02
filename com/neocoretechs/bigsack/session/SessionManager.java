@@ -133,7 +133,40 @@ public final class SessionManager {
 		//
 		return hps;
 	}
-
+	/**
+	 * Start the DB with no logging for debugging purposes
+	 * or to run read only without logging for some reason
+	 * @param dbname
+	 * @return
+	 * @throws IOException
+	 * @throws IllegalAccessException
+	 */
+	public static synchronized BigSackSession ConnectNoRecovery(String dbname) throws IOException, IllegalAccessException {
+		if( Props.DEBUG ) {
+			System.out.println("Connecting WITHOUT RECOVERY to "+dbname);
+		}
+		// translate user name to uid and group
+		// we can restrict access at database level here possibly
+		int uid = 0;
+		int gid = 1;
+		//if( SessionTable.size() >= MAX_USERS && MAX_USERS != -1) throw new IllegalAccessException("Maximum number of users exceeded");
+		if (OfflineDBs.contains(dbname))
+			throw new IllegalAccessException("Database is offline, try later");
+		BigSackSession hps = (SessionTable.get(dbname));
+		if (hps == null) {
+			// did'nt find it, create anew, throws IllegalAccessException if no go
+			// Global IO and main Btree index
+			dbPath = (new File(dbname)).toPath().getParent().toString();
+			ObjectDBIO objIO = new ObjectDBIO(dbname);
+			BTreeMain bTree =  new BTreeMain(objIO);
+			hps = new BigSackSession(bTree, uid, gid);
+			SessionTable.put(dbname, hps);
+		} else
+			// if closed, then open, else if open this does nothing
+			hps.Open();
+		//
+		return hps;
+	}
 	/**
 	* Set the database offline, kill all sessions using it
 	* @param dbname The database to offline

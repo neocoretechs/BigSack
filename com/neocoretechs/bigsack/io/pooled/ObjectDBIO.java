@@ -16,6 +16,14 @@ public final class ObjectDBIO extends OffsetDBIO {
 		super(objname, create, transId);
 		setNew_node_pos_blk(-1L);
 	}
+	/**
+	 * Connect without recovery log, to debug or for some read-only purpose
+	 * @param dbname
+	 * @throws IOException 
+	 */
+	public ObjectDBIO(String dbname) throws IOException {
+		super(dbname);
+	}
 
 	// Are we using custom class loader for serialized versions?
 	private boolean isCustomClassLoader;
@@ -26,7 +34,7 @@ public final class ObjectDBIO extends OffsetDBIO {
 	* @param osize object size
 	* @exception IOException if the block cannot be sought or written
 	*/
-	public void delete_object(Optr loc, int osize) throws IOException {
+	public synchronized void delete_object(Optr loc, int osize) throws IOException {
 		objseek(loc);
 		deleten(osize);
 	}
@@ -37,7 +45,7 @@ public final class ObjectDBIO extends OffsetDBIO {
 	 * @param osize  The size of the payload to add from array
 	 * @exception IOException If the adding did not happen
 	 */
-	public void add_object(Optr loc, byte[] o, int osize) throws IOException {
+	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
 		objseek(loc);
 		writen(o, osize);
 	}
@@ -48,7 +56,7 @@ public final class ObjectDBIO extends OffsetDBIO {
 	* @return The Object extracted from the backing store
 	* @exception IOException if the op fails
 	*/
-	public Object deserializeObject(long iloc) throws IOException {
+	public synchronized Object deserializeObject(long iloc) throws IOException {
 		// read Object at ptr to byte array
 		Object Od;
 		try {
@@ -83,7 +91,7 @@ public final class ObjectDBIO extends OffsetDBIO {
 	* @return the Object from dir. entry ptr.
 	* @exception IOException if the op fails
 	*/
-	public Object deserializeObject(Optr iloc) throws IOException {
+	public synchronized Object deserializeObject(Optr iloc) throws IOException {
 		// read Object at ptr to byte array
 		Object Od;
 		try {
@@ -110,19 +118,19 @@ public final class ObjectDBIO extends OffsetDBIO {
 		return Od;
 	}
 	
-	public boolean isCustomClassLoader() {
+	public synchronized boolean isCustomClassLoader() {
 		return isCustomClassLoader;
 	}
 
-	public void setCustomClassLoader(boolean isCustomClassLoader) {
+	public synchronized void setCustomClassLoader(boolean isCustomClassLoader) {
 		this.isCustomClassLoader = isCustomClassLoader;
 	}
 
-	public ClassLoader getCustomClassLoader() {
+	public synchronized ClassLoader getCustomClassLoader() {
 		return customClassLoader;
 	}
 
-	public void setCustomClassLoader(ClassLoader customClassLoader) {
+	public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
 		this.customClassLoader = customClassLoader;
 	}
 

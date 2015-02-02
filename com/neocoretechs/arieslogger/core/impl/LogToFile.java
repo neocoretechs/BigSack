@@ -1109,7 +1109,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// switch log right now
                 if (privExists(newLogFile) && !privDelete(newLogFile))
 				{
-					System.out.println("LogToFile.switchLogFile Cannot delete "+newLogFile.getPath());
+                	if( DEBUG )
+                		System.out.println("LogToFile.switchLogFile returning, Cannot delete "+newLogFile.getPath());
 					return;
 				}
 

@@ -41,26 +41,22 @@ public interface StreamLogScan extends LogScan {
 		array.  The scan is advanced to the next log record.
 	    If the input array is of insufficient size, getNextRecord must expand
 		the array to accomodate the log record.  User can optionally pass in a
-		transaction Id and a group mask.  If provided, only log record that
-		matches the transaction Id and the group mask is returned.
+		group mask.  If provided, only log record that
+		matches the group mask is returned.
 
-		@param logOutputBuffer        the ArrayInputStream to put the log record
-		@param tranId       if non-null, only log record that equals tranId 
-                            will be returned.  If null, log records are not 
-                            filtered on transaction Id. 
 		@param groupmask    if non-zero, only log record whose Loggable's group
                             value is included in the groupmask is returned.  
                             groupmask can be a bit wise OR of many Loggable 
                             groups.  If zero, log records are not filtered on 
                             the Loggable's group.
 
-		@return an object that represents the log record, return null if the
+		@return an object that represents the log records by instance and record, return null if the
 		scan has completed. 
 
 		@exception IOException       Some I/O exception raised during reading 
                                      the log record.
 	*/
-	public HashMap<LogInstance, LogRecord> getNextRecord(ByteBuffer logOutputBuffer,  long tranId,  int groupmask)  throws IOException;
+	public HashMap<LogInstance, LogRecord> getNextRecord(int groupmask)  throws IOException;
 
 	/**
 		Get the instance of the record just retrieved with getNextRecord(). 

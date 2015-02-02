@@ -42,8 +42,7 @@ public class FlushedScanHandle implements ScanHandle
 	LogRecord lr;
 	boolean readOptionalData = false;
 	int groupsIWant;
-	
-	ByteBuffer rawInput = ByteBuffer.allocate(4096);
+
 	
 	FlushedScanHandle(LogToFile lf, LogCounter start, int groupsIWant) throws IOException
 	{
@@ -60,7 +59,7 @@ public class FlushedScanHandle implements ScanHandle
 		// interesting groups will be returned
 		try
 		{
-			lrx = fs.getNextRecord(rawInput,-1, groupsIWant);
+			lrx = fs.getNextRecord(groupsIWant);
 			if (lrx == null) return false; //End of flushed log
 			lr = lrx.get(0);
 			if (DEBUG)
@@ -109,16 +108,6 @@ public class FlushedScanHandle implements ScanHandle
 		}
 	}
 
-	//This may be called only once per log record.
-    public ByteBuffer getOptionalData() throws IOException
-	{
-		if (DEBUG) assert(!readOptionalData);
-		if (lr == null) return null;
-		int dataLength = rawInput.getInt();
-		readOptionalData = true;
-		//rawInput.setLimit(dataLength);
-		return rawInput;
-	}
 
     public LogInstance getInstance() throws IOException {
 		return fs.getLogInstance();

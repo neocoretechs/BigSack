@@ -11,7 +11,7 @@ import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLog;
-import com.neocoretechs.bigsack.io.ThreadPoolManager;
+
 import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
@@ -53,37 +53,32 @@ public class GlobalDBIO {
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
 	private IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
-	private MappedBlockBuffer usedBL; // block number to Datablock
-	private Vector<BlockAccessIndex> freeBL = new Vector<BlockAccessIndex>(getMAXBLOCKS()); // free blocks
-	private BlockAccessIndex tmpBai; // general utility
+	private MappedBlockBuffer blockBuffer; // block number to Datablock
+
 	private RecoveryLog ulog;		
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 
-	public RecoveryLog getUlog() {
+	public synchronized RecoveryLog getUlog() {
 		return ulog;
 	}
 	
-	public IoManagerInterface getIOManager() {
+	public synchronized IoManagerInterface getIOManager() {
 		return ioManager;
 	}
 	
-	public void checkBufferFlush() throws IOException {
-		usedBL.freeupBlock();
+	public synchronized void checkBufferFlush() throws IOException {
+		blockBuffer.freeupBlock();
 	}
-	public void commitBufferFlush() throws IOException {
-		usedBL.commitBufferFlush();
+	public synchronized void commitBufferFlush() throws IOException {
+		blockBuffer.commitBufferFlush();
 	}
-	public void requestBufferFlush() {
-		synchronized(usedBL) {
-			usedBL.notify();
-		}
-	}
-	public void rollbackBufferFlush() {
+	
+	public synchronized void rollbackBufferFlush() {
 		forceBufferClear();
 	}
-	public void forceBufferWrite() throws IOException {
-		usedBL.directBufferWrite();
+	public synchronized void forceBufferWrite() throws IOException {
+		blockBuffer.directBufferWrite();
 	}
 	
 	/**
@@ -157,21 +152,13 @@ public class GlobalDBIO {
 				System.out.println("Multithreaded IO Manager coming up...");
 			ioManager = new MultithreadedIOManager();
 		}
-		// set up locally buffered thread instances
-		tmpBai = new BlockAccessIndex(this);
 	    
 		Fopen(Name, create);
 
 		// MAXBLOCKS may be set by PoolBlocks property
 		setMAXBLOCKS(Props.toInt("PoolBlocks"));
-		// populate with blocks, they're all free for now
-		for (int i = 0; i < getMAXBLOCKS(); i++) {
-			freeBL.addElement(new BlockAccessIndex(this));
-		}
-		usedBL = new MappedBlockBuffer(this, freeBL);
-		// start the thread that manages periodic buffer sweep attempts
-		// call requestBufferFlush to notify thread to start checking used block list
-		ThreadPoolManager.getInstance().spin(usedBL);
+
+		blockBuffer = new MappedBlockBuffer(this);
 		
 		if (create && isnew()) {
 			isNew = true;
@@ -200,7 +187,7 @@ public class GlobalDBIO {
 	* Get first tablespace
 	* @return the position of the first byte of first tablespace
 	*/
-	public long firstTableSpace() throws IOException {
+	public synchronized long firstTableSpace() throws IOException {
 		return 0L;
 	}
 	/**
@@ -209,7 +196,7 @@ public class GlobalDBIO {
 	* @return The long virtual block if there was a next space else 0
 	* @exception IOException if seek to new position fails
 	*/
-	public long nextTableSpace(int prevSpace) throws IOException {
+	public synchronized long nextTableSpace(int prevSpace) throws IOException {
 		int tempSpace = prevSpace;
 		while (++tempSpace < DBPhysicalConstants.DTABLESPACES) {
 				return makeVblock(tempSpace, 0L);
@@ -232,14 +219,14 @@ public class GlobalDBIO {
 		return ioManager.Fopen(fname, L3cache, create);
 	}
 	
- 	void Fopen() throws IOException {
+ 	synchronized void Fopen() throws IOException {
  		ioManager.Fopen();
 	}
 
 	/**
 	* @return DB name as String
 	*/
-	public String getDBName() {
+	public synchronized String getDBName() {
 		return Name;
 	}
 
@@ -419,7 +406,7 @@ public class GlobalDBIO {
 	 * Latching block
 	 * @param lbn The block number to allocate
 	 */
-	protected void alloc(long lbn) throws IOException {
+	protected synchronized void alloc(long lbn) throws IOException {
 		BlockAccessIndex bai = getUsedBlock(lbn);
 		alloc(bai);
 	}
@@ -428,7 +415,7 @@ public class GlobalDBIO {
 	* Latching block, increment access count
 	* @param bai The block access and index object
 	*/
-	protected void alloc(BlockAccessIndex bai) throws IOException {
+	protected synchronized void alloc(BlockAccessIndex bai) throws IOException {
 		bai.addAccess();
 	}
 	/**
@@ -436,7 +423,7 @@ public class GlobalDBIO {
 	 * @param lbn
 	 * @throws IOException
 	 */
-	protected void dealloc(long lbn) throws IOException {
+	protected synchronized void dealloc(long lbn) throws IOException {
 		BlockAccessIndex bai = getUsedBlock(lbn);
 		if (bai == null) {
 			// If we get here our threaded buffer manager must have done our job for us
@@ -446,7 +433,7 @@ public class GlobalDBIO {
 		}
 		dealloc(bai);
 	}
-	protected void dealloc(BlockAccessIndex bai) throws IOException {
+	protected synchronized void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
 
@@ -455,14 +442,8 @@ public class GlobalDBIO {
 	* Take the used block list, reset the blocks, move to to free list, then
 	* finally clear the used block list. We do this during rollback to remove any modified
 	*/
-	public void forceBufferClear() {
-			Iterator<BlockAccessIndex> it = usedBL.iterator();//sbai.iterator();
-			while(it.hasNext()) {
-					BlockAccessIndex bai = (BlockAccessIndex) it.next();
-					bai.resetBlock();
-					freeBL.addElement(bai);
-			}
-			usedBL.clear();
+	public synchronized void forceBufferClear() {
+			blockBuffer.forceBufferClear();
 	}
 	/**
 	* Get from free list, puts in used list of block access index.
@@ -476,15 +457,7 @@ public class GlobalDBIO {
 		if( DEBUG ) {
 			System.out.println("GlobalDBIO.addBlockAccess "+valueOf(Lbn));
 		}
-		checkBufferFlush();
-		BlockAccessIndex bai = (freeBL.elementAt(0));
-		freeBL.removeElementAt(0);
-		bai.setBlockNum(Lbn.longValue());
-		usedBL.add(bai);
-		if( DEBUG ) {
-				System.out.println("GlobalDBIO.addBlockAccess "+valueOf(Lbn)+" returning after freeBL take "+bai);
-		}
-		return bai;
+		return blockBuffer.addBlockAccess(Lbn);
 	}
 	/**
 	* Add a block to table of blocknums and block access index.
@@ -493,13 +466,7 @@ public class GlobalDBIO {
 	* @exception IOException if new dblock cannot be created
 	*/
 	private BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		// make sure we have open slots
-		checkBufferFlush();
-		BlockAccessIndex bai = (freeBL.elementAt(0));
-		freeBL.removeElementAt(0);
-		bai.setTemplateBlockNumber(Lbn.longValue());
-		usedBL.add(bai);//put(bai, null);
-		return bai;
+		return blockBuffer.addBlockAccessNoRead(Lbn);
 	}
 
 	/**
@@ -509,20 +476,11 @@ public class GlobalDBIO {
 	* @return The index into the block array
 	* @exception IOException if cannot read
 	*/
-	protected BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+	protected synchronized BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
 		if( DEBUG ) {
 			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn));
 		}
-		Long Lbn = new Long(bn);
-		BlockAccessIndex bai = getUsedBlock(bn);
-		if( DEBUG ) {
-			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn)+" got block "+bai);
-		}
-		if (bai != null) {
-			return bai;
-		}
-		// didn't find it, we must add
-		return addBlockAccess(Lbn);
+		return blockBuffer.findOrAddBlockAccess(bn);
 	}
 
 	/**
@@ -531,13 +489,7 @@ public class GlobalDBIO {
 	* @return The key found or whatever set returns otherwise if nothing a null is returned
 	*/
 	private BlockAccessIndex getUsedBlock(long loc) {
-		synchronized(usedBL) {
-			tmpBai.setTemplateBlockNumber(loc);
-			int idex = usedBL.indexOf(tmpBai);//.ceilingKey(tmpBai);
-			if(idex == -1)
-				return null;
-			return usedBL.get(idex);
-		}
+		return blockBuffer.getUsedBlock(loc);
 	}
 
 	/**
@@ -546,6 +498,7 @@ public class GlobalDBIO {
 	*/
 	private void createBuckets() throws IOException {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
+		d.resetBlock();
 		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
 			long xsize = 0L;
 			// write bucket blocks
@@ -575,7 +528,6 @@ public class GlobalDBIO {
 					Datablock db = new Datablock();
 					db.setBytesused((short) pb.length);
 					db.setBytesinuse((short) pb.length);
-					db.setWriteid(1L);
 					db.setPageLSN(-1L);
 					System.arraycopy(pb, 0, db.data, 0, pb.length);
 					db.setIncore(true);
@@ -600,7 +552,7 @@ public class GlobalDBIO {
 	 * @param tblk
 	 * @throws IOException
 	 */
-	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		//if( DEBUG )
 		//	System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 		// send write command and queues be damned, writes only happen
@@ -616,7 +568,7 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex
 	 * @exception IOException if db not open or can't get block
 	 */
-	protected BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
+	protected synchronized BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
 		long newblock;
 		BlockAccessIndex ablk = lastGoodBlk;
 		// this way puts it all in one tablespace
@@ -634,7 +586,6 @@ public class GlobalDBIO {
 		dblk.getBlk().setNextblk(-1L);
 		dblk.getBlk().setBytesused((short) 0);
 		dblk.getBlk().setBytesinuse ((short)0);
-		dblk.getBlk().setWriteid(1L);
 		dblk.getBlk().setPageLSN(-1L);
 		dblk.getBlk().setIncore(true);
 		dblk.getBlk().setInlog(false);
@@ -649,7 +600,7 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex of stolen blk
 	 * @exception IOException if db not open or can't get block
 	 */
-	protected BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
+	protected synchronized BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
 		long newblock;
 		if (currentBlk != null)
 			dealloc(currentBlk);
@@ -661,34 +612,33 @@ public class GlobalDBIO {
 		dblk.getBlk().setNextblk(-1L);
 		dblk.getBlk().setBytesused((short) 0);
 		dblk.getBlk().setBytesinuse((short)0);
-		dblk.getBlk().setWriteid(1L);
 		dblk.getBlk().setPageLSN(-1L);
 		dblk.getBlk().setIncore(false);
 		dblk.getBlk().setInlog(false);
 		return dblk;
 	}
 
-	protected long getNew_node_pos_blk() {
+	protected synchronized long getNew_node_pos_blk() {
 		return new_node_pos_blk;
 	}
 
-	protected void setNew_node_pos_blk(long new_node_pos_blk) {
+	protected synchronized void setNew_node_pos_blk(long new_node_pos_blk) {
 		this.new_node_pos_blk = new_node_pos_blk;
 	}
 
-	public long getTransId() {
+	public synchronized long getTransId() {
 		return transId;
 	}
 
-	public void setUlog(RecoveryLog ulog) {
+	public synchronized void setUlog(RecoveryLog ulog) {
 		this.ulog = ulog;
 	}
 
-	public int getMAXBLOCKS() {
+	public synchronized int getMAXBLOCKS() {
 		return MAXBLOCKS;
 	}
 
-	public void setMAXBLOCKS(int mAXBLOCKS) {
+	public synchronized void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
 	}
 

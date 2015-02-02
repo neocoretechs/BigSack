@@ -27,33 +27,24 @@ package com.neocoretechs.bigsack;
 * @author Groff
 */
 public interface DBPhysicalConstants {
-	//
 	//block header size is diff of DBLOCKSIZ - DATASIZE
-	//public static final short DATASIZE = 988; //size of data portion of block
-	//public static final short DBLOCKSIZ = 1024;  // total block size
-	//public static final int DBUCKETS = 4096;
 	/**
 	 * The size of payload data in a block (page).  Determined by BlockSize in properties file
 	 * - the size of the header portion
 	 */
 	public static final short DATASIZE =
-		(short) (Props.toInt("BlockSize") - 36);
-	//If total 4096 then 4060 is size of data portion of block
+		(short) (Props.toInt("BlockSize") - 28);
 	/**
 	 * The total block (page) size.  Determined by BlockSize in properties file
 	 */
 	public static final short DBLOCKSIZ = (short) Props.toInt("BlockSize");
-	//4096 total block size typical
 	/**
 	 * The number of blocks (pages) per tablespace.  Determined by Buckets in properties file
 	 */
 	public static final int DBUCKETS = Props.toInt("Buckets");
-	//4096 number of table buckets typical
 	/**
 	 * Number of tablespaces per DB.  Cannot be easily altered.
 	 */
 	public static final int DTABLESPACES = 8; //Can't really mess with this
-
-
 
 }

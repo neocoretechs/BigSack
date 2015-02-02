@@ -41,7 +41,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public class BTreeKeyPage implements Serializable {
 	static final long serialVersionUID = -2441425588886011772L;
-	static int MAXKEYS = DBPhysicalConstants.DATASIZE / 512; //4;
+	static int MAXKEYS = 4;
 	int numKeys = 0;
 	static final boolean DEBUG = false;
 

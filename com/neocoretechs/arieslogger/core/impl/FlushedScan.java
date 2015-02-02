@@ -124,9 +124,7 @@ public class FlushedScan implements StreamLogScan {
 		scan has been reached.
 		@exception IOException
 	*/
-	public HashMap<LogInstance, LogRecord> getNextRecord(ByteBuffer input, long tranId, int groupmask) throws IOException {
-		try
-		{
+	public HashMap<LogInstance, LogRecord> getNextRecord(int groupmask) throws IOException {
 			boolean candidate;
 			LogRecord lr;
 
@@ -144,23 +142,13 @@ public class FlushedScan implements StreamLogScan {
 
 				scan.readFully(data, 0, nextRecordLength);
 				// put the data to 'input'
-				input.put(data);
+				ByteBuffer input = ByteBuffer.wrap(data);
 				
 				lr = (LogRecord)(GlobalDBIO.deserializeObject(input));
 
-				if (groupmask != 0 || tranId != -1)
-				{
-					if (groupmask != 0 && (groupmask & lr.group()) == 0)
+
+				if (Scan.multiTrans && groupmask != 0 && (groupmask & lr.group()) == 0)
 						candidate = false; // no match, throw this log record out 
-
-					if (candidate && tranId != -1)
-					{
-						long tid = lr.getTransactionId();
-						if (tid != tranId) // nomatch
-							candidate = false; // throw this log record out
-					}
-
-				}
 
 				if (!candidate)
 				{
@@ -178,11 +166,6 @@ public class FlushedScan implements StreamLogScan {
 			HashMap<LogInstance, LogRecord> retLog = new HashMap<LogInstance, LogRecord>();
 			retLog.put(new LogCounter(currentInstance), lr);
 			return retLog;
-		}
-		catch (ClassNotFoundException cnfe)
-		{
-			throw getLogFactory().markCorrupt(new IOException(cnfe));
-		}
 	}
 
 	/**

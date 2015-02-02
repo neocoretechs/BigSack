@@ -44,7 +44,6 @@ public final class Datablock implements Externalizable {
 	private long nextblk = -1L; // offset of next blk in chain
 	private short bytesused; // bytes used this blk-highwater mark
 	private short bytesinuse; // actual # of bytes in use
-	private long writeid; // transaction id of writer
 	private long pageLSN = -1L; // pageLSN number of this block
 	byte data[]; // data section of blk
 	private boolean incore = false; // is it modified?
@@ -73,7 +72,6 @@ public final class Datablock implements Externalizable {
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
-			fobj.Fwrite_long(getWriteid());
 			fobj.Fwrite_long(getPageLSN());
 			fobj.Fwrite(data);
 		}
@@ -89,7 +87,6 @@ public final class Datablock implements Externalizable {
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
-			fobj.Fwrite_long(getWriteid());
 			fobj.Fwrite_long(getPageLSN());
 			if (getBytesused() == datasize)
 				fobj.Fwrite(data);
@@ -104,7 +101,6 @@ public final class Datablock implements Externalizable {
 		nextblk = -1L;
 		bytesused = 0;
 		bytesinuse = 0;
-		writeid = -1L;
 		pageLSN = -1;
 		incore = false;
 		inlog = false;
@@ -121,7 +117,6 @@ public final class Datablock implements Externalizable {
 	                fobj.Fwrite_long(nextblk);
 	                fobj.Fwrite_short(bytesused);
 	                fobj.Fwrite_short(bytesinuse);
-	                fobj.Fwrite_long(writeid);
 	                fobj.Fwrite_long(pageLSN);
 	                ByteArrayOutputStream baos = new ByteArrayOutputStream();
 	                DeflaterOutputStream dfo = new DeflaterOutputStream(baos);
@@ -143,7 +138,6 @@ public final class Datablock implements Externalizable {
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
 			setBytesinuse(fobj.Fread_short());
-			setWriteid(fobj.Fread_long());
 			setPageLSN(fobj.Fread_long());
 			if (fobj.Fread(data, datasize) != datasize) {
 				throw new IOException(
@@ -162,7 +156,6 @@ public final class Datablock implements Externalizable {
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
 			setBytesinuse(fobj.Fread_short());
-			setWriteid(fobj.Fread_long());
 			setPageLSN(fobj.Fread_long());
 			if (getBytesused() > datasize) {
 				throw new IOException("block inconsistency " + this.toString());
@@ -194,7 +187,6 @@ public final class Datablock implements Externalizable {
 		out.writeLong(getNextblk());
 		out.writeShort(getBytesused());
 		out.writeShort(getBytesinuse());
-		out.writeLong(getWriteid());
 		out.writeLong(getPageLSN());
 		if (getBytesused() == datasize)
 			out.write(data);
@@ -213,7 +205,6 @@ public final class Datablock implements Externalizable {
 		setNextblk(in.readLong());
 		setBytesused(in.readShort());
 		setBytesinuse(in.readShort());
-		setWriteid(in.readLong());
 		setPageLSN(in.readLong());
 		in.read(data);
 		//if (in.read(data) != datasize) {
@@ -238,12 +229,6 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
-		//
-		if (getWriteid() != 0L) {
-			throw new RuntimeException(
-				"Attempt to clone block under write " + getWriteid());
-		}
-
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
 		d.setIncore(true);
 		return d;
@@ -257,7 +242,6 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
-		d.setWriteid(writeid);
 		d.setPageLSN(pageLSN);
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
 		d.setIncore(incore);
@@ -281,8 +265,6 @@ public final class Datablock implements Externalizable {
 				+ getBytesused()
 				+ " bytesinuse = "
 				+ bytesinuse
-				+ " writeid= "
-				+ getWriteid()
 				+ " pageLSN: "
 				+ getPageLSN()
 				+ " incore "
@@ -297,7 +279,7 @@ public final class Datablock implements Externalizable {
 	}
 	public synchronized String toBriefString() {
 		return ( getPrevblk() !=-1 || getNextblk() !=-1 || getBytesused() != 0 || bytesinuse != 0 || 
-				getWriteid() !=0 || getPageLSN() != -1 || isIncore()) ?
+				 getPageLSN() != -1 || isIncore()) ?
 				"prev = "
 					+ getPrevblk()
 					+ " next = "
@@ -306,8 +288,6 @@ public final class Datablock implements Externalizable {
 					+ getBytesused()
 					+ " bytesinuse = "
 					+ bytesinuse
-					+ " writeid= "
-					+ getWriteid()
 					+ " pageLSN: "
 					+ getPageLSN()
 					+ " incore "
@@ -316,7 +296,7 @@ public final class Datablock implements Externalizable {
 	}
 	public synchronized String toVblockBriefString() {
 		return ( getPrevblk() !=-1 || getNextblk() !=-1 || getBytesused() != 0 || bytesinuse != 0 || 
-				getWriteid() !=0 || getPageLSN() != -1 || isIncore()) ?
+				 getPageLSN() != -1 || isIncore()) ?
 				"prev = "
 					+ GlobalDBIO.valueOf(getPrevblk())
 					+ " next = "
@@ -325,8 +305,6 @@ public final class Datablock implements Externalizable {
 					+ getBytesused()
 					+ " bytesinuse = "
 					+ bytesinuse
-					+ " writeid= "
-					+ getWriteid()
 					+ " pageLSN: "
 					+ getPageLSN()
 					+ " incore "
@@ -356,12 +334,6 @@ public final class Datablock implements Externalizable {
 	}
 	public void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
-	}
-	public synchronized long getWriteid() {
-		return writeid;
-	}
-	public synchronized void setWriteid(long writeid) {
-		this.writeid = writeid;
 	}
 	public synchronized long getPageLSN() {
 		return pageLSN;

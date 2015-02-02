@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
+
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.RecoveryLog;
@@ -44,12 +45,12 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	private static final boolean DEBUG = false;
 	private BlockAccessIndex lbai  = null;
 
-	protected Datablock getBlk() { return lbai.getBlk(); }
-	public short getByteindex() { return lbai.byteindex; }
-	protected void moveByteindex(short runcount) { lbai.byteindex += runcount; }
-	protected void incrementByteindex() { ++lbai.byteindex; }
+	protected synchronized Datablock getBlk() { return lbai.getBlk(); }
+	public synchronized short getByteindex() { return lbai.byteindex; }
+	protected synchronized void moveByteindex(short runcount) { lbai.byteindex += runcount; }
+	protected synchronized void incrementByteindex() { ++lbai.byteindex; }
 	
-	protected BlockAccessIndex getBlockIndex() { return lbai;}
+	protected synchronized BlockAccessIndex getBlockIndex() { return lbai;}
 
 	/**
 	* Create the block IO and up through the chain to global IO. After constructing, create a recovery log instance
@@ -68,15 +69,25 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 		getUlog().getLogToFile().recover();
 	}
 	/**
+	 * Bring up IO without logging
+	 * @param dbname
+	 * @throws IOException
+	 */
+	protected BlockDBIO(String dbname) throws IOException {
+		super(dbname, false, -1);
+		// create the ARIES protocol recovery log
+		setUlog(new RecoveryLog(this));
+	}
+	/**
 	 * Get the data block portion of our block access index
 	 */
-	public Datablock getDatablock() {
+	public synchronized Datablock getDatablock() {
 		return lbai.getBlk();
 	}
 	/**
 	 * Get the physical block number of our block access index
 	 */
-	public long getCurblock() {
+	public synchronized long getCurblock() {
 		return lbai.getBlockNum();
 	}
 	/**
@@ -85,7 +96,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 * @param tbai
 	 * @throws IOException
 	 */
-	void setLbn(BlockAccessIndex tbai) throws IOException {
+	synchronized void setLbn(BlockAccessIndex tbai) throws IOException {
 		lbai = tbai;
 		alloc(lbai);
 		lbai.setByteindex((short) 0);
@@ -94,7 +105,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 * dealloc outstanding block. if not null, do a dealloc and set null
 	 * @throws IOException
 	 */
-	public void deallocOutstanding() throws IOException {
+	public synchronized void deallocOutstanding() throws IOException {
 		if (lbai != null) {
 			dealloc(lbai.getBlockNum());
 			//globalIO.Fforce();
@@ -106,7 +117,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 * Deallocate the outstanding block and call commit on the recovery log
 	 * @throws IOException
 	 */
-	public void deallocOutstandingCommit() throws IOException {
+	public synchronized void deallocOutstandingCommit() throws IOException {
 		deallocOutstanding();
 		commitBufferFlush();
 		getUlog().commit();
@@ -115,7 +126,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 * Deallocate the outstanding block and call rollback on the recovery log
 	 * @throws IOException
 	 */
-	public void deallocOutstandingRollback() throws IOException {
+	public synchronized void deallocOutstandingRollback() throws IOException {
 		deallocOutstanding();
 		rollbackBufferFlush();
 		getUlog().rollBack();
@@ -127,7 +138,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @param tbn The virtual block
 	* @exception IOException If low-level access fails
 	*/
-	public void findOrAddBlock(long tbn) throws IOException {
+	public synchronized void findOrAddBlock(long tbn) throws IOException {
 		if( DEBUG )
 			System.out.println("BlockDBIO.findOrAddBlock:"+valueOf(tbn)+" current:"+lbai);
 		if (lbai != null) {
@@ -140,8 +151,6 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 			dealloc(lbai.getBlockNum());
 		}
 		setLbn(findOrAddBlockAccess(tbn));
-		// suggest a buffer clean up operation
-		requestBufferFlush();
 	}
 	
 	/**
@@ -150,7 +159,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @exception IOException If problem seeking block
 	* @see Optr
 	*/
-	public void objseek(Optr adr) throws IOException {
+	public synchronized void objseek(Optr adr) throws IOException {
 		if (adr.getBlock() == -1L)
 			throw new IOException("Sentinel block seek error");
 		findOrAddBlock(adr.getBlock());
@@ -162,7 +171,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @exception IOException If problem seeking block
 	* @see Optr
 	*/
-	public void objseek(long adr) throws IOException {
+	public synchronized void objseek(long adr) throws IOException {
 		if (adr == -1L)
 			throw new IOException("Sentinel block seek error");
 		findOrAddBlock(adr);
@@ -174,7 +183,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return true if success
 	* @exception IOException If we cannot read next block
 	*/
-	public boolean getnextblk() throws IOException {
+	public synchronized boolean getnextblk() throws IOException {
 		if (lbai.getBlk().getNextblk() == -1L) {
 			if( DEBUG )
 				System.out.println("BlockDBIO.getnextblk returning with no next block "+lbai);
@@ -189,7 +198,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return The block number acquired
 	* @exception IOException If the block cannot be acquired
 	*/
-	public long acquireBlock() throws IOException {
+	public synchronized long acquireBlock() throws IOException {
 		setLbn(acquireblk(lbai));
 		return getCurblock();
 	}
@@ -198,7 +207,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return The block number acquired
 	* @exception IOException If the block cannot be acquired 
 	*/
-	public long stealBlock() throws IOException {
+	public synchronized long stealBlock() throws IOException {
 		setLbn(stealblk(lbai)); // pass for dealloc
 		return getCurblock();
 	}
@@ -210,7 +219,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public Optr new_node_position() throws IOException {
+	public synchronized Optr new_node_position() throws IOException {
 		if (getNew_node_pos_blk() == -1L) {
 			stealBlock();
 		} else {
@@ -227,7 +236,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* Attempts to cluster entries in used blocks near insertion point.
 	* We leave it to the app to decide when to call this and use for packing
 	*/
-	public void set_new_node_position() {
+	public synchronized void set_new_node_position() {
 		setNew_node_pos_blk(getCurblock());
 	}
 
@@ -236,7 +245,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return The number of elements
 	* @exception IOException If low-level IO has failed
 	*/
-	long size() throws IOException {
+	synchronized long size() throws IOException {
 		return 0L;
 	}
 	/**
@@ -244,7 +253,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return true if table is empty
 	* @exception IOException If low-level IO has failed
 	*/
-	boolean empty() throws IOException {
+	synchronized boolean empty() throws IOException {
 		return (size() == 0L);
 	}
 

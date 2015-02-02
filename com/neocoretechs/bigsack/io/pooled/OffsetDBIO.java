@@ -21,10 +21,16 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		DBOutput = new DataOutputStream(new DBOutputStream(this));
 	}
 	
-	public DataInputStream getDBInput() {
+	protected OffsetDBIO(String dbname) throws IOException {
+		super(dbname);
+		DBInput = new DataInputStream(new DBInputStream(this));
+		DBOutput = new DataOutputStream(new DBOutputStream(this));
+	}
+
+	public synchronized DataInputStream getDBInput() {
 		return DBInput;
 	}
-	public DataOutputStream getDBOutput() {
+	public synchronized DataOutputStream getDBOutput() {
 		return DBOutput;
 	}
 
@@ -33,7 +39,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @param offset offset from current
 	* @exception IOException If we cannot acquire next block
 	*/
-	public boolean seek_fwd(long offset) throws IOException {
+	public synchronized boolean seek_fwd(long offset) throws IOException {
 		long runcount = offset;
 		do {
 			if (runcount >= (this.getBlk().getBytesused() - this.getByteindex())) {
@@ -52,7 +58,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @param offset offset from current
 	* @exception IOException If we cannot acquire next block
 	*/
-	public boolean seek_fwd(short offset) throws IOException {
+	public synchronized boolean seek_fwd(short offset) throws IOException {
 		short runcount = offset;
 		do {
 			if (runcount >= (this.getBlk().getBytesused() - this.getByteindex())) {
@@ -73,7 +79,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @return number of bytes read
 	* @exception IOException If we cannot acquire next block
 	*/
-	int readn(byte[] buf, int numbyte) throws IOException {
+	synchronized int readn(byte[] buf, int numbyte) throws IOException {
 		int i = 0, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
@@ -113,7 +119,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @return the byte as integer for InputStream
 	* @exception IOException If we cannot acquire next block
 	*/
-	public int readi() throws IOException {
+	public synchronized int readi() throws IOException {
 		// see if we need the next block to start
 		// and flag our position
 		if (this.getByteindex() >= this.getBlk().getBytesused()) {
@@ -132,7 +138,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @return number of bytes written
 	* @exception IOException if can't acquire new block
 	*/
-	int writen(byte[] buf, int numbyte) throws IOException {
+	synchronized int writen(byte[] buf, int numbyte) throws IOException {
 		int i = 0, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
@@ -187,7 +193,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @param byte to write
 	* @exception IOException If cannot acquire new block
 	*/
-	public void writei(int tbyte) throws IOException {
+	public synchronized void writei(int tbyte) throws IOException {
 		// see if we need the next block to start
 		// and flag our position
 		if (this.getByteindex() >= DBPhysicalConstants.DATASIZE)
@@ -198,7 +204,8 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		if (this.getBlk().isInlog())
 			this.getBlk().setInlog(false);
 		this.getBlk().data[this.getByteindex()] = (byte) tbyte;
-		if (this.getByteindex() + 1 > this.getBlk().getBytesused()) {
+		this.moveByteindex((short) 1);
+		if (this.getByteindex() > this.getBlk().getBytesused()) {
 			//update control info
 			this.getBlk().setBytesused( this.getByteindex()) ;
 			this.getBlk().setBytesinuse(this.getBlk().getBytesused());
@@ -211,7 +218,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	* @return true if success
 	* @exception IOException If we cannot write block
 	*/
-	boolean deleten(int osize) throws IOException {
+	synchronized boolean deleten(int osize) throws IOException {
 		int runcount = osize;
 		if (osize <= 0)
 			throw new IOException("object size invalid: " + osize);
@@ -260,7 +267,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	
 
 	@Override
-	public void setByteindex(short tindex) {
+	public synchronized void setByteindex(short tindex) {
 		getBlockIndex().setByteindex(tindex);
 		
 	}
