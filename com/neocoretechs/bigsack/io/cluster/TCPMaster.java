@@ -25,13 +25,25 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * There will be one of these for each tablespace of each database, so 8 per DB each with its own port
  * The naming convention for the remote nodes is the constant 'remoteWorker' with the tablespace number appended.
  * The 'WorkBoot' process on the remote node is responsible for spinning the workers that communicate with the master.
- * A back-channel TCP server to the workboot initiates the process
+ * A back-channel TCP server to the workboot initiates the process.
+ * To test in local cluster mode set the boolean 'TEST' value true. This replaces the references to remote workers
+ * 'AMI' + tablespace Ip address with a localhost IP address. Also TCPworker uses 'AMIMASTER' as its remote master and
+ * those references are likewise replaced with localhost. In general the remote directory is 
+ * 'Database path + 'tablespace'+ tablespace# + tablename' where tablename is 'DBname+class+'.'+tablespace#'
+ * so if your remote db path is /home/relatrix/AMI as passed to workboot then its translation is:
+ *  /home/relatrix/tablespace0/AMIcom.yourpack.yourclass.0
+ * for the remote node 'AMI0', for others replace all '0' with '1' etc for other tablespaces.
+ * So to test cluster locally use 1 workboot and different directories on localhost called tablespace0-7 under the same
+ * directory as 'log', the recovery log location. this directory also needs the .properties file
+ * On the true cluster a workboot would be running on each node and /home/relatrix/tablespace0,1,2 and properties
+ * etc must be present on each node. The master contains the recovery logs and distributes IO requests to each worker node
+ * based on tablespace.
  * @author jg
- *
+ * Copyright (C) NeoCoreTechs 2014,2015
  */
 public class TCPMaster implements Runnable, MasterInterface {
 	private static final boolean DEBUG = false;
-	public static final boolean TEST = true;
+	public static final boolean TEST = false; // true to run in local cluster test mode
 	private int MASTERPORT = 9876;
 	private int SLAVEPORT = 9876;
 	private int WORKBOOTPORT = 8000;
