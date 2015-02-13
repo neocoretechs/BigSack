@@ -11,6 +11,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Enumeration;
+import java.util.Iterator;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
@@ -42,7 +45,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * Copyright (C) NeoCoreTechs 2014,2015
  */
 public class TCPMaster implements Runnable, MasterInterface {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	public static final boolean TEST = false; // true to run in local cluster test mode
 	private int MASTERPORT = 9876;
 	private int SLAVEPORT = 9876;
@@ -130,29 +133,44 @@ public class TCPMaster implements Runnable, MasterInterface {
 			try {
 			 sock.read(b);
 			 IoResponseInterface iori = (IoResponseInterface) GlobalDBIO.deserializeObject(b);
-	   	     // get the original request from the stored table
-	   	     IoRequestInterface ior = requestContext.get(iori.getUUID());
-	   	     if( DEBUG )
-	   	    	 System.out.println("FROM Remote, response:"+iori+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
-	   	     //
-	   	     if( DEBUG ) {
-	   	    	 System.out.println("Extracting latch from original request:"+ior);
-	   	    	 if( ior == null ) {
-	   	    		 Enumeration<Integer> e = requestContext.keys();
-	   	    		 System.out.println("Dump context table "+requestContext.size());
-	   	    		 while(e.hasMoreElements())System.out.println(e.nextElement());
-	   	    	 }
+			 synchronized(requestContext) {
+				 // get the original request from the stored table
+				 IoRequestInterface ior = requestContext.get(iori.getUUID());
+				 if( DEBUG )
+					 System.out.println("FROM Remote, response:"+iori+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+				 //
+				 // If we detect a request that has not correspondence in the table of requests issued
+				 // then the request is a duplicate of some sort of corruption has occurred. If in debug, log, dump
+				 // table of current requests, and ignore
+				 //
+				 if( DEBUG ) {
+					 System.out.println("Extracting latch from original request:"+ior);
+					 if( ior == null ) {
+						 Set<Entry<Integer, IoRequestInterface>> e = requestContext.entrySet();
+						 System.out.println("TCPMaster ******* INBOUND REQUEST DOES NOT VERIFY *******\r\nDump context table, size:"+requestContext.size());
+						 Iterator<Entry<Integer, IoRequestInterface>> ei = e.iterator();
+						 while(ei.hasNext()) {
+							 Entry<Integer, IoRequestInterface> ein = ei.next();
+							 System.out.println("Request #: "+ein.getKey()+" val:"+ein.getValue());
+						 }
+						 continue;
+					 }
 	   	    	 
-	   	     }
-	   	     // set the return values in the original request to our values from remote workers
-	   	     ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
-	   	     ((CompletionLatchInterface)ior).setObjectReturn(iori.getObjectReturn());
-	   	     if( DEBUG ) {
-	   	    	 System.out.println("TCPMaster ready to count down latch with "+ior);
-	   	     }
-	   	     // now add to any latches awaiting
-	   	     CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
-	   	     cdl.countDown();
+				 }
+				 // set the return values in the original request to our values from remote workers
+				 ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
+				 Object o = iori.getObjectReturn();
+				 if( o instanceof Exception ) {
+					 System.out.println("TCPMaster: REMOTE EXCEPTION:"+o);
+				 }
+				 ((CompletionLatchInterface)ior).setObjectReturn(o);
+				 if( DEBUG ) {
+					 System.out.println("TCPMaster ready to count down latch with "+ior);
+				 }
+				 // now add to any latches awaiting
+				 CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
+				 cdl.countDown();
+			 }
 	   	     b.clear();
 			} catch (SocketException e) {
 					System.out.println("TCPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);

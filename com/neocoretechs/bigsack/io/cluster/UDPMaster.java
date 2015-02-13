@@ -106,30 +106,31 @@ public class UDPMaster implements Runnable, MasterInterface {
 	   	     clientSocket.receive(receivePacket);
 	   	     byte[] b = receivePacket.getData();
 	   	     IoResponseInterface iori = (IoResponseInterface) GlobalDBIO.deserializeObject(b);
-	   	     // get the original request from the stored table
-	   	     IoRequestInterface ior = requestContext.get(iori.getUUID());
-	   	     if( DEBUG )
-	   	    	 System.out.println("FROM Remote, size:" + b.length+" response:"+iori+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
-	   	     //clientSocket.close();
-	   	     //
-	   	     if( DEBUG ) {
-	   	    	 System.out.println("Extracting latch from original request:"+ior);
-	   	    	 if( ior == null ) {
-	   	    		 Enumeration<Integer> e = requestContext.keys();
-	   	    		 System.out.println("Dump context table "+requestContext.size());
-	   	    		 while(e.hasMoreElements())System.out.println(e.nextElement());
+	   	     synchronized(requestContext) {
+	   	    	 // get the original request from the stored table
+	   	    	 IoRequestInterface ior = requestContext.get(iori.getUUID());
+	   	    	 if( DEBUG )
+	   	    		 System.out.println("FROM Remote, size:" + b.length+" response:"+iori+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+	   	    	 //clientSocket.close();
+	   	    	 //
+	   	    	 if( DEBUG ) {
+	   	    		 System.out.println("Extracting latch from original request:"+ior);
+	   	    		 if( ior == null ) {
+	   	    			 Enumeration<Integer> e = requestContext.keys();
+	   	    			 System.out.println("Dump context table "+requestContext.size());
+	   	    			 while(e.hasMoreElements())System.out.println(e.nextElement());
+	   	    		 } 
 	   	    	 }
-	   	    	 
+	   	    	 // set the return values in the original request to our values from remote workers
+	   	    	 ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
+	   	    	 ((CompletionLatchInterface)ior).setObjectReturn(iori.getObjectReturn());
+	   	    	 if( DEBUG ) {
+	   	    		 System.out.println("UDPMaster ready to count down latch with "+ior);
+	   	    	 }
+	   	    	 // now add to any latches awaiting
+	   	    	 CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
+	   	    	 cdl.countDown();
 	   	     }
-	   	     // set the return values in the original request to our values from remote workers
-	   	     ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
-	   	     ((CompletionLatchInterface)ior).setObjectReturn(iori.getObjectReturn());
-	   	     if( DEBUG ) {
-	   	    	 System.out.println("UDPMaster ready to count down latch with "+ior);
-	   	     }
-	   	     // now add to any latches awaiting
-	   	     CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
-	   	     cdl.countDown();
 			} catch (SocketException e) {
 					System.out.println("UDPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
 			} catch (IOException e) {

@@ -55,11 +55,13 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	 * Remove request from queue when finished with it
 	 */
 	public synchronized void removeRequest(AbstractClusterWork ior) {
-		 IoRequestInterface iori = requestContext.get(ior.getUUID());
-		 requestContext.remove(ior.getUUID(), iori);
-		 if( DEBUG ) {
+		synchronized(requestContext) {
+			IoRequestInterface iori = requestContext.get(ior.getUUID());
+			requestContext.remove(ior.getUUID(), iori);
+			if( DEBUG ) {
 			 System.out.println("Request removed: "+iori+" origin:"+ior);
-		 }
+			}
+		}
 	}
 	
 	public synchronized int getRequestQueueLength() { return requestContext.size(); }
