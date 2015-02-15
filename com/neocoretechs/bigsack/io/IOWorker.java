@@ -9,9 +9,22 @@ import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
-
+/**
+ * This is the primordial IO worker. It exists in standalone mode as the primary threaded worker accessing
+ * a particular tablespace from the requests placed in the ArrayBlockingQueue. It also exists in cluster mode
+ * as the thread behind the TCPWorker which is derived from it. In cluster mode the WorkerRequestProcessor is an
+ * additional thread that actually uses the IOWorker queue to queue requests back to the TCPWorker, an
+ * intentional design compromise. 
+ * The ioUnit is an IoInterface that connects to the underlying raw store, outside of the page/block pool/buffer
+ * and provides the low level 'fread','fwrite','fseek' etc functions.
+ * The request queue is initialized with a capacity of 1024 requests with 'put' operations blocking 
+ * until a number below that are served.
+ * @author jg
+ *
+ */
 public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	private static final boolean DEBUG = false;
+	private static final int QUEUEMAX = 1024;
 	private IoInterface ioUnit;
 	private long nextFreeBlock = 0L;
 	private BlockingQueue<IoRequestInterface> requestQueue;
@@ -20,11 +33,12 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	private String DBName;
 	/**
 	 * Default Constructor. The purpose is to allow a cluster master to boot without
-	 * reference to the locally mapped IO subsystem. We handle UDP traffic to remote
-	 * node instead
+	 * reference to the locally mapped IO subsystem. In effect, the local IO operations
+	 * are replaced with traffic to remote nodes instead. The requests themselves are similar
+	 * but network bound ones add additional garnish
 	 */
 	public IOWorker() {
-		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(QUEUEMAX, true); // true maintains FIFO order
 	}
 	/**
 	 * Create an IOWorker for the local store
@@ -36,7 +50,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	public IOWorker(String name, int tablespace, int L3cache) throws IOException {
 		this.DBName = name;
 		this.tablespace = tablespace;
-		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(QUEUEMAX, true);
 		switch (L3cache) {
 			case 0 :
 				ioUnit = new MmapIO();
@@ -72,7 +86,11 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		if( DEBUG ) {
 			System.out.println("Adding request "+irf+" size:"+requestQueue.size());
 		}
-		requestQueue.add(irf);
+		try {
+			requestQueue.put(irf);
+		} catch (InterruptedException e) {
+			return; // executor shutdown in effect most likely
+		}
 	}
 	
 	public synchronized int getRequestQueueLength() { return requestQueue.size(); }
@@ -84,8 +102,9 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 				IoRequestInterface iori = requestQueue.take();
 				iori.process();
 			} catch (InterruptedException e) {
-				System.out.println("Request queue interrupt ");
-				e.printStackTrace();
+				 // most likely a shutdown request
+			     // quit the processing thread
+			     return;
 			} catch (IOException e) {
 				System.out.println("Request queue exception "+e);
 				e.printStackTrace();

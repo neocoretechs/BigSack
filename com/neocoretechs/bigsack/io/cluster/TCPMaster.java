@@ -1,12 +1,17 @@
 package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -54,9 +59,13 @@ public class TCPMaster implements Runnable, MasterInterface {
 	private InetAddress IPAddress = null;
 
 	private SocketChannel workerSocketChannel = null;
+	private Socket workerSocket = null;
+	
 	private SocketAddress workerSocketAddress;
-	//private Socket masterSocket;
+	
 	private ServerSocketChannel masterSocketChannel;
+	private ServerSocket masterSocket;
+	
 	private SocketAddress masterSocketAddress;
 	ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
 
@@ -92,9 +101,11 @@ public class TCPMaster implements Runnable, MasterInterface {
 			System.out.println("TCPMaster constructed with "+DBName+" "+tablespace+" master port:"+masterPort+" slave:"+slavePort);
 		}
 		masterSocketAddress = new InetSocketAddress(MASTERPORT);
-		masterSocketChannel = ServerSocketChannel.open();
-		masterSocketChannel.bind(masterSocketAddress);
-		
+		//masterSocketChannel = ServerSocketChannel.open();
+		//masterSocketChannel.configureBlocking(true);
+		//masterSocketChannel.bind(masterSocketAddress);	
+		masterSocket = new ServerSocket();
+		masterSocket.bind(masterSocketAddress);
 	}
 	
 	public void setMasterPort(int port) {
@@ -119,9 +130,20 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 */
 	@Override
 	public void run() {
-  	    SocketChannel sock;
+  	    //SocketChannel sock;
+  	    Socket sock;
 		try {
-			sock = masterSocketChannel.accept();
+			//sock = masterSocketChannel.accept();
+			//sock.configureBlocking(true);
+			//sock.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+			//sock.setOption(StandardSocketOptions.TCP_NODELAY, true);
+			//sock.setOption(StandardSocketOptions.SO_SNDBUF, 32767);
+			//sock.setOption(StandardSocketOptions.SO_RCVBUF, 32767);
+			sock = masterSocket.accept();
+			sock.setKeepAlive(true);
+			sock.setTcpNoDelay(true);
+			sock.setSendBufferSize(32767);
+			sock.setReceiveBufferSize(32767);
 		} catch (IOException e1) {
 			System.out.println("TCPMaster server socket accept failed with "+e1);
 			return;
@@ -131,8 +153,12 @@ public class TCPMaster implements Runnable, MasterInterface {
   	     }
 		while(shouldRun ) {
 			try {
-			 sock.read(b);
-			 IoResponseInterface iori = (IoResponseInterface) GlobalDBIO.deserializeObject(b);
+				//sock.read(b);
+				//IoResponseInterface iori = (IoResponseInterface) GlobalDBIO.deserializeObject(b);
+				//b.clear();
+				InputStream ins = sock.getInputStream();
+				ObjectInputStream ois = new ObjectInputStream(ins);
+				IoResponseInterface iori = (IoResponseInterface) ois.readObject();
 			 synchronized(requestContext) {
 				 // get the original request from the stored table
 				 IoRequestInterface ior = requestContext.get(iori.getUUID());
@@ -153,15 +179,14 @@ public class TCPMaster implements Runnable, MasterInterface {
 							 Entry<Integer, IoRequestInterface> ein = ei.next();
 							 System.out.println("Request #: "+ein.getKey()+" val:"+ein.getValue());
 						 }
-						 continue;
-					 }
-	   	    	 
+						 break;
+					 }   	 
 				 }
 				 // set the return values in the original request to our values from remote workers
 				 ((CompletionLatchInterface)ior).setLongReturn(iori.getLongReturn());
 				 Object o = iori.getObjectReturn();
 				 if( o instanceof Exception ) {
-					 System.out.println("TCPMaster: REMOTE EXCEPTION:"+o);
+					 System.out.println("TCPMaster: ******** REMOTE EXCEPTION ******** "+o);
 				 }
 				 ((CompletionLatchInterface)ior).setObjectReturn(o);
 				 if( DEBUG ) {
@@ -171,13 +196,13 @@ public class TCPMaster implements Runnable, MasterInterface {
 				 CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
 				 cdl.countDown();
 			 }
-	   	     b.clear();
 			} catch (SocketException e) {
 					System.out.println("TCPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
 					break;
 			} catch (IOException e) {
 				// we lost the remote, try to close worker and wait for reconnect
 				System.out.println("TCPMaster receive IO error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+				/*
 				if(workerSocketChannel != null ) {
 						try {
 							workerSocketChannel.close();
@@ -191,9 +216,29 @@ public class TCPMaster implements Runnable, MasterInterface {
 					} catch (IOException e2) {}
 				try {
 					masterSocketChannel = ServerSocketChannel.open();
+					masterSocketChannel.configureBlocking(true);
 					masterSocketChannel.bind(masterSocketAddress);
 				} catch (IOException e3) {
 					System.out.println("TCPMaster server socket RETRY channel open failed with "+e3+" THIS NODE IST KAPUT!");
+					return;
+				}
+				*/
+				if(workerSocket != null ) {
+					try {
+						workerSocket.close();
+					} catch (IOException e1) {}
+					workerSocket = null;
+				}
+				// re-establish master slave connect
+				if(!masterSocket.isClosed())
+					try {
+						masterSocket.close();
+					} catch (IOException e2) {}
+				try {
+					masterSocket = new ServerSocket();
+					masterSocket.bind(masterSocketAddress);
+				} catch (IOException e3) {
+					System.out.println("TCPMaster standard server socket RETRY channel open failed with "+e3+" THIS NODE IST KAPUT!");
 					return;
 				}
 				// We have done everything we can to close all open channels, now try to re-open them
@@ -211,14 +256,18 @@ public class TCPMaster implements Runnable, MasterInterface {
 				}
 				// reached the WorkBoot to restart, set up accept
 				try {
-						sock = masterSocketChannel.accept();
+					//sock = masterSocketChannel.accept();
+					sock = masterSocket.accept();
 				} catch (IOException e1) {
 						System.out.println("TCPMaster server socket RETRY accept failed with "+e1+" THIS NODE IST KAPUT!");
 						return;
 				}
 			  	if( DEBUG ) {
-			  	    	 System.out.println("TCPMaster got RE-connection "+sock);
+			  		System.out.println("TCPMaster got RE-connection "+sock);
 			  	}
+			} catch (ClassNotFoundException e1) {
+				System.out.println("TCPMaster class not found for deserialization "+e1+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
+				break;
 			}
 	      }	
 	}
@@ -229,13 +278,32 @@ public class TCPMaster implements Runnable, MasterInterface {
 	public synchronized void send(IoRequestInterface iori) {
 	    byte[] sendData;
 		try {
+			/*
 			if(workerSocketChannel == null ) {
 				workerSocketAddress = new InetSocketAddress(IPAddress, SLAVEPORT);
 				workerSocketChannel = SocketChannel.open(workerSocketAddress);
+				workerSocketChannel.configureBlocking(true);
+				workerSocketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+				workerSocketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+				workerSocketChannel.setOption(StandardSocketOptions.SO_SNDBUF, 32767);
+				workerSocketChannel.setOption(StandardSocketOptions.SO_RCVBUF, 32767);
 			}
-			sendData = GlobalDBIO.getObjectAsBytes(iori);
-			ByteBuffer srcs = ByteBuffer.wrap(sendData);
-			workerSocketChannel.write(srcs);
+			*/
+			if(workerSocket == null ) {
+				workerSocketAddress = new InetSocketAddress(IPAddress, SLAVEPORT);
+				workerSocket = new Socket();
+				workerSocket.connect(workerSocketAddress);
+				workerSocket.setKeepAlive(true);
+				workerSocket.setTcpNoDelay(true);
+				workerSocket.setReceiveBufferSize(32767);
+				workerSocket.setSendBufferSize(32767);
+			}
+			//sendData = GlobalDBIO.getObjectAsBytes(iori);
+			//ByteBuffer srcs = ByteBuffer.wrap(sendData);
+			//workerSocketChannel.write(srcs);
+			ObjectOutputStream oos = new ObjectOutputStream(workerSocket.getOutputStream());
+			oos.writeObject(iori);
+			oos.flush();
 		} catch (SocketException e) {
 				System.out.println("Exception setting up socket to remote worker port "+SLAVEPORT+" "+e);
 		} catch (IOException e) {

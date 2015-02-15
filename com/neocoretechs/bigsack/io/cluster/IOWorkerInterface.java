@@ -9,5 +9,4 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 public interface IOWorkerInterface {
 	public void queueRequest(IoRequestInterface irf);
 	public int getRequestQueueLength();
-	//public void FseekAndWrite(long toffset, Datablock tblk) throws IOException;
 }

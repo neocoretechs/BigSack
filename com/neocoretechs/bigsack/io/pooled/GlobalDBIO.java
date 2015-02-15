@@ -375,7 +375,7 @@ public class GlobalDBIO {
 		} catch (ClassNotFoundException cnf) {
 			throw new IOException(
 				cnf.toString()
-					+ ":Class Not found, may have been modified beyond version compatibility");
+					+ ":Class Not found, may have been modified beyond version compatibility: from ByteChannel");
 		}
 		return Od;
 	}
@@ -383,21 +383,25 @@ public class GlobalDBIO {
 	public static Object deserializeObject(ByteBuffer bb) throws IOException {
 		Object Od;
 		try {
+			assert( bb.arrayOffset() == 0 ) : "GlobalDBIO.deserializeObject ByteBuffer has bad array offset "+bb.arrayOffset();
 			ObjectInputStream s;
 			byte[] ba = bb.array();
 			s = new ObjectInputStream(new ByteArrayInputStream(ba));
 			Od = s.readObject();
 			s.close();
 		} catch (IOException ioe) {
+	        FileChannel channel = new FileOutputStream(new File("/home/odroid/Relatrix/dumpobj.ser"), false).getChannel();
+	        channel.write(bb);
+	        channel.close();
 			throw new IOException(
 				"deserializeObject: "
 					+ ioe.toString()
-					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteChannel "
+					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteBuffer "
 					+ bb);
 		} catch (ClassNotFoundException cnf) {
 			throw new IOException(
 				cnf.toString()
-					+ ":Class Not found, may have been modified beyond version compatibility");
+					+ ":Class Not found, may have been modified beyond version compatibility: from ByteBuffer");
 		}
 		return Od;
 	}

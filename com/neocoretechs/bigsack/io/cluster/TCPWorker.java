@@ -1,10 +1,17 @@
 package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketException;
+import java.net.StandardSocketOptions;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ServerSocketChannel;
@@ -19,19 +26,26 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 
 
 /**
- * This class functions as the remote IOWorker 
- * Multiple threads on each node, one for each database, an Fopen spawns
- * additional instances of these so it acts as its own master in a sense.
- * Presumably, there is an instance of this present on each of the 8
- * tablespace worker nodes.
- * When a block comes down it gets written, if a block comes up it gets read.
- * the request comes down as a serialized object.
- * Instances of these are started by the WorkBoot controller node
+ * This class functions as the remote IOWorker. Two unidirectional channels provide full duplex
+ * communication. Each 'master' and 'worker' connect via server socket and client from each. 
+ * Multiple threads on each node, one set of master/worker/worker processor threads is spun
+ * for each database. Each node maintains a specific tablespace for all databases.
+ * An Fopen spawns additional instances of these threads.
+ * Presumably, there is an instance of this present on each of the 8 tablespace worker nodes, but
+ * any combination of nodes can be used as long as the target directory has the proper 'tablespace#'
+ * subdirectories. The design has the target database path concatenated with the tablespace in cluster mode.
+ * Actual operation is simple: When a block comes down it gets written, if a block comes up it gets read.
+ * The request comes down as a serialized object similar to standalone requests, but with additional network garnish.
+ * The network requests are interpreted as standard requests when they reach the IOWorker.
+ * Instances of these TCPWorkers are started by the WorkBoot controller node in response to
+ * the backchannel TCPServer requests. Existing threads are shut down and sockets closed, and a new batch of threads
+ * are spun up if necessary.
  * @author jg
+ * Copyright (C) NeoCoreTechs 2014,2015
  *
  */
 public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
@@ -42,6 +56,11 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	private SocketAddress workerSocketAddress;
 	private SocketChannel masterSocketChannel;
 	private SocketAddress masterSocketAddress;
+	
+	private ServerSocket workerSocket;
+	private Socket masterSocket;
+	
+	private WorkerRequestProcessor workerRequestProcessor;
 	private ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
 	
     public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
@@ -57,14 +76,34 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		} catch (UnknownHostException e) {
 			throw new RuntimeException("Bad remote master address:"+remoteMaster);
 		}
+		/*
 		masterSocketAddress = new InetSocketAddress(IPAddress, MASTERPORT);
 		masterSocketChannel = SocketChannel.open(masterSocketAddress);
+		masterSocketChannel.configureBlocking(true);
+		masterSocketChannel.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+		masterSocketChannel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+		masterSocketChannel.setOption(StandardSocketOptions.SO_SNDBUF, 32767);
+		masterSocketChannel.setOption(StandardSocketOptions.SO_RCVBUF, 32767);
 		// start listening on the required worker port
 		workerSocketAddress = new InetSocketAddress(SLAVEPORT);
 		workerSocketChannel = ServerSocketChannel.open();
+		workerSocketChannel.configureBlocking(true);
 		workerSocketChannel.bind(workerSocketAddress);
+		*/
+		masterSocketAddress = new InetSocketAddress(IPAddress, MASTERPORT);
+		masterSocket = new Socket();
+		masterSocket.connect(masterSocketAddress);
+		masterSocket.setKeepAlive(true);
+		masterSocket.setTcpNoDelay(true);
+		masterSocket.setReceiveBufferSize(32767);
+		masterSocket.setSendBufferSize(32767);
+		// start listening on the required worker port
+		workerSocketAddress = new InetSocketAddress(SLAVEPORT);
+		workerSocket = new ServerSocket();
+		workerSocket.bind(workerSocketAddress);
 		// spin the request processor thread for the worker
-		ThreadPoolManager.getInstance().spin(new WorkerRequestProcessor(this));
+		workerRequestProcessor = new WorkerRequestProcessor(this);
+		ThreadPoolManager.getInstance().spin(workerRequestProcessor);
 		if( DEBUG ) {
 			System.out.println("Worker on port "+SLAVEPORT+" with master "+MASTERPORT+" database:"+dbname+
 					" tablespace "+tablespace+" address:"+IPAddress);
@@ -85,9 +124,13 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		}
 		try {
 			// connect to the master and establish persistent connect
-			sendData = GlobalDBIO.getObjectAsBytes(irf);
-			ByteBuffer srcs = ByteBuffer.wrap(sendData);
-			masterSocketChannel.write(srcs);
+			//sendData = GlobalDBIO.getObjectAsBytes(irf);
+			//ByteBuffer srcs = ByteBuffer.wrap(sendData);
+			//masterSocketChannel.write(srcs);
+			OutputStream os = masterSocket.getOutputStream();
+			ObjectOutputStream oos = new ObjectOutputStream(os);
+			oos.writeObject(irf);
+			oos.flush();
 		} catch (SocketException e) {
 				System.out.println("Exception setting up socket to remote master port "+MASTERPORT+" on local port "+SLAVEPORT+" "+e);
 				throw new RuntimeException(e);
@@ -111,36 +154,65 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	
 	@Override
 	public void run() {
-		SocketChannel s = null;
+		//SocketChannel s = null;
+		Socket s = null;
 		try {
+			/*
 			s = workerSocketChannel.accept();
+			s.configureBlocking(true);
+			s.setOption(StandardSocketOptions.SO_KEEPALIVE, true);
+			s.setOption(StandardSocketOptions.TCP_NODELAY, true);
+			s.setOption(StandardSocketOptions.SO_SNDBUF, 32767);
+			s.setOption(StandardSocketOptions.SO_RCVBUF, 32767);
+			*/
+			s = workerSocket.accept();
+			s.setKeepAlive(true);
+			s.setTcpNoDelay(true);
+			s.setSendBufferSize(32767);
+			s.setReceiveBufferSize(32767);
 		} catch (IOException e) {
 			System.out.println("TCPWorker socket accept exception "+e+" on port "+SLAVEPORT);
 			return;
 		}
 		while(shouldRun) {
 			try {
-				s.read(b);
+				//s.read(b);
 				// extract the serialized request
-				final CompletionLatchInterface iori = (CompletionLatchInterface)GlobalDBIO.deserializeObject(b);
-				//s.close();
+				//final CompletionLatchInterface iori = (CompletionLatchInterface)GlobalDBIO.deserializeObject(b);
+				//b.clear();
+				InputStream ins = s.getInputStream();
+				ObjectInputStream ois = new ObjectInputStream(ins);
+				CompletionLatchInterface iori = (CompletionLatchInterface)ois.readObject();
 				if( DEBUG ) {
-					System.out.println("FROM REMOTE on port:"+SLAVEPORT+" "+iori);
+					System.out.println("TCPWorker FROM REMOTE on port:"+SLAVEPORT+" "+iori);
 				}
 				iori.setIoInterface(this);
 				// put the received request on the processing stack
-				getRequestQueue().add(iori);
-				b.clear();
+				getRequestQueue().put(iori);
 			} catch(IOException ioe) {
 				System.out.println("TCPWorker receive exception "+ioe+" on port "+SLAVEPORT);
 				break;
+			} catch (InterruptedException e) {
+				// the condition here is that the blocking request queue was waiting on a 'put' since the
+				// queue was at maximum capacity, and a the ExecutorService requested a shutdown during that
+				// time, we should bail form the thread and exit
+			    // quit the processing thread
+			    break;
+			} catch (ClassNotFoundException e) {
+				System.out.println("TCPWorker class not found on deserialization"+e+" on port "+SLAVEPORT);
+				break;
 			} 
 		}
-		// thread has been stopped by WorkBoot
+		// thread has been stopped by WorkBoot or by error
 		try {
 			s.close();
+			/*
 			if( masterSocketChannel.isOpen() ) masterSocketChannel.close();
 			if( workerSocketChannel.isOpen() ) workerSocketChannel.close();
+			*/
+			if(!masterSocket.isClosed()) masterSocket.close();
+			if(!workerSocket.isClosed()) workerSocket.close();
+			workerRequestProcessor.stop();
 		} catch (IOException e) {}
 	}
 
@@ -157,8 +229,12 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	public synchronized void stopWorker() {
 		// thread has been stopped by WorkBoot
 		try {
+			/*
 			if( masterSocketChannel.isOpen() ) masterSocketChannel.close();
 			if( workerSocketChannel.isOpen() ) workerSocketChannel.close();
+			*/
+			if(!masterSocket.isClosed()) masterSocket.close();
+			if(!workerSocket.isClosed()) workerSocket.close();
 			shouldRun = false;
 		} catch (IOException e) {}
 	}

@@ -1135,19 +1135,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// file.				
                 logOut.writeInt(0);
                 setEndPosition( logOut.getFilePointer() );
-                //set that we are in log switch to prevent flusher 
-                //not requesting  to switch log again 
                 // flush everything including the int we just wrote on the current log
-                flush();	
-                // simulate out of log error after the switch over
-                //if (DEBUG)
-                //{
-						//throw new IOException("TestLogSwitchFail2");
-                //}
-  
-                if( logOut != null ) {
-                	logOut.close();
-                }
+    			logOut.flushBuffers();
+    			logOut.syncLogAccessFile();
+                logOut.close();
                 
                 // sets up checksum log record and calls initBuffer on currentBuffer
                 logOut = allocateNewLogFile(newLog, newLogFile, logOut.currentBuffer.greatestInstance, logFileNumber+1, logBufferSize);
@@ -3051,11 +3042,13 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
         activePerms = perms;
         try
         {
-            return (RandomAccessFile) java.security.AccessController.doPrivileged(this);
+            //return (RandomAccessFile) java.security.AccessController.doPrivileged(this);
+        	return (RandomAccessFile)run();
         }
-        catch (java.security.PrivilegedActionException pae)
+        catch (java.lang./*security.PrivilegedAction*/Exception pae)
         {
-            throw (IOException) pae.getException();
+            //throw (IOException) pae.getException();
+        	throw new IOException(pae);
         }
     }
 
@@ -3091,9 +3084,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
         try
         {
-			return (String[]) java.security.AccessController.doPrivileged(this);
+			//return (String[]) java.security.AccessController.doPrivileged(this);
+			return (String[]) run();
 		}
-        catch (java.security.PrivilegedActionException pae)
+        catch (java.lang./*security.PrivilegedAction*/Exception pae)
         {
             return null;
         }
@@ -3107,9 +3101,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		toFile = to;
         try
         {
-			return ((Boolean) java.security.AccessController.doPrivileged(this)).booleanValue();
+			//return ((Boolean) java.security.AccessController.doPrivileged(this)).booleanValue();
+			return ((Boolean)run()).booleanValue();
 		}
-        catch (java.security.PrivilegedActionException pae)
+        catch (java.lang./*security.PrivilegedAction*/Exception pae)
         {
             return false;
         }	
@@ -3124,10 +3119,16 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private synchronized boolean runBooleanAction(int action, File file) {
 		this.action = action;
 		this.activeFile = file;
-
+		/*
 		try {
 			return ((Boolean) java.security.AccessController.doPrivileged(this)).booleanValue();
 		} catch (java.security.PrivilegedActionException pae) {
+			return false;
+		}
+		*/
+		try {
+			return ((Boolean) run()).booleanValue();
+		} catch (java.lang./*security.PrivilegedAction*/Exception pae) {
 			return false;
 		}
 	}
