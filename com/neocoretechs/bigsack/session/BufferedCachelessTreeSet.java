@@ -43,9 +43,13 @@ public class BufferedCachelessTreeSet {
 	*/
 	public BufferedCachelessTreeSet(String tdbname, int tobjectCacheSize)
 		throws IOException, IllegalAccessException {
-		session = SessionManager.Connect(tdbname, true);
+		session = SessionManager.Connect(tdbname, null, true);
 	}
-
+	
+	public BufferedCachelessTreeSet(String tdbname, String tremotename, int tobjectCacheSize)
+			throws IOException, IllegalAccessException {
+			session = SessionManager.Connect(tdbname, tremotename, true);
+		}
 	/**
 	* Put an object to persistent collection.
 	* @param tvalue The value for the object

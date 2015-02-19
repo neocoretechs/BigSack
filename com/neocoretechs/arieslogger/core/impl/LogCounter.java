@@ -40,21 +40,7 @@ import com.neocoretechs.arieslogger.core.LogInstance;
 
 */
 public class LogCounter implements LogInstance, Externalizable {
-
-	/********************************************************
-	**
-	**	This class
-	**	can write itself to and from a formatted stream. If
-	**	you add more fields to this class, make sure that you
-	**	also write/read them with the writeExternal()/readExternal()
-	**	methods.
-	**
-	**	If, between releases, you add more fields to this class,
-	**	then you should bump the version number emitted by the getTypeFormatId()
-	**	method.
-	**
-	********************************************************/
-	
+	private static final boolean DEBUG = false;
 	/** A well defined value of an invalid log instance. */
 	public static final long INVALID_LOG_INSTANCE = 0;
 	
@@ -67,8 +53,6 @@ public class LogCounter implements LogInstance, Externalizable {
 	public static final long MAX_LOGFILE_SIZE = (long)0x7FFFFFFFL; // 2147483647 //(long)0x0FFFFFFFL; // 268435455
 	// 32 bits are used to store the log file postion
 	private static final long FILE_POSITION_MASK = (long)0x7FFFFFFFL;
-
-	private static final boolean DEBUG = true;
 
 	private static final int LOG_COUNTER = 0;
 

@@ -73,8 +73,9 @@ public interface IoManagerInterface {
 	 * @return true if successful
 	 * @see IoInterface
 	 */
-	public boolean Fopen(String fname, int L3cache, boolean create)
-			throws IOException;
+	public boolean Fopen(String fname, int L3cache, boolean create) throws IOException;
+	
+	public boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException;
 
 	public void Fopen() throws IOException;
 

@@ -70,14 +70,11 @@ import java.util.zip.CRC32;
 	(which composed of multiple log files).
 	At any given time, a log factory only writes new log records to one log file,
 	this log file is called the 'current log file'.
-	<P>
-	A log file is named log<em>logNumber</em>.dat
-	<P>
 	Everytime a checkpoint is taken, a new log file is created and all subsequent
 	log records will go to the new log file.  After a checkpoint is taken, old
 	and useless log files will be deleted.
 	<P>
-	RawStore exposes a checkpoint method which clients can call
+	The API exposes a checkpoint method which clients can call
 	<P>
 	This LogFactory is responsible for the formats of 2 kinds of file: the log
 	file and the log control file.  And it is responsible for the format of the
@@ -114,7 +111,6 @@ import java.util.zip.CRC32;
 	@.upgrade
 	@.diskLayout
 		int format id - 	the format Id of this log file
-		int obsolete log file version - not used
 		long log file number - this number orders the log files in a
 						series to form the complete transaction log
 		long prevLogRecord - log instance of the previous log record, in the
@@ -194,10 +190,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private static final byte IS_BETA_FLAG = 0x1;
 
 	private int     logSwitchInterval   = DEFAULT_LOG_SWITCH_INTERVAL;
-
-	private String dataDirectory; 					// where files are stored
     
-
 	private FileLogger fileLogger = null;
 	protected LogAccessFile logOut;		// an output stream to the log file
 								// (access of the variable should sync on this)
@@ -318,18 +311,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private CRC32 checksum = new CRC32(); // holder for the checksum
 
 	/**
-	 *
-	 * Write sync mechanism support is added  for performance reasons. 
-	 * On commits, logging system has to make sure the log for committed
-	 * transaction is on disk. With out write  sync , log is written to the 
-	 * disk and then fsync() is used on commits to make log is written to the 
-	 * disk for sure. On most of the OS , fsync() calls are expensive. 
-	 * On heavy commit oriented systems, file sync make the system run slow.
-	 * This problem is solved by using write sync on preallocated log file. 
-	 * write sync is much faster than doing write and file sync to a file. 
-	 * File should be preallocated for write syncs to perform better than
-	 * the file sync method. Whenever a new log file is created, 
-	 * logSwitchInterval size is preallocated by writing zeros after file after the header. 
+	 * Write sync mechanism support ?
+	 * fsync() is used on commits to make log is written to the 
+	 * disk. fsync() calls are expensive. 
+	 * use write sync on preallocated log file?
 	 */
 
 	private volatile boolean logArchived = false;
@@ -340,6 +325,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
     // It is set to true when  online backup is in progress,  updates to 
     // this variable needs to visible to checkpoint thread. 
     private volatile boolean backupInProgress = false;
+    
     // Name of the BigSack database to log
     private String dbName;
 	private BlockDBIO blockIO;
@@ -1016,14 +1002,14 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			long logNumber = log.readLong();
 			if (logfid != fid || logNumber != number)
             {
-				throw new IOException(getDataDirectory());
+				throw new IOException(dbName);
             }
 			previousLogInstance = log.readLong();
 	
 		}
 		catch (IOException ioe)
 		{
-			throw new IOException(ioe+" "+getDataDirectory());
+			throw new IOException(ioe+" "+dbName);
 		}
 
 		return previousLogInstance;
@@ -1222,7 +1208,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		theLog = privRandomAccessFile(logFile, "rw");
 		if (!forceInitLogFile(theLog, fileNumber, prevLogInst)) // LogCounter.INVALID_LOG_INSTANCE
         {
-			throw new IOException("LogToFIle.allocateNewLogFile cannot initialize log "+logFile.getName()+" in "+getDataDirectory());
+			throw new IOException("LogToFIle.allocateNewLogFile cannot initialize log "+logFile.getName()+" in "+dbName);
         }
 
 		setEndPosition( theLog.getFilePointer() );
@@ -1497,7 +1483,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 				if (dais.readInt() != fid)
 	            {
-	                throw new IOException( getDataDirectory());
+	                throw new IOException( dbName );
 	            }
 	
 				int obsoleteVersion = dais.readInt();
@@ -1546,7 +1532,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private void createLogDirectory() throws IOException, DirectoryExistsException
 	{
 		File logDir = 
-            new File(SessionManager.getDbPath()+File.separator+LogFactory.LOG_DIRECTORY_NAME);
+            new File(SessionManager.getDbPath(dbName)+File.separator+LogFactory.LOG_DIRECTORY_NAME);
 
         if (privExists(logDir)) {
             // make sure log directory is empty.
@@ -1576,7 +1562,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	{
 		File logDir = null;
 
-		logDir = new File(SessionManager.getDbPath()+File.separator+LogFactory.LOG_DIRECTORY_NAME);
+		logDir = new File(SessionManager.getDbPath(dbName)+File.separator+LogFactory.LOG_DIRECTORY_NAME);
 
         if (!privExists(logDir))
 		{
@@ -1820,7 +1806,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			System.out.println("RecoveryLog boot starting");
 		}
 		
-		setDataDirectory(SessionManager.getDbPath());
+		//SessionManager.getDbPath(dbName)
 		// try to access the log
 		// if it doesn't exist, create it.
 		// if it does exist, run recovery
@@ -1966,7 +1952,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			logOut = allocateNewLogFile(firstLog, logFile, LogCounter.INVALID_LOG_INSTANCE, logFileNumber, logBufferSize);
 
 			assert(endPosition == LOG_FILE_HEADER_SIZE) : 
-					"LogToFile.initializeLogFileSequence empty log file "+logFile.getName()+" in "+getDataDirectory()+" has wrong size";
+					"LogToFile.initializeLogFileSequence empty log file "+logFile.getName()+" in "+dbName+" has wrong size";
 		} else {
 			if( logOut != null )
 				logOut.close();
@@ -3212,21 +3198,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	@Override
 	public void getLogFactoryProperties(Set set) throws IOException {
-		// TODO Auto-generated method stub
-		
 	}
 
 	@Override
 	public String getCanonicalLogPath() {
-		return SessionManager.getDbPath();
-	}
-
-	public String getDataDirectory() {
-		return dataDirectory;
-	}
-
-	public void setDataDirectory(String dataDirectory) {
-		this.dataDirectory = dataDirectory;
+		return SessionManager.getDbPath(dbName);
 	}
 
 	public long getLastFlush() {

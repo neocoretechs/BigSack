@@ -52,10 +52,15 @@ public class BufferedTreeSet {
 	*/
 	public BufferedTreeSet(String tdbname, int tobjectCacheSize)
 		throws IOException, IllegalAccessException {
-		session = SessionManager.Connect(tdbname, true);
+		session = SessionManager.Connect(tdbname, null, true);
 		objectCacheSize = tobjectCacheSize;
 	}
-
+	
+	public BufferedTreeSet(String tdbname, String tremotedbname, int tobjectCacheSize)
+			throws IOException, IllegalAccessException {
+			session = SessionManager.Connect(tdbname, tremotedbname, true);
+			objectCacheSize = tobjectCacheSize;
+		}
 	/**
 	* Put an object to main cache and pool.  We may
 	* toss out an old one when cache size surpasses objectCacheSize

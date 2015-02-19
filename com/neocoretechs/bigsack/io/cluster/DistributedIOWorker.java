@@ -30,12 +30,14 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	public boolean shouldRun = true;
 	protected int tablespace; // 0-7
 	protected String DBName;
+	protected String remoteDBName = null;
 	private ConcurrentHashMap<Integer, IoRequestInterface> requestContext;
+	
 	public DistributedIOWorker(String dbName, int tablespace, int masterPort, int slavePort) throws IOException {
 		this.DBName = dbName;
 		this.tablespace = tablespace;
 		requestContext = new ConcurrentHashMap<Integer,IoRequestInterface>(1024);
-		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024);
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024, true);
 		if (Props.toString("Model").endsWith("UDP")) {
 			if( DEBUG )
 				System.out.println("Cluster Transport UDP...");
@@ -48,40 +50,68 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	
 		ThreadPoolManager.getInstance().spin((Runnable) ioUnit);
 		ioUnit.Fopen(dbName, true);
-		//ioUnit.Fopen(dbName, false);
-		
+	}
+	/**
+	 * Alternate constructor with the option to specify a different remote worker directory
+	 * Spin up the masters with the remote dir
+	 * @param dbName
+	 * @param remoteDBName
+	 * @param tablespace
+	 * @param masterPort
+	 * @param slavePort
+	 * @throws IOException
+	 */
+	public DistributedIOWorker(String dbName, String remoteDBName, int tablespace, int masterPort, int slavePort) throws IOException {
+		this.DBName = dbName;
+		this.remoteDBName = remoteDBName;
+		this.tablespace = tablespace;
+		requestContext = new ConcurrentHashMap<Integer,IoRequestInterface>(1024);
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(1024, true);
+		if (Props.toString("Model").endsWith("UDP")) {
+			if( DEBUG )
+				System.out.println("Cluster Transport UDP...");
+			ioUnit =  new UDPMaster(dbName, remoteDBName, tablespace, masterPort, slavePort, requestContext);
+		} else {
+			if( DEBUG )
+				System.out.println("Cluster Transport TCP...");
+			ioUnit =  new TCPMaster(dbName, remoteDBName, tablespace, masterPort, slavePort, requestContext);
+		}
+		ThreadPoolManager.getInstance().spin((Runnable) ioUnit);
+		ioUnit.Fopen(dbName, true);	
 	}
 	/**
 	 * Remove request from queue when finished with it
 	 */
-	public synchronized void removeRequest(AbstractClusterWork ior) {
-		synchronized(requestContext) {
+	public void removeRequest(AbstractClusterWork ior) {
 			IoRequestInterface iori = requestContext.get(ior.getUUID());
 			requestContext.remove(ior.getUUID(), iori);
 			if( DEBUG ) {
 			 System.out.println("Request removed: "+iori+" origin:"+ior);
 			}
-		}
 	}
 	
-	public synchronized int getRequestQueueLength() { return requestContext.size(); }
+	public int getRequestQueueLength() { return requestContext.size(); }
 	/**
 	 * Queue a request down to the UDPWorker node
 	 * We assume node names on remote nodes corresponds to the remoteWorker prefix + tablespace
 	 */
 	@Override
-	public synchronized void queueRequest(IoRequestInterface iori) {
+	public void queueRequest(IoRequestInterface iori) {
 		iori.setTablespace(tablespace);
         requestContext.put(((AbstractClusterWork)iori).newUUID(), iori); // equals of AbstractClusterWork compares UUIDs
 		if( DEBUG ) {
 			System.out.println("Adding request "+iori+" size:"+requestQueue.size());
 		}
-		requestQueue.add(iori);
+		try {
+			requestQueue.put(iori);
+		} catch (InterruptedException e) {
+			// shutdown requested while awaiting 'take' to free up queue space
+		}
     }
-	public synchronized long getNextFreeBlock() {
+	public long getNextFreeBlock() {
 		return nextFreeBlock;
 	}
-	public synchronized void setNextFreeBlock(long nextFreeBlock) {
+	public void setNextFreeBlock(long nextFreeBlock) {
 		this.nextFreeBlock = nextFreeBlock;
 	}
 	@Override
@@ -91,12 +121,10 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 				IoRequestInterface iori = requestQueue.take();
 				ioUnit.send(iori);
 			} catch (InterruptedException e) {
-				System.out.println("Request queue interrupt ");
-				e.printStackTrace();
+				return; // requested shutdown from executor, leave thread
 			}
 		}
 
 	}
-
 	
 }

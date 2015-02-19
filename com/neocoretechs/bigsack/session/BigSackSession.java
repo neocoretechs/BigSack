@@ -3,7 +3,6 @@ import java.io.IOException;
 import java.util.Iterator;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -47,27 +46,42 @@ import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
 * @author Groff
 */
 public final class BigSackSession {
+	private boolean DEBUG = false;
 	public static final boolean COMMIT = false;
 	public static final boolean ROLLBACK = true;
 	private int uid;
 	private int gid;
 	private BTreeMain bTree;
+	private String dbPath;
+	private String remoteDBName;
 	/**
 	* Create new session
+	* @param remoteDBName 
+	* @param dbPath 
 	* @param tuid The user
 	* @param tgis The group
 	* @exception IOException If global IO problem
 	*/
-	protected BigSackSession(BTreeMain bTree, int tuid, int tgid)  {
+	protected BigSackSession(String dbPath, String remoteDBName, BTreeMain bTree, int uid, int gid)  {
+		if( DEBUG )
+			System.out.println("BigSackSession constructed with db:"+dbPath+" using remote DB:"+remoteDBName);
+		this.dbPath = dbPath;
+		this.remoteDBName = remoteDBName;
 		this.bTree = bTree;
-		uid = tuid;
-		gid = tgid;
+		this.uid = uid;
+		this.gid = gid;
 	}
 
 	public long getTransactionId() { return bTree.getIO().getTransId(); }
 	
-	protected String getDBname() {
+	public String getDBname() {
 		return bTree.getIO().getDBName();
+	}
+	public String getDBPath() {
+		return dbPath;
+	}
+	public String getRemoteDBName() {
+		return remoteDBName;
 	}
 	protected int getUid() {
 		return uid;
@@ -207,7 +221,7 @@ public final class BigSackSession {
 	public Object first() throws IOException {
 		bTree.rewind();
 		if (bTree.gotoNextKey() > 0)
-			throw new IOException("next key fault");
+			throw new IOException("BigSackSession.first: next key fault");
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -217,7 +231,7 @@ public final class BigSackSession {
 	public Comparable firstKey() throws IOException {
 		bTree.rewind();
 		if (bTree.gotoNextKey() > 0)
-			throw new IOException("next key fault");
+			throw new IOException("BigSackSession.firstKey: next key fault");
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -226,7 +240,7 @@ public final class BigSackSession {
 	public Object last() throws IOException {
 		bTree.toEnd();
 		if (bTree.gotoPrevKey() > 0)
-			throw new IOException("prev key fault");
+			throw new IOException("BigSackSession.last: prev key fault");
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -236,7 +250,7 @@ public final class BigSackSession {
 	public Comparable lastKey() throws IOException {
 		bTree.toEnd();
 		if (bTree.gotoPrevKey() > 0)
-			throw new IOException("prev key fault");
+			throw new IOException("BigSackSession.lastKey: prev key fault");
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -246,7 +260,6 @@ public final class BigSackSession {
 		return bTree.getNumKeys();
 	}
 
-	
 	public boolean isEmpty() throws IOException {
 		return (size() == 0L);
 	}

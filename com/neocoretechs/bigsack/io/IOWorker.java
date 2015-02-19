@@ -31,6 +31,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	public boolean shouldRun = true;
 	private int tablespace; // 0-7
 	private String DBName;
+	private String remoteDBName = null;
 	/**
 	 * Default Constructor. The purpose is to allow a cluster master to boot without
 	 * reference to the locally mapped IO subsystem. In effect, the local IO operations
@@ -41,7 +42,8 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(QUEUEMAX, true); // true maintains FIFO order
 	}
 	/**
-	 * Create an IOWorker for the local store
+	 * Create an IOWorker for the local store with the default of logs and tablespaces under
+	 * the single directory structure in parameter 1
 	 * @param name
 	 * @param tablespace
 	 * @param L3cache
@@ -62,7 +64,35 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 				throw new IOException("Unknown level 3 cache type, repair configuration file");
 		}
 		if (!ioUnit.Fopen(DBName + "." + String.valueOf(tablespace), true))
-			throw new IOException("Cannot create tablespace!");
+			throw new IOException("IOWorker Cannot create tablespace "+tablespace+" using db:"+name);
+
+	}
+	
+	/**
+	 * Create an IOWorker for the local store with the separation of logs and tablespaces under
+	 * the 2 directory structures in parameter 1 and 2
+	 * @param name
+	 * @param tablespace
+	 * @param L3cache
+	 * @throws IOException
+	 */
+	public IOWorker(String name, String remote, int tablespace, int L3cache) throws IOException {
+		this.DBName = name;
+		this.remoteDBName = remote;
+		this.tablespace = tablespace;
+		requestQueue = new ArrayBlockingQueue<IoRequestInterface>(QUEUEMAX, true);
+		switch (L3cache) {
+			case 0 :
+				ioUnit = new MmapIO();
+				break;
+			case 1 :
+				ioUnit = new FileIO();
+				break;
+			default:
+				throw new IOException("Unknown level 3 cache type, repair configuration file");
+		}
+		if (!ioUnit.Fopen(remoteDBName + "." + String.valueOf(tablespace), true))
+			throw new IOException("IOWorker Cannot create tablespace "+tablespace+" for "+name+" using remote "+remote);
 
 	}
 
@@ -80,7 +110,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	 * once the request is processed, a notify is issued on the request object
 	 * @param irf
 	 */
-	public synchronized void queueRequest(IoRequestInterface irf) {
+	public void queueRequest(IoRequestInterface irf) {
 		irf.setIoInterface(ioUnit);
 		irf.setTablespace(tablespace);
 		if( DEBUG ) {
@@ -93,7 +123,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		}
 	}
 	
-	public synchronized int getRequestQueueLength() { return requestQueue.size(); }
+	public int getRequestQueueLength() { return requestQueue.size(); }
 	
 	@Override
 	public void run() {
@@ -106,135 +136,181 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 			     // quit the processing thread
 			     return;
 			} catch (IOException e) {
-				System.out.println("Request queue exception "+e);
+				System.out.println("IOWorker Request queue exception "+e+" in db "+DBName+" tablespace "+tablespace);
 				e.printStackTrace();
 			}
 		}
 
 	}
 	
-	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
-		Fseek(toffset);
-		tblk.writeUsed(this);
-		tblk.setIncore(false);
-		Fforce();
+	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+		synchronized(ioUnit) {
+			Fseek(toffset);
+			tblk.writeUsed(this);
+			tblk.setIncore(false);
+			Fforce();
+		}
 	}
 	
 	@Override
-	public synchronized boolean Fopen(String fname, boolean create) throws IOException {
-		if (!ioUnit.Fopen(fname + "." + String.valueOf(tablespace), create))
-			return false;
-		return true;
+	public boolean Fopen(String fname, boolean create) throws IOException {
+		synchronized(ioUnit) {
+			if (!ioUnit.Fopen(fname + "." + String.valueOf(tablespace), create))
+				return false;
+			return true;
+		}
 	}
 	
 	@Override
-	public synchronized void Fopen() throws IOException {
+	public void Fopen() throws IOException {
 		Fopen(DBName, false);	
 	}
 	
 	@Override
-	public synchronized void Fclose() throws IOException {
+	public void Fclose() throws IOException {
+		synchronized(ioUnit) {
 			ioUnit.Fclose();
+		}
 	}
 	/**
 	 * Return the position as a virtual block number
 	 */
 	@Override
-	public synchronized long Ftell() throws IOException {
+	public long Ftell() throws IOException {
 		return GlobalDBIO.makeVblock(tablespace, ioUnit.Ftell());
 	}
 	/**
 	 * Seek the real offset, not virtual
 	 */
 	@Override
-	public synchronized void Fseek(long offset) throws IOException {
-		ioUnit.Fseek(offset);
+	public void Fseek(long offset) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fseek(offset);
+		}
 	}
 	@Override
-	public synchronized long Fsize() throws IOException {
-		return ioUnit.Fsize();
+	public long Fsize() throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.Fsize();
+		}
 	}
 	@Override
-	public synchronized void Fset_length(long newlen) throws IOException {
-		ioUnit.Fset_length(newlen);	
+	public void Fset_length(long newlen) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fset_length(newlen);	
+		}
 	}
 	@Override
-	public synchronized void Fforce() throws IOException {
-		ioUnit.Fforce();
-		
+	public void Fforce() throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fforce();
+		}
 	}
 	@Override
-	public synchronized void Fwrite(byte[] obuf) throws IOException {
-		ioUnit.Fwrite(obuf);	
+	public void Fwrite(byte[] obuf) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fwrite(obuf);
+		}
 	}
 	@Override
-	public synchronized void Fwrite(byte[] obuf, int osiz) throws IOException {
-		ioUnit.Fwrite(obuf, osiz);
+	public void Fwrite(byte[] obuf, int osiz) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fwrite(obuf, osiz);
+		}
 	}
 	@Override
-	public synchronized void Fwrite_int(int obuf) throws IOException {
-		ioUnit.Fwrite_int(obuf);	
+	public void Fwrite_int(int obuf) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fwrite_int(obuf);
+		}
 	}
 	@Override
-	public synchronized void Fwrite_long(long obuf) throws IOException {
-		ioUnit.Fwrite_long(obuf);	
+	public void Fwrite_long(long obuf) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fwrite_long(obuf);
+		}
 	}
 	@Override
-	public synchronized void Fwrite_short(short obuf) throws IOException {
-		ioUnit.Fwrite_short(obuf);		
+	public void Fwrite_short(short obuf) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.Fwrite_short(obuf);
+		}
 	}
 	@Override
-	public synchronized int Fread(byte[] b, int osiz) throws IOException {
-		return ioUnit.Fread(b, osiz);
+	public int Fread(byte[] b, int osiz) throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.Fread(b, osiz);
+		}
 	}
 	@Override
-	public synchronized int Fread(byte[] b) throws IOException {
-		return ioUnit.Fread(b);
+	public int Fread(byte[] b) throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.Fread(b);
+		}
 	}
 	@Override
-	public synchronized long Fread_long() throws IOException {
-		return ioUnit.Fread_long();
+	public long Fread_long() throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.Fread_long();
+		}
 	}
 	@Override
-	public synchronized int Fread_int() throws IOException {
-		return ioUnit.Fread_int();
+	public int Fread_int() throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.Fread_int();
+		}
 	}
 	@Override
-	public synchronized short Fread_short() throws IOException {
-		return ioUnit.Fread_short();
+	public short Fread_short() throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.Fread_short();
+		}
 	}
 	@Override
-	public synchronized String FTread() throws IOException {
-		return ioUnit.FTread();
+	public String FTread() throws IOException {
+		synchronized(ioUnit) {
+			return ioUnit.FTread();
+		}
 	}
 	@Override
-	public synchronized void FTwrite(String ins) throws IOException {
-		ioUnit.FTwrite(ins);	
+	public void FTwrite(String ins) throws IOException {
+		synchronized(ioUnit) {
+			ioUnit.FTwrite(ins);
+		}
 	}
 	@Override
-	public synchronized void Fdelete() {
-		ioUnit.Fdelete();	
+	public void Fdelete() {
+		synchronized(ioUnit) {
+			ioUnit.Fdelete();
+		}
 	}
 	@Override
-	public synchronized String Fname() {
+	public String Fname() {
 		return DBName;
 	}
 	@Override
-	public synchronized boolean isopen() {
-		return ioUnit.isopen();
+	public boolean isopen() {
+		synchronized(ioUnit) {
+			return ioUnit.isopen();
+		}
 	}
 	@Override
-	public synchronized boolean iswriteable() {
-		return ioUnit.iswriteable();
+	public boolean iswriteable() {
+		synchronized(ioUnit) {
+			return ioUnit.iswriteable();
+		}
 	}
 	@Override
-	public synchronized boolean isnew() {
-		return ioUnit.isnew();
+	public boolean isnew() {
+		synchronized(ioUnit) {
+			return ioUnit.isnew();
+		}
 	}
 	@Override
-	public synchronized Channel getChannel() {
-		return ioUnit.getChannel();
+	public Channel getChannel() {
+		synchronized(ioUnit) {
+			return ioUnit.getChannel();
+		}
 	}
-
 
 }

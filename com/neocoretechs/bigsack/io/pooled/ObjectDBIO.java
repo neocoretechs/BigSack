@@ -4,16 +4,13 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 
-import com.neocoretechs.bigsack.Props;
-import com.neocoretechs.bigsack.btree.BTreeKeyPage;
-import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 
 public final class ObjectDBIO extends OffsetDBIO {
 	private static boolean DEBUG = false;
-	public ObjectDBIO(String objname, boolean create, long transId) throws IOException {
-		super(objname, create, transId);
+	public ObjectDBIO(String objname, String remoteObjName, boolean create, long transId) throws IOException {
+		super(objname, remoteObjName, create, transId);
 		setNew_node_pos_blk(-1L);
 	}
 	/**
@@ -21,8 +18,8 @@ public final class ObjectDBIO extends OffsetDBIO {
 	 * @param dbname
 	 * @throws IOException 
 	 */
-	public ObjectDBIO(String dbname) throws IOException {
-		super(dbname);
+	public ObjectDBIO(String dbname, String remote) throws IOException {
+		super(dbname, remote);
 	}
 
 	// Are we using custom class loader for serialized versions?
@@ -133,6 +130,5 @@ public final class ObjectDBIO extends OffsetDBIO {
 	public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
 		this.customClassLoader = customClassLoader;
 	}
-
 
 }

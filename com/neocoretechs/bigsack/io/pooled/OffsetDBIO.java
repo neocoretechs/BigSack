@@ -15,14 +15,14 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	private DataInputStream DBInput;
 	private DataOutputStream DBOutput;
 	
-	public OffsetDBIO(String objname, boolean create, long transId) throws IOException {
-		super(objname, create, transId);
+	public OffsetDBIO(String objname, String remoteObjName, boolean create, long transId) throws IOException {
+		super(objname, remoteObjName, create, transId);
 		DBInput = new DataInputStream(new DBInputStream(this));
 		DBOutput = new DataOutputStream(new DBOutputStream(this));
 	}
 	
-	protected OffsetDBIO(String dbname) throws IOException {
-		super(dbname);
+	protected OffsetDBIO(String dbname, String remoteDbName) throws IOException {
+		super(dbname, remoteDbName);
 		DBInput = new DataInputStream(new DBInputStream(this));
 		DBOutput = new DataOutputStream(new DBOutputStream(this));
 	}

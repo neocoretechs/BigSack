@@ -49,7 +49,8 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 public class GlobalDBIO {
 	private static final boolean DEBUG = false;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
-	private String Name;
+	private String dbName;
+	private String remoteDBName;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
 	private IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
@@ -59,25 +60,25 @@ public class GlobalDBIO {
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 
-	public synchronized RecoveryLog getUlog() {
+	public RecoveryLog getUlog() {
 		return ulog;
 	}
 	
-	public synchronized IoManagerInterface getIOManager() {
+	public IoManagerInterface getIOManager() {
 		return ioManager;
 	}
 	
-	public synchronized void checkBufferFlush() throws IOException {
+	public void checkBufferFlush() throws IOException {
 		blockBuffer.freeupBlock();
 	}
-	public synchronized void commitBufferFlush() throws IOException {
+	public void commitBufferFlush() throws IOException {
 		blockBuffer.commitBufferFlush();
 	}
 	
-	public synchronized void rollbackBufferFlush() {
+	public void rollbackBufferFlush() {
 		forceBufferClear();
 	}
-	public synchronized void forceBufferWrite() throws IOException {
+	public void forceBufferWrite() throws IOException {
 		blockBuffer.directBufferWrite();
 	}
 	
@@ -125,13 +126,15 @@ public class GlobalDBIO {
 	* or File or Cluster.  The number of buffer pool entries is controlled by the PoolBlocks
 	* property. 
 	* @param dbname Fully qualified path of DB
+	* @param remoteDBName the path to remote tablespace if it differs from log dir
 	* @param create true to create the database if it does not exist
 	* @param transId Transaction Id of current owner
 	* @exception IOException if open problem
 	*/
-	public GlobalDBIO(String dbname, boolean create, long transId) throws IOException {
+	public GlobalDBIO(String dbname, String remoteDBName, boolean create, long transId) throws IOException {
+		this.dbName = dbname;
+		this.remoteDBName = remoteDBName;
 		this.transId = transId;
-		Name = dbname;
 		// Set up the proper IO manager based on the execution model of cluster main cluster node or standalone
 		if (Props.toString("L3Cache").equals("MMap")) {
 			L3cache = 0;
@@ -153,7 +156,7 @@ public class GlobalDBIO {
 			ioManager = new MultithreadedIOManager();
 		}
 	    
-		Fopen(Name, create);
+		Fopen(dbName, remoteDBName, create);
 
 		// MAXBLOCKS may be set by PoolBlocks property
 		setMAXBLOCKS(Props.toInt("PoolBlocks"));
@@ -179,15 +182,15 @@ public class GlobalDBIO {
 	* @param transId
 	* @exception IOException if IO problem
 	*/
-	public GlobalDBIO(String dbname, long transId) throws IOException {
-		this(dbname, true, transId);
+	public GlobalDBIO(String dbname, String remoteDbName, long transId) throws IOException {
+		this(dbname, remoteDbName, true, transId);
 	}
 
 	/**
 	* Get first tablespace
 	* @return the position of the first byte of first tablespace
 	*/
-	public synchronized long firstTableSpace() throws IOException {
+	public long firstTableSpace() throws IOException {
 		return 0L;
 	}
 	/**
@@ -196,7 +199,7 @@ public class GlobalDBIO {
 	* @return The long virtual block if there was a next space else 0
 	* @exception IOException if seek to new position fails
 	*/
-	public synchronized long nextTableSpace(int prevSpace) throws IOException {
+	public long nextTableSpace(int prevSpace) throws IOException {
 		int tempSpace = prevSpace;
 		while (++tempSpace < DBPhysicalConstants.DTABLESPACES) {
 				return makeVblock(tempSpace, 0L);
@@ -205,32 +208,37 @@ public class GlobalDBIO {
 	}
 
 	/**
-	* If create is true, create only primary tablespace
-	* else try to open all existing
-	* We are spinning threads in the default executor group composed of an IoWorker for each
-	* tablespace
+	* If create is true, create primary tablespace else try to open all existing
+	* Call the ioManager Fopen instance
 	* @param fname String file name
+	* @param remote The remote database path
 	* @param create true to create if not existing
 	* @exception IOException if problems opening/creating
 	* @return true if successful
 	* @see IoInterface
 	*/
-	boolean Fopen(String fname, boolean create) throws IOException {
-		return ioManager.Fopen(fname, L3cache, create);
+	boolean Fopen(String fname, String remote, boolean create) throws IOException {
+		return ioManager.Fopen(fname, remote, L3cache, create);
 	}
 	
- 	synchronized void Fopen() throws IOException {
+	/**
+	 * Re-open tablespace
+	 * @throws IOException
+	 */
+ 	void Fopen() throws IOException {
  		ioManager.Fopen();
 	}
 
 	/**
 	* @return DB name as String
 	*/
-	public synchronized String getDBName() {
-		return Name;
+	public String getDBName() {
+		return dbName;
 	}
 
-
+	public String getRemoteDBName() {
+		return remoteDBName;	
+	}
 	/**
 	* Static method for object to serialized byte conversion.
 	* Uses DirectByteArrayOutputStream, which allows underlying buffer to be retrieved without
@@ -390,9 +398,11 @@ public class GlobalDBIO {
 			Od = s.readObject();
 			s.close();
 		} catch (IOException ioe) {
-	        FileChannel channel = new FileOutputStream(new File("/home/odroid/Relatrix/dumpobj.ser"), false).getChannel();
+			/*
+	        FileChannel channel = new FileOutputStream(new File("dumpobj.ser"), false).getChannel();
 	        channel.write(bb);
 	        channel.close();
+	        */
 			throw new IOException(
 				"deserializeObject: "
 					+ ioe.toString()
@@ -410,7 +420,7 @@ public class GlobalDBIO {
 	 * Latching block
 	 * @param lbn The block number to allocate
 	 */
-	protected synchronized void alloc(long lbn) throws IOException {
+	protected void alloc(long lbn) throws IOException {
 		BlockAccessIndex bai = getUsedBlock(lbn);
 		alloc(bai);
 	}
@@ -419,7 +429,7 @@ public class GlobalDBIO {
 	* Latching block, increment access count
 	* @param bai The block access and index object
 	*/
-	protected synchronized void alloc(BlockAccessIndex bai) throws IOException {
+	protected void alloc(BlockAccessIndex bai) throws IOException {
 		bai.addAccess();
 	}
 	/**
@@ -427,7 +437,7 @@ public class GlobalDBIO {
 	 * @param lbn
 	 * @throws IOException
 	 */
-	protected synchronized void dealloc(long lbn) throws IOException {
+	protected void dealloc(long lbn) throws IOException {
 		BlockAccessIndex bai = getUsedBlock(lbn);
 		if (bai == null) {
 			// If we get here our threaded buffer manager must have done our job for us
@@ -437,7 +447,7 @@ public class GlobalDBIO {
 		}
 		dealloc(bai);
 	}
-	protected synchronized void dealloc(BlockAccessIndex bai) throws IOException {
+	protected void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
 
@@ -446,23 +456,10 @@ public class GlobalDBIO {
 	* Take the used block list, reset the blocks, move to to free list, then
 	* finally clear the used block list. We do this during rollback to remove any modified
 	*/
-	public synchronized void forceBufferClear() {
+	public void forceBufferClear() {
 			blockBuffer.forceBufferClear();
 	}
-	/**
-	* Get from free list, puts in used list of block access index.
-	* Comes here when we can't find blocknum in table in findOrAddBlock.
-	* New instance of BlockAccessIndex causes allocation
-	* @param Lbn block number to add
-	* @exception IOException if new dblock cannot be created
-	*/
-	private BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
-		// make sure we have open slots
-		if( DEBUG ) {
-			System.out.println("GlobalDBIO.addBlockAccess "+valueOf(Lbn));
-		}
-		return blockBuffer.addBlockAccess(Lbn);
-	}
+
 	/**
 	* Add a block to table of blocknums and block access index.
 	* Comes here for acquireBlock. No setting of block in BlockAccessIndex, no initial read
@@ -480,7 +477,7 @@ public class GlobalDBIO {
 	* @return The index into the block array
 	* @exception IOException if cannot read
 	*/
-	protected synchronized BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+	protected BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
 		if( DEBUG ) {
 			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn));
 		}
@@ -556,7 +553,7 @@ public class GlobalDBIO {
 	 * @param tblk
 	 * @throws IOException
 	 */
-	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		//if( DEBUG )
 		//	System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 		// send write command and queues be damned, writes only happen
@@ -572,7 +569,7 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex
 	 * @exception IOException if db not open or can't get block
 	 */
-	protected synchronized BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
+	protected BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
 		long newblock;
 		BlockAccessIndex ablk = lastGoodBlk;
 		// this way puts it all in one tablespace
@@ -604,7 +601,7 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex of stolen blk
 	 * @exception IOException if db not open or can't get block
 	 */
-	protected synchronized BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
+	protected BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
 		long newblock;
 		if (currentBlk != null)
 			dealloc(currentBlk);
@@ -622,27 +619,27 @@ public class GlobalDBIO {
 		return dblk;
 	}
 
-	protected synchronized long getNew_node_pos_blk() {
+	protected long getNew_node_pos_blk() {
 		return new_node_pos_blk;
 	}
 
-	protected synchronized void setNew_node_pos_blk(long new_node_pos_blk) {
+	protected void setNew_node_pos_blk(long new_node_pos_blk) {
 		this.new_node_pos_blk = new_node_pos_blk;
 	}
 
-	public synchronized long getTransId() {
+	public long getTransId() {
 		return transId;
 	}
 
-	public synchronized void setUlog(RecoveryLog ulog) {
+	public void setUlog(RecoveryLog ulog) {
 		this.ulog = ulog;
 	}
 
-	public synchronized int getMAXBLOCKS() {
+	public int getMAXBLOCKS() {
 		return MAXBLOCKS;
 	}
 
-	public synchronized void setMAXBLOCKS(int mAXBLOCKS) {
+	public void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
 	}
 

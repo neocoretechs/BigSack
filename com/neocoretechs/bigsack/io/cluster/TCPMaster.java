@@ -50,8 +50,9 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * Copyright (C) NeoCoreTechs 2014,2015
  */
 public class TCPMaster implements Runnable, MasterInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	public static final boolean TEST = false; // true to run in local cluster test mode
+	
 	private int MASTERPORT = 9876;
 	private int SLAVEPORT = 9876;
 	private int WORKBOOTPORT = 8000;
@@ -71,7 +72,10 @@ public class TCPMaster implements Runnable, MasterInterface {
 
 	private String DBName;
 	private int tablespace;
+	private String remoteDBName = null; // if not null, alternate database name for remote worker nodes with specific directory
+	
 	private boolean shouldRun = true;
+	
 	private ConcurrentHashMap<Integer, IoRequestInterface> requestContext;
 	
 	/**
@@ -107,6 +111,23 @@ public class TCPMaster implements Runnable, MasterInterface {
 		masterSocket = new ServerSocket();
 		masterSocket.bind(masterSocketAddress);
 	}
+	/**
+	 * Specify an alternate remote DB name and directory for the current database.
+	 * Primary usage is for nodes with OSs different from the master
+	 * @param dbName
+	 * @param remoteDBName
+	 * @param tablespace
+	 * @param masterPort
+	 * @param slavePort
+	 * @param requestContext
+	 * @throws IOException
+	 */
+	public TCPMaster(String dbName, String remoteDBName, int tablespace, int masterPort, int slavePort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
+		this(dbName, tablespace, masterPort, slavePort, requestContext);
+		this.remoteDBName = remoteDBName;
+		if( DEBUG )
+			System.out.println("TCPMaster constructed with "+dbName+" using remote DB:"+remoteDBName+" tablespace:"+tablespace+" master:"+masterPort+" slave:"+slavePort);
+	}
 	
 	public void setMasterPort(int port) {
 		MASTERPORT = port;
@@ -120,7 +141,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * In test mode, the local host is used for workers and master
 	 * @param rname
 	 */
-	public synchronized void setRemoteWorkerName(String rname) {
+	public void setRemoteWorkerName(String rname) {
 		remoteWorker = rname;
 	}
 	
@@ -159,7 +180,6 @@ public class TCPMaster implements Runnable, MasterInterface {
 				InputStream ins = sock.getInputStream();
 				ObjectInputStream ois = new ObjectInputStream(ins);
 				IoResponseInterface iori = (IoResponseInterface) ois.readObject();
-			 synchronized(requestContext) {
 				 // get the original request from the stored table
 				 IoRequestInterface ior = requestContext.get(iori.getUUID());
 				 if( DEBUG )
@@ -195,7 +215,6 @@ public class TCPMaster implements Runnable, MasterInterface {
 				 // now add to any latches awaiting
 				 CountDownLatch cdl = ((CompletionLatchInterface)ior).getCountDownLatch();
 				 cdl.countDown();
-			 }
 			} catch (SocketException e) {
 					System.out.println("TCPMaster receive socket error "+e+" Address:"+IPAddress+" master port:"+MASTERPORT+" slave:"+SLAVEPORT);
 					break;
@@ -275,7 +294,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * Send request to remote worker
 	 * @param iori
 	 */
-	public synchronized void send(IoRequestInterface iori) {
+	public void send(IoRequestInterface iori) {
 	    byte[] sendData;
 		try {
 			/*
@@ -319,14 +338,17 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * @return
 	 * @throws IOException
 	 */
-	public synchronized boolean Fopen(String fname, boolean create) throws IOException {
+	public boolean Fopen(String fname, boolean create) throws IOException {
 		// send a remote Fopen request to the node
 		// this consists of sending the running WorkBoot a message to start the worker for a particular
 		// database and tablespace and the node we hand down
 		Socket s = new Socket(IPAddress, WORKBOOTPORT);
 		OutputStream os = s.getOutputStream();
 		WorkBootCommand cpi = new WorkBootCommand();
-		cpi.setDatabase(DBName);
+		if( remoteDBName != null )
+			cpi.setDatabase(remoteDBName);
+		else
+			cpi.setDatabase(DBName);
 		cpi.setTablespace(tablespace);
 		cpi.setMasterPort(MASTERPORT);
 		cpi.setSlavePort(SLAVEPORT);

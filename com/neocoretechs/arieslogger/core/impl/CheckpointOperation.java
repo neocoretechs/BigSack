@@ -38,7 +38,7 @@ import java.io.IOException;
 public class CheckpointOperation implements Loggable, Externalizable
 {
 	private static final int LOGOP_CHECKPOINT = 0;
-	static final boolean DEBUG = true;
+	static final boolean DEBUG = false;
 	// redo LWM
 	protected long	redoLWM;
 	// undo LWM

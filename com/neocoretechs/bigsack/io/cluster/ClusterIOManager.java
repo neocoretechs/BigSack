@@ -1,13 +1,6 @@
 package com.neocoretechs.bigsack.io.cluster;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
-import java.nio.channels.Channels;
-import java.nio.channels.ReadableByteChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
@@ -29,6 +22,7 @@ import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlocksRequest;
 import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
+import com.neocoretechs.bigsack.session.SessionManager;
 
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
@@ -64,7 +58,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* @return The block available as a real, not virtual block
 	* @exception IOException if IO problem
 	*/
-	public synchronized long getNextFreeBlock(int tblsp) throws IOException {
+	public long getNextFreeBlock(int tblsp) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
@@ -103,13 +97,12 @@ public final class ClusterIOManager implements IoManagerInterface {
 			// remove old requests
 			ioWorker[i].removeRequest((AbstractClusterWork) iori[i]);
 		}
-
 	}
 	/**
 	 * Send the request to write the given block at the given location, with
 	 * the number of bytes used written
 	 */
-	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndWrite "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -126,7 +119,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * Send the request to write the entire contents of the given block at the location specified
 	 * Presents a guaranteed write of full block for file extension or other spacing operations
 	 */
-	public synchronized void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
+	public void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndWriteFully "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -145,7 +138,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * @param tblk The Datablock buffer to read into
 	 * @throws IOException
 	 */
-	public synchronized void FseekAndRead(long toffset, Datablock tblk) throws IOException {
+	public void FseekAndRead(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndRead "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -168,7 +161,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * @param tblk The Datablock buffer to read into
 	 * @throws IOException
 	 */
-	public synchronized void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
+	public void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.FseekAndReadFully "+toffset);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
@@ -189,7 +182,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* Set the initial free blocks after buckets created or bucket initial state
 	* Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
 	*/
-	public synchronized void setNextFreeBlocks() {
+	public void setNextFreeBlocks() {
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 			if (i == 0)
 				nextFree[i] = ((long) DBPhysicalConstants.DBLOCKSIZ);
@@ -211,21 +204,23 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* @return tablespace
 	* @exception IOException if seeking new tablespace or creating fails
 	*/
-	public synchronized int findSmallestTablespace() throws IOException {
+	public int findSmallestTablespace() throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.findSmallestTablespace ");
-		// always make sure we have primary
-		long primarySize = Fsize(0);
-		int smallestTablespace = 0; // default main
-		long smallestSize = primarySize;
-		getNextFreeBlocks();
-		for (int i = 0; i < nextFree.length; i++) {
-			if(nextFree[i] != -1 && nextFree[i] < smallestSize) {
-				smallestSize = nextFree[i];
-				smallestTablespace = i;
+		synchronized(nextFree) {
+			// always make sure we have primary
+			long primarySize = Fsize(0);
+			int smallestTablespace = 0; // default main
+			long smallestSize = primarySize;
+			getNextFreeBlocks();
+			for (int i = 0; i < nextFree.length; i++) {
+				if(nextFree[i] != -1 && nextFree[i] < smallestSize) {
+					smallestSize = nextFree[i];
+					smallestTablespace = i;
+				}
 			}
+			return smallestTablespace;
 		}
-		return smallestTablespace;
 	}
 	
 	private long Fsize(int tblsp) throws IOException {
@@ -253,12 +248,14 @@ public final class ClusterIOManager implements IoManagerInterface {
 	* @return true if successful
 	* @see IoInterface
 	*/
-	public synchronized boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
+	public boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
+		if( DEBUG )
+			System.out.println("ClusterIOManager.Fopen with "+fname);
 		this.L3cache = L3cache;
 		for (int i = 0; i < ioWorker.length; i++) {
 			if (ioWorker[i] == null) {
-					ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
-					ThreadPoolManager.getInstance().spin(ioWorker[i]);
+				ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
+				ThreadPoolManager.getInstance().spin(ioWorker[i]);
 			}
 		}
 		// allow the workers to come up
@@ -268,22 +265,37 @@ public final class ClusterIOManager implements IoManagerInterface {
 		return true;
 	}
 	
-	
- 	public synchronized void Fopen() throws IOException {
+	public boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
+		if( DEBUG )
+			System.out.println("ClusterIOManager.Fopen with "+fname+" having remote "+remote);
+		this.L3cache = L3cache;
+		for (int i = 0; i < ioWorker.length; i++) {
+			if (ioWorker[i] == null) {
+				ioWorker[i] = new DistributedIOWorker(fname, remote, i, ++currentPort, ++currentPort);
+				ThreadPoolManager.getInstance().spin(ioWorker[i]);
+			}
+		}
+		// allow the workers to come up
+		try {
+			Thread.sleep(500);
+		} catch (InterruptedException e) {}
+		return true;
+	}
+ 	public void Fopen() throws IOException {
 	}
 	
-	public synchronized void Fclose() throws IOException {
+	public void Fclose() throws IOException {
 		for (int i = 0; i < ioWorker.length; i++)
 			if (ioWorker[i] != null ) {
 				if( ioWorker[i].getRequestQueueLength() != 0 )
-					System.out.println("Attempt to close tablespace "+i+" with "+
+					System.out.println("WARNING: closing tablespace "+i+" with "+
 							ioWorker[i].getRequestQueueLength()+" outstanding requests");
 			}
 		// just sync in cluster mode
 		Fforce();
 	}
 	
-	public synchronized void Fforce() throws IOException {
+	public void Fforce() throws IOException {
 		if( DEBUG ) {
 			System.out.println("ClusterIOManager.Fforce ");
 		}
@@ -303,7 +315,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		}
 	}
 	
-	public synchronized boolean isNew() {
+	public boolean isNew() {
 		try {
 			return FisNew(0);
 		} catch (IOException e) {
@@ -313,7 +325,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	
 	private boolean FisNew(int tblsp) throws IOException {
 		if( DEBUG )
-			System.out.println("ClusterIOManager.FisNew ");
+			System.out.println("ClusterIOManager.FisNew for tablespace "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		CompletionLatchInterface iori = new IsNewRequest(barrierCount);
 		ioWorker[tblsp].queueRequest(iori);
@@ -325,6 +337,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
 		return retVal;
 	}
+	
 	public IOWorkerInterface getIOWorker(int tblsp) {
 		return ioWorker[tblsp];
 	}

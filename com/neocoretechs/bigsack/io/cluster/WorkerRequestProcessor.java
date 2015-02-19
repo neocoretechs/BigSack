@@ -17,10 +17,10 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  *
  */
 public final class WorkerRequestProcessor implements Runnable {
+	private static boolean DEBUG = false;
 	private BlockingQueue<IoRequestInterface> requestQueue;
 	private DistributedWorkerResponseInterface worker;
 	private boolean shouldRun = true;
-	private static boolean DEBUG = true;
 	public WorkerRequestProcessor(DistributedWorkerResponseInterface worker) {
 		this.worker = worker;
 		requestQueue = ((IOWorker)worker).getRequestQueue();

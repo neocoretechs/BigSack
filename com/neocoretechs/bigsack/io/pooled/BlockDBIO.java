@@ -55,14 +55,15 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	/**
 	* Create the block IO and up through the chain to global IO. After constructing, create a recovery log instance
 	* and determine if a roll forward recovery is needed. The flow is create_recovery_log which calls boot()
-	* undolog instance is then set after construction.Finally, the LogToFile instance is extracted and 'recover' is called
-	* @param transId 
-	* @param create 
-	* @param objname 
+	* undolog instance is then set after construction. Finally, the LogToFile instance is extracted and 'recover' is called
+	* @param objname The database table
+	* @param remoteDbName The remote location of tablespaces 
+	* @param create True to create if not existing
+	* @param transId The Transaction id
 	* @exception IOException If problems setting up IO
 	*/
-	public BlockDBIO(String objname, boolean create, long transId) throws IOException {
-		super(objname, create, transId);
+	public BlockDBIO(String objname, String remoteDbName, boolean create, long transId) throws IOException {
+		super(objname, remoteDbName, create, transId);
 		// create the ARIES protocol recovery log
 		setUlog(new RecoveryLog(this));
 		// attempt recovery if needed
@@ -73,8 +74,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 * @param dbname
 	 * @throws IOException
 	 */
-	protected BlockDBIO(String dbname) throws IOException {
-		super(dbname, false, -1);
+	protected BlockDBIO(String dbname, String remoteDbName) throws IOException {
+		super(dbname, remoteDbName, false, -1);
 		// create the ARIES protocol recovery log
 		setUlog(new RecoveryLog(this));
 	}

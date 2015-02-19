@@ -6,7 +6,6 @@ import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Vector;
 
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
@@ -34,15 +33,17 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 /**
 * SessionManager class is a singleton 
-* that accepts connections and returns a BigSackSession object
+* that accepts connections and returns a BigSackSession object. A table of one to one sessions and
+* tables is maintained. A path to the log dirs and a path to the tablespace dirs can be specified or
+* a default file structure based on mode can be used if the remoteDbName is null.
 * @author Groff
 */
 public final class SessionManager {
+	private static boolean DEBUG = false;
 	private static Hashtable<String, BigSackSession> SessionTable = new Hashtable<String, BigSackSession>();
 	@SuppressWarnings("rawtypes")
 	private static Hashtable<?, ?> AdminSessionTable = new Hashtable();
 	private static Vector<String> OfflineDBs = new Vector<String>();
-	private static String dbPath = "/";
 	private static long globalTransId = System.currentTimeMillis();
 	//
 	// Sets the maximum number users
@@ -59,13 +60,27 @@ public final class SessionManager {
 	public static SessionManager getInstance() {
 		return instance;
 	}
-	//
 	// Global transaction timestamps
 	private static long lastStartTime = 0L;
 	private static long lastCommitTime = 0L;
-	//
-	public static String getDbPath() {
-		 return dbPath;
+	
+	public static String getDbPath(String dbName) {
+		 BigSackSession dbs = SessionTable.get(dbName);
+		 if( dbs != null )
+			 return dbs.getDBPath();
+		 return null;
+	}
+	
+	public static String getRemoteDBName(String dbName) {
+		 BigSackSession dbs = SessionTable.get(dbName);
+		 if( dbs != null ) {
+			 if( DEBUG )
+				 System.out.println("SessionManager.getRemoteDBName "+dbs.getRemoteDBName()+" from "+dbName);
+			 return dbs.getRemoteDBName();
+		 } else
+			 if( DEBUG )
+				 System.out.println("SessionManager.getRemoteDBName remote name is NULL from"+dbName);
+		 return null;
 	}
 	/**
 	 * Increment the base global trans id and return, one for each session
@@ -100,16 +115,19 @@ public final class SessionManager {
 		return lastCommitTime;
 	}
 	/**
-	* Connect and return Session instance that is the session.
+	* Connect and return Session instance that is the session. It is possible to specify 2 separate dirs for
+	* storing logs and tablespace info. If remote db path is null, the structure expected is dependent on cluster
+	* or standalone.
 	* @param dbname The database name as full path
+	* @param remoteDBName remote database path and name, or null to use dbname path
 	* @param create Create database if not existing
 	* @return BigSackSession The session we use to control access
 	* @exception IOException If low level IO problem
 	* @exception IllegalAccessException If access to database is denied
 	*/
-	public static synchronized BigSackSession Connect(String dbname, boolean create) throws IOException, IllegalAccessException {
-		if( Props.DEBUG ) {
-			System.out.println("Connecting to "+dbname+" create:"+create);
+	public static synchronized BigSackSession Connect(String dbname, String remoteDBName, boolean create) throws IOException, IllegalAccessException {
+		if( DEBUG ) {
+			System.out.println("Connecting to "+dbname+" using remote DB:"+remoteDBName+" create:"+create);
 		}
 		// translate user name to uid and group
 		// we can restrict access at database level here possibly
@@ -122,10 +140,10 @@ public final class SessionManager {
 		if (hps == null) {
 			// did'nt find it, create anew, throws IllegalAccessException if no go
 			// Global IO and main Btree index
-			dbPath = (new File(dbname)).toPath().getParent().toString();
-			ObjectDBIO objIO = new ObjectDBIO(dbname, create, getGlobalTransId());
+			String dbPath = (new File(dbname)).toPath().getParent().toString();
+			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName, create, getGlobalTransId());
 			BTreeMain bTree =  new BTreeMain(objIO);
-			hps = new BigSackSession(bTree, uid, gid);
+			hps = new BigSackSession(dbPath, remoteDBName, bTree, uid, gid);
 			SessionTable.put(dbname, hps);
 		} else
 			// if closed, then open, else if open this does nothing
@@ -136,13 +154,14 @@ public final class SessionManager {
 	/**
 	 * Start the DB with no logging for debugging purposes
 	 * or to run read only without logging for some reason
-	 * @param dbname
+	 * @param dbname the path to the database (path+dbname)
+	 * @param remoteDBName The remote path to database tablespace directories (tablespace prepended to endof path) or null
 	 * @return
 	 * @throws IOException
 	 * @throws IllegalAccessException
 	 */
-	public static synchronized BigSackSession ConnectNoRecovery(String dbname) throws IOException, IllegalAccessException {
-		if( Props.DEBUG ) {
+	public static synchronized BigSackSession ConnectNoRecovery(String dbname, String remoteDBName) throws IOException, IllegalAccessException {
+		if( DEBUG ) {
 			System.out.println("Connecting WITHOUT RECOVERY to "+dbname);
 		}
 		// translate user name to uid and group
@@ -156,10 +175,10 @@ public final class SessionManager {
 		if (hps == null) {
 			// did'nt find it, create anew, throws IllegalAccessException if no go
 			// Global IO and main Btree index
-			dbPath = (new File(dbname)).toPath().getParent().toString();
-			ObjectDBIO objIO = new ObjectDBIO(dbname);
+			String dbPath = (new File(dbname)).toPath().getParent().toString();
+			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName);
 			BTreeMain bTree =  new BTreeMain(objIO);
-			hps = new BigSackSession(bTree, uid, gid);
+			hps = new BigSackSession(dbPath, remoteDBName, bTree, uid, gid);
 			SessionTable.put(dbname, hps);
 		} else
 			// if closed, then open, else if open this does nothing

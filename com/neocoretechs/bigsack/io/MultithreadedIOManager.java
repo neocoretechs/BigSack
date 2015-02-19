@@ -194,7 +194,19 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		return true;
 	}
 	
-	
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen(java.lang.String, int, boolean)
+	 */
+	@Override
+	public boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
+		this.L3cache = L3cache;
+		for (int i = 0; i < ioWorker.length; i++) {
+			if (ioWorker[i] == null)
+						ioWorker[i] = new IOWorker(fname, remote, i, L3cache);
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i]);
+		}
+		return true;
+	}
  	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen()
 	 */

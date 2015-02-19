@@ -45,7 +45,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  *
  */
 public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
@@ -117,7 +117,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	 * back to master
 	 * @param irf
 	 */
-	public synchronized void queueResponse(IoResponseInterface irf) {
+	public void queueResponse(IoResponseInterface irf) {
 	
 		if( DEBUG ) {
 			System.out.println("Adding response "+irf+" to outbound from worker to "+IPAddress+" port:"+MASTERPORT);
@@ -226,7 +226,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		return SLAVEPORT;
 	}
 
-	public synchronized void stopWorker() {
+	public void stopWorker() {
 		// thread has been stopped by WorkBoot
 		try {
 			/*

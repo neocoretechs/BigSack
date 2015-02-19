@@ -34,7 +34,7 @@ public class D_LogToFile {
     {
 		StringBuffer r = new StringBuffer();
 		r.append("LogToFile: \n");
-		r.append("    Directory: "+ltf.getDataDirectory()+"\n");
+		r.append("    Directory: "+ltf.getCanonicalLogPath()+"\n");
 		r.append("    endPosition: "+ltf.endPosition()+"\n");
 		r.append("    lastFlush(offset): "+ltf.getLastFlush()+"\n");
 		r.append("    logFileNumber: "+ltf.getLogFileNumber()+"\n");

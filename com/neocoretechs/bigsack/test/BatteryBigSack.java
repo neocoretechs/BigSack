@@ -31,7 +31,7 @@ public class BatteryBigSack {
 			 System.out.println("usage: java BatteryBigSack <database>");
 			System.exit(1);
 		}
-		BigSackSession session = SessionManager.Connect(argv[0], true);
+		BigSackSession session = SessionManager.Connect(argv[0], null, true);
 		 System.out.println("Analysis of all");
 		session.analyze(false); // true for more and more stuff
 		battery1(session, argv);

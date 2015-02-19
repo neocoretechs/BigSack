@@ -53,10 +53,15 @@ public class TransactionalTreeSet {
 	*/
 	public TransactionalTreeSet(String tdbname, int tobjectCacheSize)
 		throws IOException, IllegalAccessException {
-		session = SessionManager.Connect(tdbname, true);
+		session = SessionManager.Connect(tdbname, null, true);
 		objectCacheSize = tobjectCacheSize;
 	}
-
+	
+	public TransactionalTreeSet(String tdbname, String tremotename, int tobjectCacheSize)
+			throws IOException, IllegalAccessException {
+			session = SessionManager.Connect(tdbname, tremotename, true);
+			objectCacheSize = tobjectCacheSize;
+	}
 	/**
 	* Put an object to main cache and pool.  We may
 	* toss out an old one when cache size surpasses objectCacheSize
