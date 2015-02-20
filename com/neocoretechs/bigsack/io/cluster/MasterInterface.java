@@ -3,7 +3,12 @@ package com.neocoretechs.bigsack.io.cluster;
 import java.io.IOException;
 
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
-
+/**
+ * For those nodes functioning as master, this interface provides the contract to
+ * define the remote worker and queue a request
+ * @author jg
+ *
+ */
 public interface MasterInterface {
 
 	public void setMasterPort(int port);

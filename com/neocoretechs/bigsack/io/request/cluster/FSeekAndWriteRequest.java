@@ -5,6 +5,8 @@ import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
 
 import com.neocoretechs.bigsack.io.IoInterface;
+import com.neocoretechs.bigsack.io.cluster.NodeBlockBuffer;
+import com.neocoretechs.bigsack.io.cluster.NodeBlockBufferInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**
  * Request to seek a block within a tablespace and write the contents of a block buffer
@@ -18,6 +20,7 @@ public final class FSeekAndWriteRequest extends AbstractClusterWork implements C
 	private Datablock dblk;
 	private int tablespace;
 	private transient CountDownLatch barrierCount;
+	private transient NodeBlockBuffer blockBuffer;
 	public FSeekAndWriteRequest(){}
 	public FSeekAndWriteRequest(CountDownLatch barrierCount, long offset, Datablock dblk) {
 		this.barrierCount = barrierCount;
@@ -26,14 +29,14 @@ public final class FSeekAndWriteRequest extends AbstractClusterWork implements C
 	}
 	@Override
 	public synchronized void process() throws IOException {
-		FseekAndWrite();
+		// see if its buffered, set incore to latch it for write
+		dblk.setIncore(true);
+		blockBuffer.put(offset, dblk);
+		// Flip the latch and continue, but dont reset incore until its actually written
 		barrierCount.countDown();
-	}
-	private void FseekAndWrite() throws IOException {
-			ioUnit.Fseek(offset);
-			dblk.writeUsed(ioUnit);
-			dblk.setIncore(false);
-		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+		ioUnit.Fseek(offset);
+		dblk.writeUsed(ioUnit);
+		dblk.setIncore(false);
 	}
 	@Override
 	public synchronized long getLongReturn() {
@@ -46,7 +49,8 @@ public final class FSeekAndWriteRequest extends AbstractClusterWork implements C
 	}
 	@Override
 	public synchronized void setIoInterface(IoInterface ioi) {
-		this.ioUnit = ioi;		
+		this.ioUnit = ioi;	
+		blockBuffer = ((NodeBlockBufferInterface)ioUnit).getBlockBuffer();
 	}
 	@Override
 	public synchronized void setTablespace(int tablespace) {
@@ -56,7 +60,7 @@ public final class FSeekAndWriteRequest extends AbstractClusterWork implements C
 		return getUUID()+",tablespace:"+tablespace+":FSeekAndWriteRequest:"+ offset;
 	}
 	/**
-	 * The latch will be extracted by the UDPMaster and when a response comes back it will be tripped
+	 * The latch will be extracted by the Master and when a response comes back it will be tripped
 	 */
 	@Override
 	public CountDownLatch getCountDownLatch() {

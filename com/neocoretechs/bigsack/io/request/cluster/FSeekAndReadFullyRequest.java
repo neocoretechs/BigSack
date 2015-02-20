@@ -5,6 +5,8 @@ import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
 
 import com.neocoretechs.bigsack.io.IoInterface;
+import com.neocoretechs.bigsack.io.cluster.NodeBlockBuffer;
+import com.neocoretechs.bigsack.io.cluster.NodeBlockBufferInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock; 
 /**
  * CompletionLatchInterface extend IORequestInterface to provide access to barrier synch latches from the request.
@@ -20,6 +22,7 @@ public final class FSeekAndReadFullyRequest extends AbstractClusterWork implemen
 	private Datablock dblk;
 	private int tablespace;
 	private transient CountDownLatch barrierCount;
+	private transient NodeBlockBuffer blockBuffer;
 	public FSeekAndReadFullyRequest() {}
 	
 	public FSeekAndReadFullyRequest(CountDownLatch barrierCount, long offset, Datablock dblk) {
@@ -41,30 +44,21 @@ public final class FSeekAndReadFullyRequest extends AbstractClusterWork implemen
 	 * @throws IOException
 	 */
 	private void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
-		/*
-		if (ioUnit == null) {
-			throw new RuntimeException(
-				"FseekAndReadRequest tablespace null "
-					+ toffset
-					+ " = "
-					+ ioUnit);
-		}
-		if (tblk == null) {
-			throw new RuntimeException(
-				"FseekAndReadRequests Datablock null "
-					+ toffset
-					+ " = "
-					+ ioUnit);
-		}
-		*/
 		if (tblk.isIncore())
 					throw new RuntimeException(
 						"GlobalDBIO.FseekAndRead: block incore preempts read "
 							+ String.valueOf(toffset)
 							+ " "
 							+ tblk);
-		ioUnit.Fseek(offset);
-		tblk.read(ioUnit);
+		// see if its buffered
+		Datablock dblk = blockBuffer.get(offset);
+		if( dblk == null ) {
+			ioUnit.Fseek(offset);
+			tblk.read(ioUnit);
+			blockBuffer.put(offset, tblk);
+		} else {
+			dblk.doClone(tblk); // put to tblk from dblk
+		}
 	}
 	@Override
 	public synchronized long getLongReturn() {
@@ -80,7 +74,8 @@ public final class FSeekAndReadFullyRequest extends AbstractClusterWork implemen
 	 */
 	@Override
 	public synchronized void setIoInterface(IoInterface ioi) {
-		this.ioUnit = ioi;		
+		this.ioUnit = ioi;	
+		blockBuffer = ((NodeBlockBufferInterface)ioUnit).getBlockBuffer();
 	}
 	@Override
 	public synchronized void setTablespace(int tablespace) {

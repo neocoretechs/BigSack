@@ -44,7 +44,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * Copyright (C) NeoCoreTechs 2014,2015
  *
  */
-public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface {
+public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface, NodeBlockBufferInterface {
 	private static final boolean DEBUG = false;
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
@@ -61,7 +61,10 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	private Socket masterSocket;
 	
 	private WorkerRequestProcessor workerRequestProcessor;
-	private ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
+	// ByteBuffer for NIO socket read/write, currently broken under arm
+	//private ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
+	
+	private NodeBlockBuffer blockBuffer = new NodeBlockBuffer();
 	
     public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
@@ -110,6 +113,8 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		}
 	}
     
+	public NodeBlockBuffer getBlockBuffer() { return blockBuffer; }
+	
 	/**
 	 * Queue a request on this worker, the request is assumed to be on this tablespace
 	 * Instead of queuing to a running thread request queue, queue this for outbound message
@@ -186,6 +191,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 				if( DEBUG ) {
 					System.out.println("TCPWorker FROM REMOTE on port:"+SLAVEPORT+" "+iori);
 				}
+				// Hook the request up to a real IoWorker
 				iori.setIoInterface(this);
 				// put the received request on the processing stack
 				getRequestQueue().put(iori);

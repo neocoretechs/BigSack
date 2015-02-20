@@ -1532,7 +1532,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private void createLogDirectory() throws IOException, DirectoryExistsException
 	{
 		File logDir = 
-            new File(SessionManager.getDbPath(dbName)+File.separator+LogFactory.LOG_DIRECTORY_NAME);
+            new File(blockIO.getDBPath()+File.separator+LogFactory.LOG_DIRECTORY_NAME);
 
         if (privExists(logDir)) {
             // make sure log directory is empty.
@@ -1562,7 +1562,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	{
 		File logDir = null;
 
-		logDir = new File(SessionManager.getDbPath(dbName)+File.separator+LogFactory.LOG_DIRECTORY_NAME);
+		logDir = new File(blockIO.getDBPath()+File.separator+LogFactory.LOG_DIRECTORY_NAME);
 
         if (!privExists(logDir))
 		{
@@ -1806,7 +1806,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			System.out.println("RecoveryLog boot starting");
 		}
 		
-		//SessionManager.getDbPath(dbName)
 		// try to access the log
 		// if it doesn't exist, create it.
 		// if it does exist, run recovery
@@ -3202,7 +3201,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	@Override
 	public String getCanonicalLogPath() {
-		return SessionManager.getDbPath(dbName);
+		return blockIO.getDBPath();
 	}
 
 	public long getLastFlush() {

@@ -34,7 +34,7 @@ public final class FSizeRequest extends AbstractClusterWork implements Completio
 	* @exception IOException if IO problem
 	*/
 	private void fsize() throws IOException {
-				fSize = ioUnit.Fsize();
+		fSize = ioUnit.Fsize();
 	}
 	@Override
 	public synchronized long getLongReturn() {

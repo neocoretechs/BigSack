@@ -235,7 +235,7 @@ public final class Datablock implements Externalizable {
 	}
 	/**
 	* deep copy
-	* @param d The block to copy here
+	* @param d The block whose values are set from 'this' instance
 	*/
 	public void doClone(Datablock d) {
 		d.setPrevblk(prevblk);

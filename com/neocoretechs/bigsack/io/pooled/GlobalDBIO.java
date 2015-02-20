@@ -11,7 +11,6 @@ import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLog;
-
 import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
@@ -238,6 +237,13 @@ public class GlobalDBIO {
 
 	public String getRemoteDBName() {
 		return remoteDBName;	
+	}
+	/**
+	 * Applies to local log directory if remote dir differs
+	 * @return
+	 */
+	public String getDBPath() {
+		return (new File(dbName)).toPath().getParent().toString();
 	}
 	/**
 	* Static method for object to serialized byte conversion.

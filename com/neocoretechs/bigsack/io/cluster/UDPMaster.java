@@ -25,8 +25,8 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  *
  */
 public class UDPMaster implements Runnable, MasterInterface {
-	private static final boolean DEBUG = false;
-	public static final boolean TEST = true;
+	private static final boolean DEBUG = true;
+	public static final boolean TEST = false;
 	
 	private int MASTERPORT = 9876;
 	private int SLAVEPORT = 9876;
@@ -83,6 +83,8 @@ public class UDPMaster implements Runnable, MasterInterface {
 	 */
 	public UDPMaster(String dbName, String remoteDBName, int tablespace, int masterPort, int slavePort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
 		this(dbName, tablespace, masterPort, slavePort, requestContext);
+		if( DEBUG )
+			System.out.println("UDPMaster remote db:"+remoteDBName);
 		this.remoteDBName = remoteDBName;
 	}
 	/* (non-Javadoc)

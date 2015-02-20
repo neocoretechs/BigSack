@@ -28,8 +28,8 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  * @author jg
  *
  */
-public class UDPWorker extends IOWorker implements DistributedWorkerResponseInterface {
-	private static final boolean DEBUG = false;
+public class UDPWorker extends IOWorker implements DistributedWorkerResponseInterface, NodeBlockBufferInterface {
+	private static final boolean DEBUG = true;
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
@@ -37,6 +37,9 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
     private byte[] receiveData = new byte[10000];
     private byte[] sendData;
 	private InetAddress IPAddress = null;
+	DatagramSocket responseSocket = null;
+	
+	private NodeBlockBuffer blockBuffer = new NodeBlockBuffer();
 	
     public UDPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
@@ -51,6 +54,15 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 		} catch (UnknownHostException e) {
 			throw new RuntimeException("Bad remote master address:"+remoteMaster);
 		}
+		try {
+				responseSocket = new DatagramSocket();
+				responseSocket.connect(IPAddress, MASTERPORT);
+		} catch (SocketException e) {
+				System.out.println("Exception setting up socket "+IPAddress+" to remote master port "+MASTERPORT+" on local port "+SLAVEPORT+" "+e);
+				responseSocket = null;
+				return;
+		}
+		
 		// spin the request processor thread for the worker
 		ThreadPoolManager.getInstance().spin(new WorkerRequestProcessor(this));
 		if( DEBUG ) {
@@ -59,6 +71,8 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 		}
 	}
     
+	public NodeBlockBuffer getBlockBuffer() { return blockBuffer; }
+	
 	/**
 	 * Queue a request on this worker, the request is assumed to be on this tablespace
 	 * Instead of queuing to a running thread request queue, queue this for outbound message
@@ -68,29 +82,27 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 	 */
 	public synchronized void queueResponse(IoResponseInterface irf) {
 		if( DEBUG ) {
-			System.out.println("Adding response "+irf+" to outbound from worker to "+IPAddress+" port:"+MASTERPORT);
+			System.out.println("UDPWorker Adding response "+irf+" to outbound from worker to "+IPAddress+" port:"+MASTERPORT);
 		}
-		// set up senddata
-		DatagramSocket serverSocket = null;
-		try {
-			serverSocket = new DatagramSocket();
-			serverSocket.connect(IPAddress, MASTERPORT);
-		} catch (SocketException e) {
-				System.out.println("Exception setting up socket to remote master port "+MASTERPORT+" on local port "+SLAVEPORT+" "+e);
-		}
+		// set up send
+
 		try {
 			sendData = GlobalDBIO.getObjectAsBytes(irf);
 		} catch (IOException e) {
 			System.out.println("UDPWorker queueResponse "+irf+" cant get serialized form due to "+e);
+			if( responseSocket != null ) responseSocket.close();
+			responseSocket = null;
 		}
 		DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, MASTERPORT);
 		try {
-			serverSocket.send(sendPacket);
+			responseSocket.send(sendPacket);
 		} catch (IOException e) {
 			if( DEBUG )
 				System.out.println("Socket send error "+e+" to address "+IPAddress+" on port "+MASTERPORT);
+			if( responseSocket != null ) responseSocket.close();
+			responseSocket = null;
 		}
-		serverSocket.close();
+		
 	}
 	/**
      * Spin the worker, get the tablespace from the cmdl param
@@ -107,23 +119,39 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 	
 	@Override
 	public void run() {
+		DatagramSocket serverSocket = null;
+		try {
+			serverSocket = new DatagramSocket(SLAVEPORT);
+		} catch (SocketException e) {
+			System.out.println("UDPWorker Cannot construct DatagramSocket to worker port "+SLAVEPORT);
+			return;
+		}
+		DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 		while(shouldRun) {
 			try {
-				DatagramSocket serverSocket = new DatagramSocket(SLAVEPORT);
-				DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 				serverSocket.receive(receivePacket);
 				byte[] databytes = receivePacket.getData();
-				serverSocket.close();
 				if( DEBUG ) {
-					System.out.println("FROM REMOTE on port:"+SLAVEPORT+" size:"+databytes.length);
+					System.out.println("UDPWorker FROM REMOTE on port:"+SLAVEPORT+" size:"+databytes.length);
 				}
 				// extract the serialized request
 				final CompletionLatchInterface iori = (CompletionLatchInterface) GlobalDBIO.deserializeObject(databytes);
 				iori.setIoInterface(this);
 				// put the received request on the processing stack
-				getRequestQueue().add(iori);
+				getRequestQueue().put(iori);
 			} catch(IOException ioe) {
+				// most likely a broken pipe due to master break
 				System.out.println("UDPWorker receive exception "+ioe+" on port "+SLAVEPORT);
+				if( serverSocket != null ) serverSocket.close();
+				if( responseSocket != null ) responseSocket.close();
+				responseSocket = null;
+				return;
+			} catch (InterruptedException e) {
+				// Executor shutdown while waiting for request queue to obtain a free slot
+				if( serverSocket != null ) serverSocket.close();
+				if( responseSocket != null ) responseSocket.close();
+				responseSocket = null;
+				return;
 			}
 		}
 	}

@@ -52,24 +52,18 @@ public final class BigSackSession {
 	private int uid;
 	private int gid;
 	private BTreeMain bTree;
-	private String dbPath;
-	private String remoteDBName;
 	/**
 	* Create new session
-	* @param remoteDBName 
-	* @param dbPath 
 	* @param tuid The user
 	* @param tgis The group
 	* @exception IOException If global IO problem
 	*/
-	protected BigSackSession(String dbPath, String remoteDBName, BTreeMain bTree, int uid, int gid)  {
-		if( DEBUG )
-			System.out.println("BigSackSession constructed with db:"+dbPath+" using remote DB:"+remoteDBName);
-		this.dbPath = dbPath;
-		this.remoteDBName = remoteDBName;
+	protected BigSackSession(BTreeMain bTree, int uid, int gid)  {
 		this.bTree = bTree;
 		this.uid = uid;
 		this.gid = gid;
+		if( DEBUG )
+			System.out.println("BigSackSession constructed with db:"+getDBPath()+" using remote DB:"+getRemoteDBName());
 	}
 
 	public long getTransactionId() { return bTree.getIO().getTransId(); }
@@ -78,10 +72,10 @@ public final class BigSackSession {
 		return bTree.getIO().getDBName();
 	}
 	public String getDBPath() {
-		return dbPath;
+		return bTree.getIO().getDBPath();
 	}
 	public String getRemoteDBName() {
-		return remoteDBName;
+		return bTree.getIO().getRemoteDBName();
 	}
 	protected int getUid() {
 		return uid;

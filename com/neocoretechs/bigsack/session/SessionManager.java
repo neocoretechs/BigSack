@@ -63,7 +63,7 @@ public final class SessionManager {
 	// Global transaction timestamps
 	private static long lastStartTime = 0L;
 	private static long lastCommitTime = 0L;
-	
+	/*
 	public static String getDbPath(String dbName) {
 		 BigSackSession dbs = SessionTable.get(dbName);
 		 if( dbs != null )
@@ -82,6 +82,7 @@ public final class SessionManager {
 				 System.out.println("SessionManager.getRemoteDBName remote name is NULL from"+dbName);
 		 return null;
 	}
+	*/
 	/**
 	 * Increment the base global trans id and return, one for each session
 	 * @return
@@ -140,10 +141,9 @@ public final class SessionManager {
 		if (hps == null) {
 			// did'nt find it, create anew, throws IllegalAccessException if no go
 			// Global IO and main Btree index
-			String dbPath = (new File(dbname)).toPath().getParent().toString();
 			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName, create, getGlobalTransId());
 			BTreeMain bTree =  new BTreeMain(objIO);
-			hps = new BigSackSession(dbPath, remoteDBName, bTree, uid, gid);
+			hps = new BigSackSession(bTree, uid, gid);
 			SessionTable.put(dbname, hps);
 		} else
 			// if closed, then open, else if open this does nothing
@@ -175,10 +175,9 @@ public final class SessionManager {
 		if (hps == null) {
 			// did'nt find it, create anew, throws IllegalAccessException if no go
 			// Global IO and main Btree index
-			String dbPath = (new File(dbname)).toPath().getParent().toString();
 			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName);
 			BTreeMain bTree =  new BTreeMain(objIO);
-			hps = new BigSackSession(dbPath, remoteDBName, bTree, uid, gid);
+			hps = new BigSackSession(bTree, uid, gid);
 			SessionTable.put(dbname, hps);
 		} else
 			// if closed, then open, else if open this does nothing
