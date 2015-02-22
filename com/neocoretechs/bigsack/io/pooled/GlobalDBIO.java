@@ -53,7 +53,6 @@ public class GlobalDBIO {
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
 	private IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
-	private MappedBlockBuffer blockBuffer; // block number to Datablock
 
 	private RecoveryLog ulog;		
 	private long new_node_pos_blk = -1L;
@@ -67,19 +66,6 @@ public class GlobalDBIO {
 		return ioManager;
 	}
 	
-	public void checkBufferFlush() throws IOException {
-		blockBuffer.freeupBlock();
-	}
-	public void commitBufferFlush() throws IOException {
-		blockBuffer.commitBufferFlush();
-	}
-	
-	public void rollbackBufferFlush() {
-		forceBufferClear();
-	}
-	public void forceBufferWrite() throws IOException {
-		blockBuffer.directBufferWrite();
-	}
 	
 	/**
 	* Translate the virtual tablspace (first 3 bits) and block to real block
@@ -144,24 +130,22 @@ public class GlobalDBIO {
 					throw new IOException("Unsupported L3 cache type");
 			}
 		}
-
+		
+		// MAXBLOCKS may be set by PoolBlocks property
+		setMAXBLOCKS(Props.toInt("PoolBlocks"));
+		
 		if (Props.toString("Model").startsWith("Cluster")) {
 			if( DEBUG )
 				System.out.println("Cluster Node IO Manager coming up...");
-			ioManager = new ClusterIOManager();
+			ioManager = new ClusterIOManager(this);
 		} else {
 			if( DEBUG )
 				System.out.println("Multithreaded IO Manager coming up...");
-			ioManager = new MultithreadedIOManager();
+			ioManager = new MultithreadedIOManager(this);
 		}
 	    
 		Fopen(dbName, remoteDBName, create);
-
-		// MAXBLOCKS may be set by PoolBlocks property
-		setMAXBLOCKS(Props.toInt("PoolBlocks"));
-
-		blockBuffer = new MappedBlockBuffer(this);
-		
+	
 		if (create && isnew()) {
 			isNew = true;
 			// init the Datablock arrays, create freepool
@@ -458,12 +442,29 @@ public class GlobalDBIO {
 	}
 
 	/**
+	 * Part of general block/page buffer maintenance that can come through here
+	 * @throws IOException
+	 */
+	public void checkBufferFlush() throws IOException {
+		ioManager.freeupBlock();
+	}
+	public void commitBufferFlush() throws IOException {
+		ioManager.commitBufferFlush();
+	}
+	
+	public void rollbackBufferFlush() {
+		forceBufferClear();
+	}
+	public void forceBufferWrite() throws IOException {
+		ioManager.directBufferWrite();
+	}
+	/**
 	* We'll do this on a 'clear' of collection, reset all caches
 	* Take the used block list, reset the blocks, move to to free list, then
 	* finally clear the used block list. We do this during rollback to remove any modified
 	*/
 	public void forceBufferClear() {
-			blockBuffer.forceBufferClear();
+			ioManager.forceBufferClear();
 	}
 
 	/**
@@ -473,7 +474,7 @@ public class GlobalDBIO {
 	* @exception IOException if new dblock cannot be created
 	*/
 	private BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		return blockBuffer.addBlockAccessNoRead(Lbn);
+		return ioManager.addBlockAccessNoRead(Lbn);
 	}
 
 	/**
@@ -487,7 +488,7 @@ public class GlobalDBIO {
 		if( DEBUG ) {
 			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn));
 		}
-		return blockBuffer.findOrAddBlockAccess(bn);
+		return ioManager.findOrAddBlockAccess(bn);
 	}
 
 	/**
@@ -496,7 +497,7 @@ public class GlobalDBIO {
 	* @return The key found or whatever set returns otherwise if nothing a null is returned
 	*/
 	private BlockAccessIndex getUsedBlock(long loc) {
-		return blockBuffer.getUsedBlock(loc);
+		return ioManager.getUsedBlock(loc);
 	}
 
 	/**

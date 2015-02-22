@@ -202,7 +202,7 @@ public class BTreeKeyPage implements Serializable {
 	* @exception IOException If retrieval fails
 	*/
 	public BTreeKeyPage getPage(ObjectDBIO sdbio, int index) throws IOException {
-		if(false) {
+		if(DEBUG) {
 			System.out.println("Entering BTreeKeyPage with target index "+index);
 			for(int i = 0; i < pageIdArray.length; i++) {
 				System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));

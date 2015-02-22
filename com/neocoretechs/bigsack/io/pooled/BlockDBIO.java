@@ -224,7 +224,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 		if (getNew_node_pos_blk() == -1L) {
 			stealBlock();
 		} else {
-			objseek(Optr.valueOf(getNew_node_pos_blk()));
+			objseek(getNew_node_pos_blk());
 			// ok, 5 bytes is rather arbitrary but seems a waste to start a big ole object so close to the end of a block
 			if (getDatablock().getBytesused()+5 >= DBPhysicalConstants.DATASIZE)
 				stealBlock();

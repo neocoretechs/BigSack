@@ -80,7 +80,7 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 	}
 	
 	public synchronized String toString() {
-		return "FSeekAndReadFullyRequest for tablespace "+tablespace+" offset "+offset;
+		return "ForceBufferClearRequest for tablespace "+tablespace+" offset "+offset;
 	}
 
 }

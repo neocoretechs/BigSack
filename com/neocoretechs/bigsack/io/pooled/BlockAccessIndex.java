@@ -125,7 +125,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public void setTemplateBlockNumber(long tbn) {
 		blockNum = tbn;
 	}
-	
+	@Override
 	public int compareTo(Object o) {
 		if (blockNum < ((BlockAccessIndex) o).blockNum)
 			return -1;
@@ -133,9 +133,17 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 			return 1;
 		return 0;
 	}
-
+	@Override
 	public boolean equals(Object o) {
 		return (blockNum == ((BlockAccessIndex) o).blockNum);
+	}
+	/**
+	 * If the buffers are per tablespace and we are below 4 gig this should be unique
+	 * and offer optimum distribution
+	 */
+	@Override
+	public int hashCode() {
+		return (int) (0xFFFFFFFF & blockNum);
 	}
 	public Datablock getBlk() {
 		return blk;

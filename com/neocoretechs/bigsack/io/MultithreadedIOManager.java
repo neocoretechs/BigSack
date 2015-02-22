@@ -6,8 +6,10 @@ import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.FSeekAndReadFullyRequest;
 import com.neocoretechs.bigsack.io.request.FSeekAndReadRequest;
 import com.neocoretechs.bigsack.io.request.FSeekAndWriteFullyRequest;
@@ -30,13 +32,21 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  */
 public class MultithreadedIOManager implements IoManagerInterface {
 	private static final boolean DEBUG = false;
+	private GlobalDBIO globalIO;
 	final CyclicBarrier barrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected IOWorkerInterface ioWorker[];
 	protected int L3cache = 0;
 	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
+	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	
-	public MultithreadedIOManager() {
+	public MultithreadedIOManager(GlobalDBIO globalIO) {
+		this.globalIO = globalIO;
 		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
+		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
+		// create master buffers for each tablespace
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			blockBuffer[i] = new MappedBlockBuffer(globalIO, i);
+		}
 	}
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#getNextFreeBlock(int)
@@ -264,6 +274,59 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public IOWorkerInterface getIOWorker(int tblsp) {
 		return ioWorker[tblsp];
+	}
+	@Override
+	public void forceBufferClear() {
+		synchronized(blockBuffer) {
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				blockBuffer[i].forceBufferClear();
+			}
+		}
+	}
+	@Override
+	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
+		int tblsp = GlobalDBIO.getTablespace(Lbn);
+		synchronized(blockBuffer) {
+			return blockBuffer[tblsp].addBlockAccessNoRead(Lbn);
+		}
+	}
+	@Override
+	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+		int tblsp = GlobalDBIO.getTablespace(bn);
+		synchronized(blockBuffer) {
+			return blockBuffer[tblsp].findOrAddBlockAccess(bn);
+		}
+	}
+	@Override
+	public BlockAccessIndex getUsedBlock(long loc) {
+		int tblsp = GlobalDBIO.getTablespace(loc);
+		synchronized(blockBuffer) {
+			return blockBuffer[tblsp].getUsedBlock(loc);
+		}
+	}
+	@Override
+	public void freeupBlock() throws IOException {
+		synchronized(blockBuffer) {
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				blockBuffer[i].freeupBlock();
+			}
+		}
+	}
+	@Override
+	public void commitBufferFlush() throws IOException {
+		synchronized(blockBuffer) {
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				blockBuffer[i].commitBufferFlush();
+			}
+		}
+	}
+	@Override
+	public void directBufferWrite() throws IOException {
+		synchronized(blockBuffer) {
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				blockBuffer[i].directBufferWrite();
+			}
+		}
 	}
 
 }

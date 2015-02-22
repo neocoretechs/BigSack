@@ -1,65 +1,80 @@
 package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
-import java.util.Iterator;
-import java.util.Vector;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+
+import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 
 /**
  * The class functions as the used block list for BlockAccessIndex elements that represent our
  * in memory pool of disk blocks. Its construction involves keeping track of the list of
  * free blocks as well to move items between the two. 
+ * Create the request with the appropriate instance of 'this' MappedBlockBuffer to call back
+ * methods here. Then the completion latch for that request is counted down.
+ * In the Master IO, the completion latch of the request is monitored for the proper number
+ * of counts.
  * @author jg
  *
  */
-public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
-	
+public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex> implements Runnable {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
 	private boolean shouldRun = true;
-	private Vector<BlockAccessIndex> freeBL; 
+	private ArrayList<BlockAccessIndex> freeBL; 
 	private GlobalDBIO globalIO;
-	private BlockAccessIndex tmpBai; // general utility
+	private int tablespace;
 	private int minBufferSize = 10;
-
-	public MappedBlockBuffer(GlobalDBIO globalIO) {
+	private BlockingQueue<CompletionLatchInterface> requestQueue;
+	private static int QUEUEMAX = 1024;
+	/**
+	 * Construct the buffer for this tablespace and link the global IO manager
+	 * @param globalIO
+	 * @param tablespace
+	 */
+	public MappedBlockBuffer(GlobalDBIO globalIO, int tablespace) {
 		this.globalIO = globalIO;
-		this.freeBL = new Vector<BlockAccessIndex>(this.globalIO.getMAXBLOCKS()); // free blocks
+		this.tablespace = tablespace;
+		this.freeBL = new ArrayList<BlockAccessIndex>(globalIO.getMAXBLOCKS()); // free blocks
 		// populate with blocks, they're all free for now
-		for (int i = 0; i < this.globalIO.getMAXBLOCKS(); i++) {
-			freeBL.addElement(new BlockAccessIndex(globalIO));
+		for (int i = 0; i < globalIO.getMAXBLOCKS(); i++) {
+			freeBL.add(new BlockAccessIndex(globalIO));
 		}
-		// set up locally buffered thread instances
-		tmpBai = new BlockAccessIndex(this.globalIO);
 		minBufferSize = globalIO.getMAXBLOCKS()/10; // we need at least one
+		requestQueue = new ArrayBlockingQueue<CompletionLatchInterface>(QUEUEMAX, true); // true maintains FIFO order
 	}
 	/**
 	 * Get an element from free list 0 and remove and return it
 	 * @return
 	 */
-	public synchronized BlockAccessIndex take() {
-		BlockAccessIndex bai = (freeBL.elementAt(0));
-		freeBL.removeElementAt(0);
-		return bai;
+	public BlockAccessIndex take() {
+		synchronized(freeBL) {
+			return freeBL.remove(0);
+		}
 	}
 	
-	public synchronized void put(BlockAccessIndex bai) { freeBL.add(bai); }
+	public void put(BlockAccessIndex bai) { 
+		synchronized(freeBL) {
+			freeBL.add(bai); 
+		}
+	}
 	
 	public synchronized void forceBufferClear() {
-		Iterator<BlockAccessIndex> it = iterator();
-		while(it.hasNext()) {
-				BlockAccessIndex bai = (BlockAccessIndex) it.next();
+		Enumeration<BlockAccessIndex> it = elements();
+		while(it.hasMoreElements()) {
+				BlockAccessIndex bai = (BlockAccessIndex) it.nextElement();
 				bai.resetBlock();
 				put(bai);
 		}
 		clear();
 	}
 	
-	public synchronized BlockAccessIndex getUsedBlock(long loc) {
-			tmpBai.setTemplateBlockNumber(loc);
-			int idex = indexOf(tmpBai);//.ceilingKey(tmpBai);
-			if(idex == -1)
-					return null;
-			return get(idex);
+	public BlockAccessIndex getUsedBlock(long loc) {
+		return get(loc);
 	}
 	
 	/**
@@ -77,7 +92,7 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 		checkBufferFlush();
 		BlockAccessIndex bai = take();
 		bai.setBlockNum(Lbn.longValue());
-		add(bai);
+		put(Lbn, bai);
 		if( DEBUG ) {
 				System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn)+" returning after freeBL take "+bai);
 		}
@@ -94,7 +109,7 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 		checkBufferFlush();
 		BlockAccessIndex bai = take();
 		bai.setTemplateBlockNumber(Lbn.longValue());
-		add(bai);//put(bai, null);
+		put(Lbn, bai);//put(bai, null);
 		return bai;
 	}
 	
@@ -124,11 +139,11 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 			int bufSize = this.size();
 			if( bufSize < globalIO.getMAXBLOCKS() )
 				return;
-			Iterator<BlockAccessIndex> elbn = this.iterator();
+			Enumeration<BlockAccessIndex> elbn = this.elements();
 			int numGot = 0;
 			BlockAccessIndex[] found = new BlockAccessIndex[minBufferSize];// our candidates
-			while (elbn.hasNext()) {
-				BlockAccessIndex ebaii = (elbn.next());
+			while (elbn.hasMoreElements()) {
+				BlockAccessIndex ebaii = (elbn.nextElement());
 				if( DEBUG )
 					System.out.println("MappedBlockBuffer.checkBufferFlush Block buffer "+ebaii);
 				if (ebaii.getAccesses() == 0) {
@@ -150,7 +165,7 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 			
 			for(int i = 0; i < numGot; i++) {
 				if( found[i] != null ) {
-					this.remove(found[i]);
+					this.remove(found[i].getBlockNum());
 					found[i].resetBlock();
 					freeBL.add(found[i]);
 				}
@@ -161,27 +176,27 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 	 * @throws IOException
 	 */
 	public synchronized void commitBufferFlush() throws IOException {
-		Iterator<BlockAccessIndex> elbn = this.iterator();
-		while (elbn.hasNext()) {
-					BlockAccessIndex ebaii = (elbn.next());
+		Enumeration<BlockAccessIndex> elbn = this.elements();
+		while (elbn.hasMoreElements()) {
+					BlockAccessIndex ebaii = (elbn.nextElement());
 					if (ebaii.getAccesses() == 0) {
 						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 							globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 						}
-						elbn.remove();
 						freeBL.add(ebaii);
 					}
 		}
+		clear();
 	}
 	/**
 	 * Commit all outstanding blocks in the buffer, bypassing the log subsystem. Should be used with forethought
 	 * @throws IOException
 	 */
 	public synchronized void directBufferWrite() throws IOException {
-		Iterator<BlockAccessIndex> elbn = this.iterator();
+		Enumeration<BlockAccessIndex> elbn = this.elements();
 		if(DEBUG) System.out.println("MappedBlockBuffer.direct buffer write");
-		while (elbn.hasNext()) {
-					BlockAccessIndex ebaii = (elbn.next());
+		while (elbn.hasMoreElements()) {
+					BlockAccessIndex ebaii = (elbn.nextElement());
 					if (ebaii.getAccesses() == 0 && ebaii.getBlk().isIncore() ) {
 						if( DEBUG)System.out.println("fully writing "+ebaii.getBlockNum()+" "+ebaii.getBlk());
 							globalIO.getIOManager().FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
@@ -198,9 +213,9 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 	 */
 	public synchronized void freeupBlock() throws IOException {
 		if( freeBL.size() == 0 ) {
-			Iterator<BlockAccessIndex> elbn = this.iterator();
-			while (elbn.hasNext()) {
-				BlockAccessIndex ebaii = (elbn.next());
+			Enumeration<BlockAccessIndex> elbn = this.elements();
+			while (elbn.hasMoreElements()) {
+				BlockAccessIndex ebaii = (elbn.nextElement());
 				if (ebaii.getAccesses() == 0) {
 						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 							globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
@@ -209,7 +224,7 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 						// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
 						if( ebaii.getBlockNum() == 0L )
 							continue;
-						elbn.remove();
+						remove(ebaii.getBlockNum());
 						freeBL.add(ebaii);
 						return;
 				}
@@ -218,5 +233,35 @@ public class MappedBlockBuffer extends Vector<BlockAccessIndex>  {
 		}
 	}
 	
+	public void queueRequest(CompletionLatchInterface ior) {
+		try {
+			requestQueue.put(ior);
+		} catch (InterruptedException e) {
+			// executor calls for shutdown during wait for queue to process entries while full or busy 
+		}
+	}
+	
+	@Override
+	public void run() {
+		CompletionLatchInterface ior = null;
+		while(shouldRun) {
+			try {
+				ior = requestQueue.take();
+			} catch (InterruptedException e) {
+				// executor calling for shutdown
+				break;
+			}
+			try {
+				ior.setTablespace(tablespace);
+				ior.process();
+				CountDownLatch cdl = ior.getCountDownLatch();
+				cdl.countDown();
+			} catch (IOException e) {
+				System.out.println("MappedBlockBuffer exception processing request "+ior+" "+e);
+				break;
+			}
+		}
+		
+	}
 
 }

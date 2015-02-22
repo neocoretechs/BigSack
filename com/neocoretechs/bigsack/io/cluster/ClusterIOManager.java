@@ -8,8 +8,10 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 import com.neocoretechs.bigsack.io.request.cluster.FSeekAndReadFullyRequest;
@@ -21,6 +23,13 @@ import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlockRequest;
 import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlocksRequest;
 import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
+import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.session.SessionManager;
 
@@ -43,12 +52,20 @@ public final class ClusterIOManager implements IoManagerInterface {
 	private static int currentPort = 10000; // starting UDP port, increments as assigned
 	private static int messageSeq = 0; // monotonically increasing request id
 	final CyclicBarrier barrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	/**
 	 * Instantiate our master node array per database that communicate with our worker nodes
 	 */
-	public ClusterIOManager() {
+	public ClusterIOManager(GlobalDBIO globalIO) {
 		//ioWorker = new UDPMaster[DBPhysicalConstants.DTABLESPACES];
 		ioWorker = new DistributedIOWorker[DBPhysicalConstants.DTABLESPACES];
+		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
+		// create master buffers for each tablespace
+		ThreadPoolManager.init(new String[]{"BLOCKPOOL"});
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			blockBuffer[i] = new MappedBlockBuffer(globalIO, i);
+			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
+		}
 	}
 	
 	/**
@@ -175,7 +192,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		// original request should contain object from response from remote worker
 		Datablock rblock = (Datablock) iori.getObjectReturn();
 		rblock.doClone(tblk);
-		// remove old requests
+		// remove old requests, this signals we are done
 		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
 	}
 	/**
@@ -343,6 +360,122 @@ public final class ClusterIOManager implements IoManagerInterface {
 	}
 	
 	public static int getNextUUID() { return ++messageSeq; }
+
+	@Override
+	public void forceBufferClear() {
+		CountDownLatch cdl = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
+		synchronized(blockBuffer) {
+			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				ForceBufferClearRequest fbcr = new ForceBufferClearRequest(blockBuffer[i], cdl);
+				blockBuffer[i].queueRequest(fbcr);
+				//blockBuffer[i].forceBufferClear();
+			}
+			try {
+				cdl.await();// wait for completion
+			} catch (InterruptedException e) {
+				// executor requested thread shutdown
+				return;
+			}
+		}
+	}
+
+	@Override
+	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
+		int tblsp = GlobalDBIO.getTablespace(Lbn);
+		//return blockBuffer[tblsp].addBlockAccessNoRead(Lbn);
+		CountDownLatch cdl = new CountDownLatch(1);
+		AddBlockAccessNoReadRequest abanrr = new AddBlockAccessNoReadRequest(blockBuffer[tblsp], cdl, Lbn);
+		blockBuffer[tblsp].queueRequest(abanrr);
+		try {
+			cdl.await();
+			return (BlockAccessIndex) abanrr.getObjectReturn();
+		} catch (InterruptedException e) {
+			// shutdown waiting for return
+			return null;
+		}
+	}
+
+	@Override
+	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
+		int tblsp = GlobalDBIO.getTablespace(bn);
+		//return blockBuffer[tblsp].findOrAddBlockAccess(bn);
+		CountDownLatch cdl = new CountDownLatch(1);
+		FindOrAddBlockAccessRequest abanrr = new FindOrAddBlockAccessRequest(blockBuffer[tblsp], cdl, bn);
+		blockBuffer[tblsp].queueRequest(abanrr);
+		try {
+			cdl.await();
+			return (BlockAccessIndex) abanrr.getObjectReturn();
+		} catch (InterruptedException e) {
+			// shutdown waiting for return
+			return null;
+		}
+	}
+
+	@Override
+	public BlockAccessIndex getUsedBlock(long loc) {
+		int tblsp = GlobalDBIO.getTablespace(loc);
+		//return blockBuffer[tblsp].getUsedBlock(loc);
+		CountDownLatch cdl = new CountDownLatch(1);
+		GetUsedBlockRequest abanrr = new GetUsedBlockRequest(blockBuffer[tblsp], cdl, loc);
+		blockBuffer[tblsp].queueRequest(abanrr);
+		try {
+			cdl.await();
+			return (BlockAccessIndex) abanrr.getObjectReturn();
+		} catch (InterruptedException e) {
+			// shutdown waiting for return
+			return null;
+		}
+	}
+	/**
+	 * Check the free block list for 0 elements. This is a demand response method guaranteed to give us a free block
+	 * if 0, begin a search for an element that has 0 accesses
+	 * if its in core and not yet in log, write through
+	 * @throws IOException
+	 */
+	@Override
+	public void freeupBlock() throws IOException {
+		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			//blockBuffer[i].freeupBlock();
+			FreeupBlockRequest fbr = new FreeupBlockRequest(blockBuffer[i], cdl);
+			blockBuffer[i].queueRequest(fbr);
+		}
+		try {
+			cdl.await(); // barrier synchronization
+		} catch (InterruptedException e) {
+			return;
+		}
+	}
+
+	@Override
+	public void commitBufferFlush() throws IOException {
+		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			//blockBuffer[i].commitBufferFlush();
+			CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockBuffer[i], cdl);
+			blockBuffer[i].queueRequest(cbfr);
+		}
+		try {
+			cdl.await();
+		} catch (InterruptedException e) {
+			return;
+		}
+	}
+
+	@Override
+	public void directBufferWrite() throws IOException {
+		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			//blockBuffer[i].directBufferWrite();
+			DirectBufferWriteRequest dbwr = new DirectBufferWriteRequest(blockBuffer[i], cdl);
+			blockBuffer[i].queueRequest(dbwr);
+		}
+		try {
+			cdl.await();
+		} catch (InterruptedException e) {
+			return;
+		}
+	}
 	
 	
 }

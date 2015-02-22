@@ -41,8 +41,10 @@ public class ThreadPoolManager {
 		return threadPoolManager;
 	}
 	/**
-	 * Create an array of Executors that manage a cached thread pool for
-	 * reading topics. One thread pool per topic to notify listeners of data ready
+	 * Update the array of Executors that manage a cached thread pool for
+	 * reading topics. One thread pool per topic to notify listeners of data ready.
+	 * In each appropriate place, ThreadPoolmanager.init("group") may be called to add "group" to the
+	 * list of known thread group names. The names are continually appended throughout the run.
 	 * @param threadGroupNames The topics for which thread groups are established
 	 */
 	public static void init(String[] threadGroupNames) {

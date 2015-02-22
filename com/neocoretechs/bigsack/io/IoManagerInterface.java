@@ -3,14 +3,79 @@ package com.neocoretechs.bigsack.io;
 import java.io.IOException;
 
 import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**
- * This interface enforces the contract for IO managers that facilitate block level operations
+ * This interface enforces the contract for IO managers that facilitate block level operations.
+ * The page buffers are managed here. Parallel operation on page buffers driven from here
  * @author jg
  *
  */
 public interface IoManagerInterface {
+	/**
+	* We'll do this on a 'clear' of collection, reset all caches
+	* Take the used block list, reset the blocks, move to to free list, then
+	* finally clear the used block list. We do this during rollback to remove any modified
+	*/
+	public void forceBufferClear();
 
+	/**
+	* Add a block to table of blocknums and block access index.
+	* Comes here for acquireBlock. No setting of block in BlockAccessIndex, no initial read
+	* @param Lbn block number to add
+	* @exception IOException if new dblock cannot be created
+	*/
+	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException;
+
+	/**
+	* findOrAddBlockAccess - find and return block in pool or bring
+	* it in and add it to pool<br> Always ends up calling alloc, here or in addBlock.
+	* @param bn The block number to add
+	* @return The index into the block array
+	* @exception IOException if cannot read
+	*/
+	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException;
+
+	/**
+	* Get a block access control instance from L2 cache
+	* @param tmpBai2 The template containing the block number, used to locate key
+	* @return The key found or whatever set returns otherwise if nothing a null is returned
+	*/
+	public BlockAccessIndex getUsedBlock(long loc);
+	/**
+	 * Set the initial free blocks after buckets created or bucket initial state
+	 * Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
+	 */
+	public void setNextFreeBlocks();
+
+	/**
+	 * Get first tablespace
+	 * @return the position of the first byte of first tablespace
+	 */
+	public long firstTableSpace() throws IOException;
+
+	/**
+	 * Find the smallest tablespace for storage balance, we will always favor creating one
+	 * over extending an old one
+	 * @return tablespace
+	 * @exception IOException if seeking new tablespace or creating fails
+	 */
+	public int findSmallestTablespace() throws IOException;
+	/**
+	 * Check the free block list for 0 elements. This is a demand response method guaranteed to give us a free block
+	 * if 0, begin a search for an element that has 0 accesses
+	 * if its in core and not yet in log, write through
+	 * @throws IOException
+	 */
+	public void freeupBlock() throws IOException;
+	/**
+	 * Commit the outstanding blocks and flush the buffer of pages at end
+	 * @throws IOException
+	 */
+	public void commitBufferFlush() throws IOException;
+
+	public void directBufferWrite() throws IOException;
+	
 	/**
 	 * Return the first available block that can be acquired for write
 	 * queue the request to the proper ioworker
@@ -43,26 +108,6 @@ public interface IoManagerInterface {
 	 */
 	public void FseekAndReadFully(long toffset, Datablock tblk)
 			throws IOException;
-
-	/**
-	 * Set the initial free blocks after buckets created or bucket initial state
-	 * Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
-	 */
-	public void setNextFreeBlocks();
-
-	/**
-	 * Get first tablespace
-	 * @return the position of the first byte of first tablespace
-	 */
-	public long firstTableSpace() throws IOException;
-
-	/**
-	 * Find the smallest tablespace for storage balance, we will always favor creating one
-	 * over extending an old one
-	 * @return tablespace
-	 * @exception IOException if seeking new tablespace or creating fails
-	 */
-	public int findSmallestTablespace() throws IOException;
 
 	/**
 	 * If create is true, create only primary tablespace

@@ -30,8 +30,8 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 * Block and offset locate Datablock and byte offset within that Datablock
 * @author Groff
 */
-public class Optr implements Serializable {
-	static final long serialVersionUID = 513878730827370903L;
+public final class Optr implements Serializable {
+	private static final long serialVersionUID = 513878730827370903L;
 	static final short ZERO = 0;
 	public static Optr valueOf(long blk, short offset) { return new Optr(blk, offset); }
 	public static Optr valueOf(long blk) { return new Optr(blk, (short) 0); }
@@ -39,7 +39,7 @@ public class Optr implements Serializable {
     private short offset; // byte offset in block
     //
     public Optr() {}
-    public Optr(long tblk, short toff) { setBlock(tblk); setOffset(toff); }
+    public Optr(long tblk, short toff) { this.block = tblk; this.offset = toff; }
 
 	public short getOffset() {
 		return offset;
