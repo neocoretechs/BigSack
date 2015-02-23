@@ -54,6 +54,7 @@ public final class BTreeMain {
 	int stackDepth;
 	boolean atKey;
 	private static boolean DEBUG = false;
+	private static boolean TEST = false;
 	private ObjectDBIO sdbio;
 
 	public BTreeMain(ObjectDBIO sdbio) throws IOException {
@@ -67,15 +68,19 @@ public final class BTreeMain {
 		numKeys = 0;//sdbio.getKeycountfile().getKeysCount();
 		// Consistency check, also needed to get number of keys
 		// If no keys, give it check to make sure log was not compromised
-		rewind();
-		int i;
-		long tim = System.currentTimeMillis();
-		while ((i = gotoNextKey()) == 0) {
+		if( TEST ) {
+			rewind();
+			int i;
+			long tim = System.currentTimeMillis();
+			while ((i = gotoNextKey()) == 0) {
 				if( DEBUG ) System.out.println("gotoNextKey returned: "+i);
 				++numKeys;
+			}
+			System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
+			sdbio.deallocOutstanding();
+		} else {
+			System.out.println("Database "+sdbio.getDBName()+" ready.");
 		}
-		System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
-		sdbio.deallocOutstanding();
 		//if( Props.DEBUG ) System.out.println("Records: " + numKeys);
 	}
 

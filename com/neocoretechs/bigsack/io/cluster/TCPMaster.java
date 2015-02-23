@@ -327,7 +327,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 			oos.writeObject(iori);
 			oos.flush();
 		} catch (SocketException e) {
-				System.out.println("Exception setting up socket to remote worker port "+SLAVEPORT+" "+e);
+				System.out.println("Exception setting up socket to remote worker:"+IPAddress+" port "+SLAVEPORT+" "+e);
 		} catch (IOException e) {
 				System.out.println("Socket send error "+e+" to address "+IPAddress+" on port "+SLAVEPORT);
 		}
