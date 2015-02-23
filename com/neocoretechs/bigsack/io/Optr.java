@@ -32,9 +32,9 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 */
 public final class Optr implements Serializable {
 	private static final long serialVersionUID = 513878730827370903L;
-	static final short ZERO = 0;
 	public static Optr valueOf(long blk, short offset) { return new Optr(blk, offset); }
 	public static Optr valueOf(long blk) { return new Optr(blk, (short) 0); }
+	public final static Optr emptyPointer = new Optr(-1, (short) -1);
     private long block;// first blk of object
     private short offset; // byte offset in block
     //
@@ -53,9 +53,8 @@ public final class Optr implements Serializable {
 	public void setBlock(long block) {
 		this.block = block;
 	}
-	public static Optr getEmptyPointer() { return new Optr(-1, (short) -1); }
 	
-	public boolean isEmptyPointer() { return ( this.block == -1 && this.offset == -1); }
+	public boolean isEmptyPointer() { return ( this.block == -1 ); }
 	
 	@Override
 	public boolean equals(Object opt) {

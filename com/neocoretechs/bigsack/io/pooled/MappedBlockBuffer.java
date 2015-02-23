@@ -6,8 +6,8 @@ import java.util.Enumeration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
 
+import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 
 /**
@@ -25,12 +25,12 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
 	private boolean shouldRun = true;
-	private ArrayList<BlockAccessIndex> freeBL; 
+	private ArrayList<BlockAccessIndex> freeBL; // free block list
 	private GlobalDBIO globalIO;
 	private int tablespace;
-	private int minBufferSize = 10;
+	private int minBufferSize = 10; // minimum number of buffers to reclaim on flush attempt
 	private BlockingQueue<CompletionLatchInterface> requestQueue;
-	private static int QUEUEMAX = 1024;
+	private static int QUEUEMAX = 256; // max requests before blocking
 	/**
 	 * Construct the buffer for this tablespace and link the global IO manager
 	 * @param globalIO
@@ -39,7 +39,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	public MappedBlockBuffer(GlobalDBIO globalIO, int tablespace) {
 		this.globalIO = globalIO;
 		this.tablespace = tablespace;
-		this.freeBL = new ArrayList<BlockAccessIndex>(globalIO.getMAXBLOCKS()); // free blocks
+		this.freeBL = new ArrayList<BlockAccessIndex>(globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES); // free blocks
 		// populate with blocks, they're all free for now
 		for (int i = 0; i < globalIO.getMAXBLOCKS(); i++) {
 			freeBL.add(new BlockAccessIndex(globalIO));
@@ -137,7 +137,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	*/
 	public synchronized void checkBufferFlush() throws IOException {
 			int bufSize = this.size();
-			if( bufSize < globalIO.getMAXBLOCKS() )
+			if( bufSize < globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES )
 				return;
 			Enumeration<BlockAccessIndex> elbn = this.elements();
 			int numGot = 0;
@@ -254,8 +254,6 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			try {
 				ior.setTablespace(tablespace);
 				ior.process();
-				CountDownLatch cdl = ior.getCountDownLatch();
-				cdl.countDown();
 			} catch (IOException e) {
 				System.out.println("MappedBlockBuffer exception processing request "+ior+" "+e);
 				break;

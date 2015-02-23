@@ -68,7 +68,7 @@ public class BTreeKeyPage implements Serializable {
 		for (int i = 0; i <= MAXKEYS; i++) {
 			pageIdArray[i] = -1L;
 			if( i != MAXKEYS ) {
-				dataIdArray[i] = Optr.getEmptyPointer();
+				dataIdArray[i] = Optr.emptyPointer;
 			}
 		}
 	}
@@ -140,7 +140,7 @@ public class BTreeKeyPage implements Serializable {
 
 		keyArray[index] = newKey;
 		dataArray[index] = newData;
-		dataIdArray[index] = Optr.getEmptyPointer();
+		dataIdArray[index] = Optr.emptyPointer;
 		dataUpdatedArray[index] = true;
 		setUpdated(true);
 	}
@@ -170,7 +170,7 @@ public class BTreeKeyPage implements Serializable {
 		pageArray[numKeys + 1] = null;
 		pageIdArray[numKeys + 1] = -1L;
 		dataArray[numKeys] = null;
-		dataIdArray[numKeys] = Optr.getEmptyPointer();
+		dataIdArray[numKeys] = Optr.emptyPointer;
 		dataUpdatedArray[numKeys] = false; // we took care of it
 		setUpdated(true);
 	}
@@ -183,7 +183,7 @@ public class BTreeKeyPage implements Serializable {
 			}
 			//if( Props.DEBUG ) System.out.println(" size "+ilen);
 			sdbio.delete_object(dataIdArray[index],  GlobalDBIO.getObjectAsBytes(dataArray[index]).length );
-			dataIdArray[index] = Optr.getEmptyPointer();
+			dataIdArray[index] = Optr.emptyPointer;
 			dataUpdatedArray[index] = true;
 			setUpdated(true);
 		} //else {
@@ -332,7 +332,7 @@ public class BTreeKeyPage implements Serializable {
 
 	void putDataToArray(Object data, int index) {
 		dataArray[index] = data;
-		dataIdArray[index] = Optr.getEmptyPointer();
+		dataIdArray[index] = Optr.emptyPointer;
 		dataUpdatedArray[index] = true;
 		setUpdated(true);
 	}
