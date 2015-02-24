@@ -3,8 +3,10 @@ package com.neocoretechs.bigsack.io.pooled;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
+import java.nio.channels.SeekableByteChannel;
 
 import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.channel.DBSeekableByteChannel;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 
 public final class ObjectDBIO extends OffsetDBIO {
@@ -55,8 +57,9 @@ public final class ObjectDBIO extends OffsetDBIO {
 	*/
 	public synchronized Object deserializeObject(long iloc) throws IOException {
 		// read Object at ptr to byte array
-		Object Od;
+		Object Od = null;
 		try {
+			/*
 			ObjectInput s;
 			objseek(iloc);
 			if (isCustomClassLoader())
@@ -67,16 +70,16 @@ public final class ObjectDBIO extends OffsetDBIO {
 				s = new ObjectInputStream(getDBInput());
 			Od = s.readObject();
 			s.close();
+			*/
+			DBSeekableByteChannel dbByteChannel = getDBByteChannel();
+			dbByteChannel.setBlockNumber(iloc);
+			Od = GlobalDBIO.deserializeObject(dbByteChannel);
 		} catch (IOException ioe) {
 			throw new IOException(
 				"deserializeObject from long: "
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
-		} catch (ClassNotFoundException cnf) {
-			throw new IOException(
-				cnf.toString()
-					+ ": Class Not found, may have been modified beyond version compatibility "+GlobalDBIO.valueOf(iloc)+" in "+getDBName());
 		}
 		if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
 		return Od;
@@ -92,6 +95,7 @@ public final class ObjectDBIO extends OffsetDBIO {
 		// read Object at ptr to byte array
 		Object Od;
 		try {
+			/*
 			ObjectInput s;
 			objseek(iloc);
 			if (isCustomClassLoader())
@@ -100,16 +104,16 @@ public final class ObjectDBIO extends OffsetDBIO {
 				s = new ObjectInputStream(getDBInput());
 			Od = s.readObject();
 			s.close();
+			*/
+			DBSeekableByteChannel dbByteChannel = getDBByteChannel();
+			dbByteChannel.setBlockNumber(iloc.getBlock());
+			Od = GlobalDBIO.deserializeObject(dbByteChannel);
 		} catch (IOException ioe) {
 			throw new IOException(
 				"deserializeObject from pointer: "
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ iloc+" in "+getDBName());
-		} catch (ClassNotFoundException cnf) {
-			throw new IOException(
-				cnf.toString()
-					+ ": Class Not found, may have been modified beyond version compatibility "+iloc+" in "+getDBName());
 		}
 		if( DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
 		return Od;

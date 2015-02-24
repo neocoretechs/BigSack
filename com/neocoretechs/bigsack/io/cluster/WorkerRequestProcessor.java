@@ -32,7 +32,7 @@ public final class WorkerRequestProcessor implements Runnable {
 	
 	@Override
 	public void run() {
-	  while(shouldRun ) {
+	  while(shouldRun || !requestQueue.isEmpty()) {
 		IoRequestInterface iori = null;
 		try {
 			iori = requestQueue.take();

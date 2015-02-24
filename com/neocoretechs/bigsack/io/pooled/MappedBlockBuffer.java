@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -30,6 +31,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	private int tablespace;
 	private int minBufferSize = 10; // minimum number of buffers to reclaim on flush attempt
 	private BlockingQueue<CompletionLatchInterface> requestQueue;
+	private static int POOLBLOCKS;
 	private static int QUEUEMAX = 256; // max requests before blocking
 	/**
 	 * Construct the buffer for this tablespace and link the global IO manager
@@ -37,14 +39,16 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	 * @param tablespace
 	 */
 	public MappedBlockBuffer(GlobalDBIO globalIO, int tablespace) {
+		super(globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES);
+		POOLBLOCKS = globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES;
 		this.globalIO = globalIO;
 		this.tablespace = tablespace;
-		this.freeBL = new ArrayList<BlockAccessIndex>(globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES); // free blocks
+		this.freeBL = new ArrayList<BlockAccessIndex>(POOLBLOCKS ); // free blocks
 		// populate with blocks, they're all free for now
 		for (int i = 0; i < globalIO.getMAXBLOCKS(); i++) {
 			freeBL.add(new BlockAccessIndex(globalIO));
 		}
-		minBufferSize = globalIO.getMAXBLOCKS()/10; // we need at least one
+		minBufferSize = POOLBLOCKS/10; // we need at least one
 		requestQueue = new ArrayBlockingQueue<CompletionLatchInterface>(QUEUEMAX, true); // true maintains FIFO order
 	}
 	/**
@@ -137,7 +141,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	*/
 	public synchronized void checkBufferFlush() throws IOException {
 			int bufSize = this.size();
-			if( bufSize < globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES )
+			if( bufSize < POOLBLOCKS )
 				return;
 			Enumeration<BlockAccessIndex> elbn = this.elements();
 			int numGot = 0;

@@ -165,7 +165,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 			//sock.setOption(StandardSocketOptions.SO_RCVBUF, 32767);
 			sock = masterSocket.accept();
 			sock.setKeepAlive(true);
-			sock.setTcpNoDelay(true);
+			//sock.setTcpNoDelay(true);
 			sock.setSendBufferSize(32767);
 			sock.setReceiveBufferSize(32767);
 		} catch (IOException e1) {
@@ -316,7 +316,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 				workerSocket = new Socket();
 				workerSocket.connect(workerSocketAddress);
 				workerSocket.setKeepAlive(true);
-				workerSocket.setTcpNoDelay(true);
+				//workerSocket.setTcpNoDelay(true);
 				workerSocket.setReceiveBufferSize(32767);
 				workerSocket.setSendBufferSize(32767);
 			}

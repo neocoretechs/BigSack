@@ -1,5 +1,6 @@
 package com.neocoretechs.bigsack.io.pooled;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import com.neocoretechs.bigsack.io.Optr;
 /*
@@ -40,6 +41,7 @@ public interface OffsetDBIOInterface {
 	* @see Optr
 	*/
 	public void objseek(Optr adr) throws IOException;
+	public void objseek(long blockNum) throws IOException;
 	/**
 	* seek_fwd - big seek forward from current spot
 	* @param offset offset from current
@@ -59,6 +61,7 @@ public interface OffsetDBIOInterface {
 	* @exception IOException if can't acquire next block
 	*/
 	public int readi() throws IOException;
+	public int readn(ByteBuffer bb, int numbyte) throws IOException;
 	/**
 	* writei -  write 1 byte to object / directory
 	* This method designed to be called from DBOutput
@@ -67,5 +70,6 @@ public interface OffsetDBIOInterface {
 	* @exception IOException if can't acquire new block
 	*/
 	public void writei(int tbyte) throws IOException;
+	public int writen(ByteBuffer bb, int numbyte)  throws IOException;
 
 }

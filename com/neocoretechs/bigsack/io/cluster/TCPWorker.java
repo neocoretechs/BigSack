@@ -97,7 +97,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		masterSocket = new Socket();
 		masterSocket.connect(masterSocketAddress);
 		masterSocket.setKeepAlive(true);
-		masterSocket.setTcpNoDelay(true);
+		//masterSocket.setTcpNoDelay(true);
 		masterSocket.setReceiveBufferSize(32767);
 		masterSocket.setSendBufferSize(32767);
 		// start listening on the required worker port
@@ -172,7 +172,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 			*/
 			s = workerSocket.accept();
 			s.setKeepAlive(true);
-			s.setTcpNoDelay(true);
+			//s.setTcpNoDelay(true);
 			s.setSendBufferSize(32767);
 			s.setReceiveBufferSize(32767);
 		} catch (IOException e) {
