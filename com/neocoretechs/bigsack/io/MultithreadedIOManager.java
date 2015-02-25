@@ -1,5 +1,6 @@
 package com.neocoretechs.bigsack.io;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -197,8 +198,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
 		for (int i = 0; i < ioWorker.length; i++) {
-			if (ioWorker[i] == null)
-						ioWorker[i] = new IOWorker(fname, i, L3cache);
+			if (ioWorker[i] == null) {
+				ioWorker[i] = new IOWorker(translateDb(fname,i), i, L3cache);
+			}
 			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i]);
 		}
 		return true;
@@ -211,11 +213,28 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
 		for (int i = 0; i < ioWorker.length; i++) {
-			if (ioWorker[i] == null)
-						ioWorker[i] = new IOWorker(fname, remote, i, L3cache);
+			if (ioWorker[i] == null) {
+					if( remote == null )
+						ioWorker[i] = new IOWorker(translateDb(fname,i), i, L3cache);
+					else
+						ioWorker[i] = new IOWorker(translateDb(fname,i), translateDb(remote,i), i, L3cache);
+			}
 			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i]);
 		}
 		return true;
+	}
+	
+	private String translateDb(String dbname, int tablespace) {
+		String db;
+        // replace any marker of $ with tablespace number
+        if( dbname.indexOf('$') != -1) {
+        	db = dbname.replace('$', String.valueOf(tablespace).charAt(0));
+        } else
+        	db = dbname;
+        db = (new File(db)).toPath().getParent().toString() + File.separator +
+        		"tablespace"+String.valueOf(tablespace) + File.separator +
+        		(new File(dbname).getName());
+        return db;
 	}
  	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen()

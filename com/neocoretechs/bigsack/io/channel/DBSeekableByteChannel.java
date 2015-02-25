@@ -5,8 +5,15 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 
 import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
-
-public class DBSeekableByteChannel implements SeekableByteChannel {
+/**
+ * This class bridges the block pool and the computational elements.
+ * It functions as a bytechannel into the block pool to read and write 
+ * pages stored there. The primary storage buffers are ByteBuffer. The serialization
+ * of objects is performed by acquiring streams through the 'Channels' nio class.
+ * @author jg
+ *
+ */
+public final class DBSeekableByteChannel implements SeekableByteChannel {
 	private OffsetDBIOInterface sdbio;
 	private long blockNum;
 	private int position = 0;

@@ -241,8 +241,9 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		}
 	}
 	/**
-	* writen -  write n bytes to pool.  This
-	* will overwrite to next block if necessary, or allocate from end
+	* writen -  write n bytes to pool.  This will overwrite to next block if necessary, or allocate from end
+	* The blocks written have their 'inCore' property set to true and their 'inLog' property set to false.
+	* The is used in the Seekable DB channel that moves data from store to pool
 	* @param buf byte buffer to write
 	* @param numbyte number of bytes to write
 	* @return number of bytes written
@@ -252,6 +253,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		int i = 0, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
+		// sets the incore to true and the inlog to false on both blocks
 		if (this.getByteindex() >= DBPhysicalConstants.DATASIZE)
 			if (!getnextblk())
 				acquireBlock();

@@ -13,6 +13,7 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  * Once requests from master are queued we extract them here and process them
  * This class functions as a generic threaded request processor for entries on a BlockingQueue of 
  * CompletionLatchInterface implementors managed by a DistributeWorkerResponseInterface implementation.
+ * Before this thread shuts down in normal operation, the outstanding writes are allowed to complete. 
  * @author jg
  *
  */
@@ -32,14 +33,14 @@ public final class WorkerRequestProcessor implements Runnable {
 	
 	@Override
 	public void run() {
-	  while(shouldRun || !requestQueue.isEmpty()) {
+	  while(shouldRun) {
 		IoRequestInterface iori = null;
 		try {
 			iori = requestQueue.take();
 		} catch (InterruptedException e1) {
 			// Executor has requested shutdown during take
 		    // quit the processing thread
-		    return;
+		    break;
 		}
 		// Down here at the worker level we only need to set the countdown latch to 1
 		// because all operations are taking place on 1 tablespace and thread with coordination
@@ -60,7 +61,7 @@ public final class WorkerRequestProcessor implements Runnable {
 			} catch (InterruptedException e) {
 				// most likely executor shutdown request during latching, be good and bail
 			    // quit the processing thread
-			    return;	
+			    break;	
 			}
 			// we have flipped the latch from the request to the thread waiting here, so send an outbound response
 			// with the result of our work if a response is required
@@ -86,6 +87,8 @@ public final class WorkerRequestProcessor implements Runnable {
 			}
 		}
 	  } //shouldRun
+	  // Check the block pool for any outstanding writes, there should not be any
+	  
 	}
 
 }

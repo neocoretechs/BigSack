@@ -38,8 +38,9 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
     private byte[] sendData;
 	private InetAddress IPAddress = null;
 	DatagramSocket responseSocket = null;
+	private WorkerRequestProcessor workerRequestProcessor;
 	
-	private NodeBlockBuffer blockBuffer = new NodeBlockBuffer();
+	private NodeBlockBuffer blockBuffer;
 	
     public UDPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
@@ -64,7 +65,8 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 		}
 		
 		// spin the request processor thread for the worker
-		ThreadPoolManager.getInstance().spin(new WorkerRequestProcessor(this));
+		ThreadPoolManager.getInstance().spin(workerRequestProcessor = new WorkerRequestProcessor(this));
+		blockBuffer = new NodeBlockBuffer(this);
 		if( DEBUG ) {
 			System.out.println("Worker on port "+SLAVEPORT+" with master "+MASTERPORT+" database:"+dbname+
 					" tablespace "+tablespace+" address:"+IPAddress);
@@ -145,15 +147,17 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 				if( serverSocket != null ) serverSocket.close();
 				if( responseSocket != null ) responseSocket.close();
 				responseSocket = null;
-				return;
+				break;
 			} catch (InterruptedException e) {
 				// Executor shutdown while waiting for request queue to obtain a free slot
 				if( serverSocket != null ) serverSocket.close();
 				if( responseSocket != null ) responseSocket.close();
 				responseSocket = null;
-				return;
+				break;
 			}
 		}
+		// shut down buffer, write outstanding blocks
+		workerRequestProcessor.stop();
 	}
 
 	@Override

@@ -69,7 +69,7 @@ public final class RecoveryLog  {
 		return ltf;
 	}
 	/**
-	* Write log entry - uses current db.
+	* Write log entry - uses current db. Set inlog true
 	* This is initiated before buffer pool block flush (writeblk). Get the original block
 	* from deep store and log it as undoable
 	* @param blk The block instance, payload of block about to be written to log

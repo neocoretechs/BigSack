@@ -510,6 +510,11 @@ public class Scan implements StreamLogScan {
 				if( moveForwardToHeader() ) {
 					recordStartPosition = scan.getFilePointer();
 					recordLength = scan.readInt();
+					// if this one is 0, we have encountered a file that was set up for write but never written, dont bother
+					// to come through again and mess up scanned end instance, just return with it as is
+					if( recordLength == 0 ) {
+						return logBlock;
+					}
 				} else { // false indicates last file passed
 					return logBlock;
 				}
@@ -899,7 +904,15 @@ public class Scan implements StreamLogScan {
 		//
 		//find out if log had incomplete log records at the end.
 		if (isLogEndFuzzy()) {
-			scan = logFactory.getLogFileAtPosition(getScannedEndInstance());
+			scan = logFactory.getLogFileAtPosition(scannedEndInstance);
+			// if the file is not there we get null
+			if( scan == null ) {
+				if( scannedEndInstance == LogCounter.INVALID_LOG_INSTANCE ) {
+					throw new IOException("Scan.checkFuzzyLogEnd cant get target log file because no scanned end was ever established");
+				} else { // something is even more strangely messed up, we had a scan and now the file is kaput?
+					throw new IOException("Scan.checkFuzzyLogEnd cant get target log file obtained from scanned end instance "+scannedEndInstance);
+				}
+			}
 			long endPosition = scan.getFilePointer();
 			long eof = scan.length();
 			System.out.println("Fuzzy log end detected, best effort to zero fuzz starting at "+endPosition+" EOF "+eof);

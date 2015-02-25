@@ -64,7 +64,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	// ByteBuffer for NIO socket read/write, currently broken under arm
 	//private ByteBuffer b = ByteBuffer.allocate(LogToFile.DEFAULT_LOG_BUFFER_SIZE);
 	
-	private NodeBlockBuffer blockBuffer = new NodeBlockBuffer();
+	private NodeBlockBuffer blockBuffer;
 	
     public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
@@ -107,6 +107,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 		// spin the request processor thread for the worker
 		workerRequestProcessor = new WorkerRequestProcessor(this);
 		ThreadPoolManager.getInstance().spin(workerRequestProcessor);
+		blockBuffer = new NodeBlockBuffer(this);
 		if( DEBUG ) {
 			System.out.println("Worker on port "+SLAVEPORT+" with master "+MASTERPORT+" database:"+dbname+
 					" tablespace "+tablespace+" address:"+IPAddress);
@@ -234,14 +235,6 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 
 	public void stopWorker() {
 		// thread has been stopped by WorkBoot
-		try {
-			/*
-			if( masterSocketChannel.isOpen() ) masterSocketChannel.close();
-			if( workerSocketChannel.isOpen() ) workerSocketChannel.close();
-			*/
-			if(!masterSocket.isClosed()) masterSocket.close();
-			if(!workerSocket.isClosed()) workerSocket.close();
-			shouldRun = false;
-		} catch (IOException e) {}
+		shouldRun = false;
 	}
 }

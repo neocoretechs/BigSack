@@ -182,13 +182,17 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	public synchronized void commitBufferFlush() throws IOException {
 		Enumeration<BlockAccessIndex> elbn = this.elements();
 		while (elbn.hasMoreElements()) {
-					BlockAccessIndex ebaii = (elbn.nextElement());
-					if (ebaii.getAccesses() == 0) {
-						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
-							globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
-						}
-						freeBL.add(ebaii);
+				BlockAccessIndex ebaii = (elbn.nextElement());
+				if( ebaii.getAccesses() > 0 )
+					System.out.println("****COMMIT BUFFER WARNING access "+ebaii.getAccesses()+" for buffer "+ebaii);
+				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
+					System.out.println("****COMMIT BUFFER WARNING buffer block in core and log simultaneously! "+ebaii);
+				if (ebaii.getAccesses() == 0) {
+					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
+						globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 					}
+					freeBL.add(ebaii);
+				}
 		}
 		clear();
 	}
