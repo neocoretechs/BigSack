@@ -43,11 +43,13 @@ public class CheckpointOperation implements Loggable, Externalizable
 	protected long	redoLWM;
 	// undo LWM
 	protected long	undoLWM;
+	protected int tablespace;
 
-	public CheckpointOperation(long redoLWM, long undoLWM)
+	public CheckpointOperation(long redoLWM, long undoLWM, int tablespace)
 	{
 		this.redoLWM = redoLWM;
 		this.undoLWM = undoLWM;
+		this.tablespace = tablespace;
 	}
 
 	// no-arg constructor
@@ -92,14 +94,21 @@ public class CheckpointOperation implements Loggable, Externalizable
 		}
 		return;
 	}
-
+	/**
+	 * Not implemented
+	 * @param instance
+	 * @param redoLWM2
+	 * @param undoLWM2
+	 */
 	private void checkpointInRollForwardRecovery(LogInstance instance,long redoLWM2, long undoLWM2) {
-		// TODO Auto-generated method stub
-		
 	}
-
+	/**
+	 * Go back to blockIO and get the recoverylog instance and then get the logtofile, then see if in RFR from that
+	 * @param xact
+	 * @return
+	 */
 	private boolean inRollForwardRecovery(BlockDBIO xact) {
-		return xact.getUlog().getLogToFile().inRFR();
+		return xact.getUlog().getLogToFile(tablespace).inRFR();
 	}
 
 	/**

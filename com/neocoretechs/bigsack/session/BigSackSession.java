@@ -296,20 +296,23 @@ public final class BigSackSession {
 		bTree.getIO().getUlog().checkpoint();
 	}
 	/**
-	* Generic session roll up.  Data is committed based on rollback param
+	* Generic session roll up.  Data is committed based on rollback param.
+	* We deallocate the outstanding block
+	* We iterate the tablespaces for each db removing obsolete log files.
 	* @param rollback true to roll back, false to commit
 	* @exception IOException For low level failure
 	*/
 	private void rollupSession(boolean rollback) throws IOException {
 		if (rollback) {
 			bTree.getIO().deallocOutstandingRollback();
-			bTree.getIO().getUlog().getLogToFile().deleteOnlineArchivedLogFiles();
+			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+				bTree.getIO().getUlog().getLogToFile(i).deleteOnlineArchivedLogFiles();
 		} else {
 			bTree.getRoot().putPages(bTree.getIO());
 			bTree.getIO().deallocOutstandingCommit();
-			bTree.getIO().getUlog().getLogToFile().deleteObsoleteLogfilesOnCommit();
+			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+				bTree.getIO().getUlog().getLogToFile(i).deleteObsoleteLogfilesOnCommit();
 		}
-
 	}
 	
 	/**

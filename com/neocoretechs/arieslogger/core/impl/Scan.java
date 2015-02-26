@@ -52,12 +52,12 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 */
 
 public class Scan implements StreamLogScan {
-
+	private static final boolean DEBUG = false;
 	// value for scanDirection
 	public static final byte FORWARD = 1;
 	public static final byte BACKWARD = 2;
 	public static final byte BACKWARD_FROM_LOG_END = 4;
-	private static final boolean DEBUG = false;
+	// flag to determine of we are filtering by transaction Id and group number
 	public static boolean multiTrans = false;
 
 	private RandomAccessFile scan;		// an output stream to the log file
@@ -207,8 +207,8 @@ public class Scan implements StreamLogScan {
 		
 		long curpos = scan.getFilePointer();
 		// startAt positioned at zero marker EOF
-		if( DEBUG )
-			System.out.println("Scan.getNextRecordBackward curpos:"+curpos);
+		//if( DEBUG )
+		//	System.out.println("Scan.getNextRecordBackward curpos:"+curpos);
 		if(curpos-4 == LogToFile.LOG_FILE_HEADER_SIZE) {
 			// stopAt is valid and the stopAt number is the current log number and we are at header
 			if (stopAt != LogCounter.INVALID_LOG_INSTANCE &&
@@ -440,7 +440,7 @@ public class Scan implements StreamLogScan {
 	{
 		if (DEBUG) {
 			assert(scanDirection == FORWARD) : "can only called by forward scan";
-			System.out.println("Scan.getNextRecordForward: entering with file pos:"+scan.getFilePointer());
+			//System.out.println("Scan.getNextRecordForward: entering with file pos:"+scan.getFilePointer());
 		}
 		HashMap<LogInstance, LogRecord> logBlock = null;
 		// NOTE:
@@ -464,6 +464,8 @@ public class Scan implements StreamLogScan {
 
 		do {
 			long recordStartPosition = scan.getFilePointer();
+			long previousStartPosition = recordStartPosition; // in case we are blown out
+			long previousFileNumber = currentLogFileNumber;
 			// this log record is a candidate unless proven otherwise
 			candidate = true;
 			lr = null;
@@ -487,10 +489,10 @@ public class Scan implements StreamLogScan {
              
                 }
 				fuzzyLogEnd = true ;
-				// don't bother to write the end of log file marker because
-				// if it is not overwritten by the next log record then
-				// the next time the database is recovered it will come
-				// back right here
+				currentInstance = LogCounter.makeLogInstanceAsLong(previousFileNumber, previousStartPosition+4);
+				scannedEndInstance = currentInstance;
+				scan.close();
+				scan = null;
 				return null;
 			}
 
@@ -544,14 +546,7 @@ public class Scan implements StreamLogScan {
 			// read in the log record
 			byte[] data = new byte[recordLength];
 
-			// If the log is encrypted, we must do the filtering after
-			// reading  the record.
-	
 			//if (groupmask == 0 && tranId == -1)
-			//{
-					// no filter, get the whole thing
-			//if( DEBUG ) {
-			//	System.out.println("Scan.getNextRecordForward reading "+recordLength+" @ "+scan.getFilePointer());
 			//}
 			
 			scan.readFully(data, 0, recordLength);
@@ -605,6 +600,10 @@ public class Scan implements StreamLogScan {
 						System.out.println("Scan.getNextRecordForward: fuzzy log end detected:"+checkLength+
 								" expected: "+recordLength+" returning...");
 					}
+					currentInstance = LogCounter.makeLogInstanceAsLong(previousFileNumber, previousStartPosition+4);
+					scannedEndInstance = currentInstance;
+					scan.close();
+					scan = null;
 					return null;
 				} else {				
 					//If checklength > recordLength then it can be not be a partial write
@@ -677,14 +676,16 @@ public class Scan implements StreamLogScan {
 						// only when the writes are incomplete; this can happen
 						// only when writes at the end of the log were partially
 						// written before the crash. 
-						//if (DEBUG) {
-						//	System.out.println("Scan.getNextRecordForward:"+
-                        //        "detected fuzzy log end on log file while doing checksum checks " + 
-						//		currentLogFileNumber + 
-                        //        " checksum record start position " + recordStartPosition + 
-                        //        " file length " + currentLogFileLength + 
-						//		" checksumDataLength=" + ckDataLength);	
-						//}
+						if (DEBUG) {
+							System.out.println("Scan.getNextRecordForward:"+
+                                "INVALID CHECKSUM. Declaring fuzzy log end on log file due to failed checksum check on" + 
+                                " current instance:" + LogCounter.toDebugString(currentInstance) +
+                               " checksum record start position in file:" + recordStartPosition + 
+                                " file length:" + currentLogFileLength + 
+								" checksumDataLength:" + ckDataLength);	
+						}
+						currentInstance = LogCounter.makeLogInstanceAsLong(previousFileNumber, previousStartPosition+4);
+						scannedEndInstance = currentInstance;
 						fuzzyLogEnd = true;
 						scan.close();
 						scan = null;
@@ -711,7 +712,6 @@ public class Scan implements StreamLogScan {
 		@exception IOException scan cannot access the log at the new position.
 		@exception IOException 
 	*/
-
 	public void resetPosition(LogInstance instance) throws IOException
 	{
 		if (DEBUG) {
@@ -855,7 +855,6 @@ public class Scan implements StreamLogScan {
 
 			scan = null;
 		}
-
 		logFactory = null;
 		currentLogFileNumber = -1;
 		currentLogFileLength = -1;
@@ -904,19 +903,21 @@ public class Scan implements StreamLogScan {
 		//
 		//find out if log had incomplete log records at the end.
 		if (isLogEndFuzzy()) {
+			if( scannedEndInstance == LogCounter.INVALID_LOG_INSTANCE ) {
+				throw new IOException("Scan.checkFuzzyLogEnd cant get target log file because no scanned end was ever established");
+			} /*else {
+				System.out.println("Scan.scanned end instance for fuzzy check is "+LogCounter.toDebugString(scannedEndInstance));
+			}
 			scan = logFactory.getLogFileAtPosition(scannedEndInstance);
 			// if the file is not there we get null
 			if( scan == null ) {
-				if( scannedEndInstance == LogCounter.INVALID_LOG_INSTANCE ) {
-					throw new IOException("Scan.checkFuzzyLogEnd cant get target log file because no scanned end was ever established");
-				} else { // something is even more strangely messed up, we had a scan and now the file is kaput?
-					throw new IOException("Scan.checkFuzzyLogEnd cant get target log file obtained from scanned end instance "+scannedEndInstance);
-				}
+			 // something is even more strangely messed up, we had a possible scan and now the file is kaput?
+				throw new IOException("Scan.checkFuzzyLogEnd cant get target log file obtained from scanned end instance "+scannedEndInstance);		
 			}
 			long endPosition = scan.getFilePointer();
 			long eof = scan.length();
 			System.out.println("Fuzzy log end detected, best effort to zero fuzz starting at "+endPosition+" EOF "+eof);
-			/* Write zeros from incomplete log record to end of file */
+			//Write zeros from incomplete log record to end of file
 			long nWrites = (eof - endPosition)/logFactory.logBufferSize;
 			int rBytes = (int)((eof - endPosition) % logFactory.logBufferSize);
 			byte zeroBuf[]= new byte[logFactory.logBufferSize];
@@ -929,6 +930,7 @@ public class Scan implements StreamLogScan {
 			logFactory.syncFile(scan);
 			assert(scan.length() > endPosition) : "log end > log file length, bad scan";
 			scan.close();
+			*/
 		} // fuzzy end
 	}
 

@@ -4,9 +4,11 @@ import java.io.IOException;
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.impl.FileLogger;
 import com.neocoretechs.arieslogger.core.impl.LogToFile;
+import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 /*
 * Copyright (c) 1997,2002,2003,2014 NeoCoreTechs
@@ -37,11 +39,13 @@ import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
 * @author Groff
 */
 public final class RecoveryLog  {
+	private static boolean DEBUG = false;
 	private BlockDBIO blockIO;
-	FileLogger fl = null;
-	LogToFile ltf = null;
-	LogInstance firstTrans = null;
+	FileLogger[] fl = null;
+	LogToFile[] ltf = null;
+	LogInstance[] firstTrans = null;
 	BlockAccessIndex tblk = null;
+	
 	public BlockDBIO getBlockIO() {
 		return blockIO;
 	}
@@ -53,20 +57,26 @@ public final class RecoveryLog  {
 	public RecoveryLog(BlockDBIO tglobalio) throws IOException {
 		blockIO = tglobalio;
 		tblk = new BlockAccessIndex(blockIO); // for writeLog reserved
-		ltf = new LogToFile(blockIO);
-		fl = (FileLogger) ltf.getLogger();
-		ltf.boot();
+		ltf = new LogToFile[DBPhysicalConstants.DTABLESPACES];
+		fl = new FileLogger[DBPhysicalConstants.DTABLESPACES];
+		firstTrans = new LogInstance[DBPhysicalConstants.DTABLESPACES];
+		for(int tablespace = 0; tablespace < DBPhysicalConstants.DTABLESPACES; tablespace++) {
+			ltf[tablespace] = new LogToFile(blockIO, tablespace);
+			fl[tablespace] = (FileLogger) ltf[tablespace].getLogger();
+			ltf[tablespace].boot();
+		}
 	}
 	/**
 	 * Close the random access files and buffers for recovery log
 	 * @throws IOException
 	 */
 	public void stop( ) throws IOException {
-		ltf.stop();
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			ltf[i].stop();
 	}
 	
-	public LogToFile getLogToFile() {
-		return ltf;
+	public LogToFile getLogToFile(int tablespace) {
+		return ltf[tablespace];
 	}
 	/**
 	* Write log entry - uses current db. Set inlog true
@@ -76,16 +86,17 @@ public final class RecoveryLog  {
 	* @exception IOException if cannot open or write
 	*/
 	public void writeLog(BlockAccessIndex blk) throws IOException {
-		if( Props.DEBUG ) {
+		if( DEBUG ) {
 			System.out.println("RecoveryLog.writeLog "+blk.toString());
 		}
 		tblk.setTemplateBlockNumber(blk.getBlockNum());
 		blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
-		if( firstTrans == null )
-			firstTrans = fl.logAndDo(blockIO, undoBlk);
+		int tblsp = GlobalDBIO.getTablespace(blk.getBlockNum());
+		if( firstTrans[tblsp] == null )
+			firstTrans[tblsp] = fl[tblsp].logAndDo(blockIO, undoBlk);
 		else
-			fl.logAndDo(blockIO, undoBlk);
+			fl[tblsp].logAndDo(blockIO, undoBlk);
 		blk.getBlk().setInlog(true);
 		return;
 	}
@@ -95,9 +106,11 @@ public final class RecoveryLog  {
 	 * @throws IOException
 	 */
 	public void commit() throws IOException {
-		if(Props.DEBUG) System.out.println("Commit called");
-		firstTrans = null;
-		ltf.initializeLogFileSequence();
+		if(DEBUG) System.out.println("Commit called");
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			firstTrans[i] = null;
+			ltf[i].initializeLogFileSequence();
+		}
 	}
 	
 	/**
@@ -106,12 +119,14 @@ public final class RecoveryLog  {
 	 */
 	public void rollBack() throws IOException {
 		rollBackCache(); // synch main file buffs
-		blockIO.forceBufferClear(); // flush buffer pool
-		if( firstTrans != null)
-			fl.undo(blockIO, firstTrans, null);
-		else
-			if( Props.DEBUG) System.out.println("No initial transaction recorded for rollback");
-		firstTrans = null;
+		blockIO.forceBufferClear(); // flush buffer pools
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			if( firstTrans[i] != null)
+				fl[i].undo(blockIO, firstTrans[i], null);
+			else
+				if( Props.DEBUG) System.out.println("No initial transaction recorded for rollback in tablespace "+i+" in "+blockIO.getDBName());
+			firstTrans[i] = null;
+		}
 	}
 	
 	/**
@@ -120,19 +135,11 @@ public final class RecoveryLog  {
 	* @exception IOException If we can't replace blocks
 	*/
 	public void rollBackCache() throws IOException {
+		if(DEBUG )
+			System.out.println("RecoveryLog.rollbackCache invoked");
 		blockIO.getIOManager().Fforce(); // make sure we synch our main file buffers
 	}
 	
-	public void resetLog() throws IOException {
-		clear();
-	}
-	
-	/**
-	*/
-	private void clear() throws IOException {
-
-		if( Props.DEBUG ) System.out.println("RecoveryLog cleared");
-	}
 	/**
 	 * Take a checkpoint. Force buffer flush, then write checkpoint. A checkpoint demarcates
 	 * a recovery position in logs from which a recovery will roll forward. An undo from a checkpoint
@@ -142,8 +149,9 @@ public final class RecoveryLog  {
 	 */
 	public void checkpoint() throws IllegalAccessException, IOException {
 		blockIO.forceBufferWrite();
-		ltf.checkpoint(true);
-		if( Props.DEBUG ) System.out.println("Checkpoint taken");
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			ltf[i].checkpoint(true);
+		if( DEBUG ) System.out.println("Checkpoint taken");
 	}
 
 

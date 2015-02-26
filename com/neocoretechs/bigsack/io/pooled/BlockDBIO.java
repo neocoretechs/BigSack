@@ -67,7 +67,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 		// create the ARIES protocol recovery log
 		setUlog(new RecoveryLog(this));
 		// attempt recovery if needed
-		getUlog().getLogToFile().recover();
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			getUlog().getLogToFile(i).recover();
 	}
 	/**
 	 * Bring up IO without logging

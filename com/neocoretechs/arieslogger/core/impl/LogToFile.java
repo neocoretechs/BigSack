@@ -30,7 +30,6 @@ import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.ScanHandle;
 import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.session.SessionManager;
 
 import java.io.File; // Plain files are used for backups
 import java.io.FileOutputStream;
@@ -329,12 +328,16 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
     // Name of the BigSack database to log
     private String dbName;
 	private BlockDBIO blockIO;
+	private int tablespace;
    
 	/**
-		MT- not needed for constructor
-	*/
-	public LogToFile(BlockDBIO blockIO) {
+	 * Construt the instance with the IO manager and tablespace
+	 * @param blockIO
+	 * @param tablespace
+	 */
+	public LogToFile(BlockDBIO blockIO, int tablespace) {
 		this.blockIO = blockIO;
+		this.tablespace = tablespace;
 		this.dbName = (new File(blockIO.getDBName())).getName();
 		keepAllLogs = false; // indicates whether obsolete logs may be removed, true causes return from truncate immediately
 		if (MEASURE)
@@ -897,7 +900,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			/////////////////////////////////////////////////////
 		
 			// send the checkpoint record to the log
-			CheckpointOperation nextCheckpoint = new CheckpointOperation( redoLWM_long, undoLWM_long);	
+			CheckpointOperation nextCheckpoint = new CheckpointOperation( redoLWM_long, undoLWM_long, tablespace);	
 			FileLogger logger = (FileLogger)getLogger();
 			LogCounter checkpointInstance = (LogCounter)logger.logAndDo(blockIO, nextCheckpoint);
                 
@@ -998,9 +1001,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		{
 			log.seek(0);
 			int logfid = log.readInt();
-			int logVer = log.readInt();
+			int rtablespace = log.readInt();
 			long logNumber = log.readLong();
-			if (logfid != fid || logNumber != number)
+			if (logfid != fid || logNumber != number || rtablespace != tablespace)
             {
 				throw new IOException(dbName);
             }
@@ -1021,7 +1024,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	log file number.  The new log file does NOT have to be empty.  After initializing,
 	the file is synchronously written to disk.
 		int format id - 	the format Id of this log file
-		int obsolete log file version - not used
+		int tablespace - the tablespace this log operates on
 		long log file number - this number orders the log files in a
 						series to form the complete transaction log
 		long prevLogRecord - log instance of the previous log record, in the
@@ -1040,7 +1043,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		//}
 		newlog.seek(0);
 		newlog.writeInt(fid);
-		newlog.writeInt(0);
+		newlog.writeInt(tablespace);
 		newlog.writeLong(number);
 		newlog.writeLong(prevLogRecordEndInstance);
 		newlog.writeInt(0);
@@ -1336,7 +1339,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		DataOutputStream daos = new DataOutputStream(baos);
 
 		daos.writeInt(fid);
-		daos.writeInt(0);
+		daos.writeInt(tablespace);
 		daos.writeLong(value);
 
 		if (onDiskMajorVersion == 0) {
@@ -1351,9 +1354,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		daos.writeInt(onDiskMinorVersion);
 
 		// build number and the isBeta indication.
-		// (5 bytes from our first spare long)
 		daos.writeInt(0);
-
 		byte flags = 0;
 		if (onDiskBeta) 
             flags |= IS_BETA_FLAG;
@@ -1448,7 +1449,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		ByteArrayInputStream bais = null;
         DataInputStream dais = null;
 		logControlFile =  privRandomAccessFile(logControlFileName, "r");
-		boolean upgradeNeeded = false;
 		long value = LogCounter.INVALID_LOG_INSTANCE;
 		long onDiskChecksum = 0;
 		long controlFilelength = logControlFile.length();
@@ -1458,7 +1458,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		{
 			// The length of the file is less than the minimum in any version
             // It is possibly hosed , no point in reading data from this file
-            // skip reading checksum  control file is before 1.5
             if (controlFilelength < 16)
 				onDiskChecksum = -1;
 			else if (controlFilelength == 16)
@@ -1486,12 +1485,13 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	                throw new IOException( dbName );
 	            }
 	
-				int obsoleteVersion = dais.readInt();
+				int rtablespace = dais.readInt();
+				assert(tablespace == rtablespace) : "Log control file shows different tablespace than instantiated LogToFile:"+rtablespace+" iinstead of "+tablespace;
 				value = dais.readLong();
 	
 				if (DEBUG)
 				{
-	              System.out.println("LogToFile.readControlFile checkpoint instance = " + LogCounter.toDebugString(value));
+	              System.out.println("LogToFile.readControlFile checkpoint instance = " + LogCounter.toDebugString(value)+ " for tablespace "+rtablespace);
 				}	
 	
 				// an int for storing version and an int for storing checkpoint interval
@@ -1578,7 +1578,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	*/
 	private File getControlFileName() throws IOException
 	{
-		return new File( getLogDirectory()+ File.separator + dbName + "log.ctrl");
+		return new File( getLogDirectory()+ File.separator + dbName + tablespace + ".log.ctrl");
 	}
 
 	/**
@@ -1587,16 +1587,18 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	*/
 	private File getMirrorControlFileName() throws IOException
 	{
-		return new File( getLogDirectory() + File.separator + dbName + "logmirror.ctrl");
+		return new File( getLogDirectory() + File.separator + dbName + tablespace + ".logmirror.ctrl");
 	}
 
 	/**
-		Given a log file number, return its file name 
-		<P> MT- read only
-	*/
+	 * Given a file number, return the File composed of log dir + sep + dbname + tablespace + . + fileNumber + .log
+	 * @param filenumber
+	 * @return
+	 * @throws IOException
+	 */
 	File getLogFileName(long filenumber) throws IOException
 	{
-		return new File( getLogDirectory() + File.separator + dbName + filenumber + ".log");
+		return new File( getLogDirectory() + File.separator + dbName + tablespace + "." + filenumber + ".log");
 	}
 
 	/**
@@ -1815,7 +1817,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	
 		File logControlFileName = getControlFileName();
 		if( DEBUG ) {
-			System.out.println("LogToFile.boot control file "+logControlFileName+" for db "+dbName);
+			System.out.println("LogToFile.boot control file "+logControlFileName+" for db "+dbName+" tablespace "+tablespace);
 		}
 		File logFile;
 
@@ -1844,7 +1846,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				
 		if( DEBUG ) {
 					LogCounter cpi = new LogCounter(checkpointInstance);
-					System.out.println("boot "+dbName+" file#:"+logFileNumber+" found checkpoint instance:"+cpi);
+					System.out.println("boot "+dbName+" file#:"+logFileNumber+" tablespace "+tablespace+" found checkpoint instance:"+cpi);
 		}
 
 		// if log file is not there set createNewLog
@@ -1870,20 +1872,20 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		} else {
 			// log file exists
 			if( DEBUG ) {
-					System.out.println("Boot "+dbName+" file:"+logFileNumber+" for checkpoint "+LogCounter.toDebugString(checkpointInstance));
+					System.out.println("Boot "+dbName+" tablespace "+tablespace+" file:"+logFileNumber+" for checkpoint "+LogCounter.toDebugString(checkpointInstance));
 			}
 			// If format is bad, delete it and set createNewLog unless its the first file
 			// if we have a bad file 1 toss exception. verifyLogFormat closes file
 			headerLogInstance = verifyLogFormat(logFile, logFileNumber);
 						
 			// log file exist, need to run recovery
-			System.out.println("Recovery indicated for "+dbName+" file#:"+logFileNumber+" end position:"+endPosition);
+			System.out.println("Recovery indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition);
 			recoveryNeeded = true;
 		}
 
     	bootTimeLogFileNumber = logFileNumber;
 		if( DEBUG )
-			System.out.println("LogToFile boot complete for"+dbName+" log file#:"+logFileNumber+" recovery "+(recoveryNeeded ? "IS " : "NOT ")+ "needed");
+			System.out.println("LogToFile boot complete for"+dbName+" tablespace"+tablespace+" log file#:"+logFileNumber+" recovery "+(recoveryNeeded ? "IS " : "NOT ")+ "needed");
 	} // end of boot
 
 	/**
@@ -1995,7 +1997,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 	/* Delete the log files that might have been left around after failure.
 	 * This method should be invoked immediately after the checkpoint before truncation of logs completed.
-	 * see bug no: 3519 , for more details.
 	 */
 	private void deleteObsoleteLogfiles() throws IOException {
 		File logDir;
