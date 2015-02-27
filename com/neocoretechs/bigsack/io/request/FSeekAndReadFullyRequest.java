@@ -7,7 +7,7 @@ import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 
 public final class FSeekAndReadFullyRequest implements IoRequestInterface {
-
+	// ioUnit set before processing
 	private IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;

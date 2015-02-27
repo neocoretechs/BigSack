@@ -2,7 +2,6 @@ package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Enumeration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -15,10 +14,16 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * The class functions as the used block list for BlockAccessIndex elements that represent our
  * in memory pool of disk blocks. Its construction involves keeping track of the list of
  * free blocks as well to move items between the two. 
+ * There are one of these, per tablespace, per database, and act on a particular tablespace.
+ * The thread is designed to interact with latches and cyclic barriers bourne on the requests. 
  * Create the request with the appropriate instance of 'this' MappedBlockBuffer to call back
  * methods here. Then the completion latch for that request is counted down.
  * In the Master IO, the completion latch of the request is monitored for the proper number
- * of counts.
+ * of counts. A series of cyclic barriers, for specific requests, allow barrier synchronization
+ * via the requests to ensure a consistent state before return to the thread processing. It is
+ * assumed the cyclic barriers and countdown latches are stored outside of this class to be used
+ * to synch operations coming from here. A corollary is the cyclic barriers used to internally
+ * synchronize then its for reuseability.
  * @author jg
  *
  */
@@ -184,9 +189,9 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		while (elbn.hasMoreElements()) {
 				BlockAccessIndex ebaii = (elbn.nextElement());
 				if( ebaii.getAccesses() > 0 )
-					System.out.println("****COMMIT BUFFER WARNING access "+ebaii.getAccesses()+" for buffer "+ebaii);
+					throw new IOException("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
 				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
-					System.out.println("****COMMIT BUFFER WARNING buffer block in core and log simultaneously! "+ebaii);
+					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
 				if (ebaii.getAccesses() == 0) {
 					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 						globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
@@ -206,10 +211,11 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		while (elbn.hasMoreElements()) {
 					BlockAccessIndex ebaii = (elbn.nextElement());
 					if (ebaii.getAccesses() == 0 && ebaii.getBlk().isIncore() ) {
-						if( DEBUG)System.out.println("fully writing "+ebaii.getBlockNum()+" "+ebaii.getBlk());
-							globalIO.getIOManager().FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
-							globalIO.getIOManager().Fforce();
-							ebaii.getBlk().setIncore(false);
+						if(DEBUG)
+							System.out.println("fully writing "+ebaii.getBlockNum()+" "+ebaii.getBlk());
+						globalIO.getIOManager().FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
+						globalIO.getIOManager().Fforce();
+						ebaii.getBlk().setIncore(false);
 					}
 		}
 	}
@@ -261,6 +267,9 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			}
 			try {
 				ior.setTablespace(tablespace);
+				if( DEBUG ) {
+					System.out.println("MappedBlockBuffer.run processing request "+ior);
+				}
 				ior.process();
 			} catch (IOException e) {
 				System.out.println("MappedBlockBuffer exception processing request "+ior+" "+e);

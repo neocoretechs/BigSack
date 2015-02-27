@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.io.request.iomanager;
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
@@ -63,6 +64,13 @@ public final class FindOrAddBlockAccessRequest implements CompletionLatchInterfa
 	@Override
 	public void setObjectReturn(Object o) {
 		returnObject = (BlockAccessIndex) o;
+	}
+	@Override
+	public CyclicBarrier getCyclicBarrier() {
+		return null;
+	}
+	@Override
+	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
 
 }

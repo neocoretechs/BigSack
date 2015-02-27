@@ -3,6 +3,7 @@ package com.neocoretechs.bigsack.io.request.cluster;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.cluster.NodeBlockBuffer;
@@ -104,6 +105,13 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 	@Override
 	public void setObjectReturn(Object o) {
 		dblk = (Datablock) o;	
+	}
+	@Override
+	public CyclicBarrier getCyclicBarrier() {
+		return null;
+	}
+	@Override
+	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
 
 }

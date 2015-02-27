@@ -3,10 +3,9 @@ package com.neocoretechs.bigsack.io.request.cluster;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 
-import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
 
 /**
  * Pump an fsize request down to the proper tablespace node.
@@ -81,6 +80,13 @@ public final class FSizeRequest extends AbstractClusterWork implements Completio
 	@Override
 	public void setObjectReturn(Object o) {
 		fSize = (Long) o;	
+	}
+	@Override
+	public CyclicBarrier getCyclicBarrier() {
+		return null;
+	}
+	@Override
+	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
 
 }

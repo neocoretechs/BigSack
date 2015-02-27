@@ -3,6 +3,7 @@ package com.neocoretechs.bigsack.io.request.cluster;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
@@ -108,6 +109,13 @@ public final class GetNextFreeBlockRequest extends AbstractClusterWork implement
 	@Override
 	public void setObjectReturn(Object o) {
 		nextFreeBlock = (Long) o;	
+	}
+	@Override
+	public CyclicBarrier getCyclicBarrier() {
+		return null;
+	}
+	@Override
+	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
 
 }

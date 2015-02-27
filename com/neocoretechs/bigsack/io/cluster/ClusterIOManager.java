@@ -51,7 +51,11 @@ public final class ClusterIOManager implements IoManagerInterface {
 	private static final boolean DEBUG = false;
 	private static int currentPort = 10000; // starting UDP port, increments as assigned
 	private static int messageSeq = 0; // monotonically increasing request id
-	final CyclicBarrier barrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	// barrier synch for specific functions, cyclic (reusable)
+	final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	final CyclicBarrier nextBlocksBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	/**
 	 * Instantiate our master node array per database that communicate with our worker nodes
@@ -364,18 +368,16 @@ public final class ClusterIOManager implements IoManagerInterface {
 	@Override
 	public void forceBufferClear() {
 		CountDownLatch cdl = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
-		synchronized(blockBuffer) {
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				ForceBufferClearRequest fbcr = new ForceBufferClearRequest(blockBuffer[i], cdl);
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				ForceBufferClearRequest fbcr = new ForceBufferClearRequest(blockBuffer[i], cdl, forceBarrierSynch);
 				blockBuffer[i].queueRequest(fbcr);
 				//blockBuffer[i].forceBufferClear();
-			}
-			try {
+		}
+		try {
 				cdl.await();// wait for completion
-			} catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 				// executor requested thread shutdown
 				return;
-			}
 		}
 	}
 
@@ -452,7 +454,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			//blockBuffer[i].commitBufferFlush();
-			CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockBuffer[i], cdl);
+			CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockBuffer[i], cdl, commitBarrierSynch);
 			blockBuffer[i].queueRequest(cbfr);
 		}
 		try {
@@ -467,7 +469,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			//blockBuffer[i].directBufferWrite();
-			DirectBufferWriteRequest dbwr = new DirectBufferWriteRequest(blockBuffer[i], cdl);
+			DirectBufferWriteRequest dbwr = new DirectBufferWriteRequest(blockBuffer[i], cdl, directWriteBarrierSynch);
 			blockBuffer[i].queueRequest(dbwr);
 		}
 		try {

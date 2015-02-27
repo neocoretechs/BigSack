@@ -438,7 +438,6 @@ public final class FileLogger implements Logger {
 
 		int scanCount    = 0;
         int redoCount    = 0;
-        int prepareCount = 0; 
         int clrCount     = 0;
         int btranCount   = 0;
         int etranCount   = 0;
@@ -568,8 +567,8 @@ public final class FileLogger implements Logger {
 			}
 		}
 
-		if (DEBUG)
-        {
+		//if (DEBUG)
+        //{
 			assert(
                     LogCounter.getLogFileNumber(instance) <
                          LogCounter.getLogFileNumber(logEnd) ||
@@ -582,14 +581,13 @@ public final class FileLogger implements Logger {
                     "End of recovery redo\n" + 
                     "Scanned = " + scanCount + " log records" +
                     ", redid = " + redoCount +
-                    " ( clr = " + clrCount + " )" +
-                    " begintran = " + btranCount +
-                    " endtran = " + etranCount + 
-                    " preparetran = " + prepareCount + 
+                    " ( compensation = " + clrCount + " )" +
+                    " incomplete/prepared = " + btranCount +
+                    " complete = " + etranCount + 
                     "\n log ends at " + LogCounter.toDebugString(logEnd) +
                     "\n----------------------------------------------------\n");
             
-        }
+        //}
 
         // logEnd is the last good log record position in the log
 		return logEnd;			

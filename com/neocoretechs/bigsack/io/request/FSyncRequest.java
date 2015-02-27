@@ -11,8 +11,8 @@ import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**
  * This is an intent parallel computation component of a tablespace wide request.
- * We are using a CyclicBarrier set up with the number of tablepsaces and after each thread
- * cdoes and fsync it will await the barrier synch. 
+ * We are using a CyclicBarrier set up with the number of tablespaces and after each thread
+ * does an fsync it will await the barrier synch. 
  * Once released from barrier synch a countdown latch is decreased which activates the multi
  * threading IO manager countdown latch waiter when count reaches 0, thereby releasing the thread
  * to proceed.
@@ -22,7 +22,6 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  */
 public final class FSyncRequest implements IoRequestInterface {
 	private IoInterface ioUnit;
-	private Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private CyclicBarrier barrierSynch;
 	private int tablespace;
 	private CountDownLatch barrierCount;
