@@ -20,3 +20,10 @@
 /ForceBufferClearRequest.class
 /FreeupBlockRequest.class
 /GetUsedBlockRequest.class
+/AddBlockAccessNoReadRequest.class
+/CommitBufferFlushRequest.class
+/DirectBufferWriteRequest.class
+/FindOrAddBlockAccessRequest.class
+/ForceBufferClearRequest.class
+/FreeupBlockRequest.class
+/GetUsedBlockRequest.class

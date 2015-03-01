@@ -72,7 +72,8 @@ public final class ObjectDBIO extends OffsetDBIO {
 			Od = s.readObject();
 			s.close();
 			*/
-			DBSeekableByteChannel dbByteChannel = getDBByteChannel();
+			int tblsp = GlobalDBIO.getTablespace(iloc);
+			DBSeekableByteChannel dbByteChannel = getDBByteChannel(tblsp);
 			dbByteChannel.setBlockNumber(iloc);
 			Od = GlobalDBIO.deserializeObject(dbByteChannel);
 		} catch (IOException ioe) {
@@ -106,7 +107,8 @@ public final class ObjectDBIO extends OffsetDBIO {
 			Od = s.readObject();
 			s.close();
 			*/
-			DBSeekableByteChannel dbByteChannel = getDBByteChannel();
+			int tblsp = GlobalDBIO.getTablespace(iloc.getBlock());
+			DBSeekableByteChannel dbByteChannel = getDBByteChannel(tblsp);
 			dbByteChannel.setBlockNumber(iloc.getBlock());
 			Od = GlobalDBIO.deserializeObject(dbByteChannel);
 		} catch (IOException ioe) {

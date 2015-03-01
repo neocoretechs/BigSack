@@ -20,7 +20,7 @@ public final class DBSeekableByteChannel implements SeekableByteChannel {
 	public DBSeekableByteChannel(OffsetDBIOInterface sdbio) {
 		this.sdbio = sdbio;
 	}
-	public void setBlockNumber(long bnum) {
+	public synchronized void setBlockNumber(long bnum) {
 		this.blockNum = bnum;
 	}
 	@Override
@@ -33,40 +33,46 @@ public final class DBSeekableByteChannel implements SeekableByteChannel {
 	}
 
 	@Override
-	public long position() throws IOException {
+	public synchronized long position() throws IOException {
 		return position;
 	}
 
 	@Override
-	public SeekableByteChannel position(long arg0) throws IOException {
-		sdbio.objseek(blockNum);
-		position = (int) arg0;
-		if( position > 0 )
-			sdbio.seek_fwd(position);
+	public synchronized SeekableByteChannel position(long arg0) throws IOException {
+		synchronized(sdbio) {
+			sdbio.objseek(blockNum);
+			position = (int) arg0;
+			if( position > 0 )
+				sdbio.seek_fwd(position);
+		}
 		return this;
 	}
 
 	@Override
-	public int read(ByteBuffer arg0) throws IOException {
-		int size = sdbio.readn(arg0, arg0.limit());
-		position += size;
-		return (size == 0 ? -1: size);
+	public synchronized int read(ByteBuffer arg0) throws IOException {
+		synchronized(sdbio) {
+			int size = sdbio.readn(arg0, arg0.limit());
+			position += size;
+			return (size == 0 ? -1: size);
+		}
 	}
 
 	@Override
-	public long size() throws IOException {
+	public synchronized long size() throws IOException {
 		// TODO Auto-generated method stub
 		return 0;
 	}
 
 	@Override
-	public SeekableByteChannel truncate(long arg0) throws IOException {
+	public synchronized SeekableByteChannel truncate(long arg0) throws IOException {
 		return this;
 	}
 
 	@Override
-	public int write(ByteBuffer arg0) throws IOException {
+	public synchronized int write(ByteBuffer arg0) throws IOException {
+		synchronized(sdbio) {
 		return sdbio.writen(arg0, arg0.limit());
+		}
 	}
 
 }

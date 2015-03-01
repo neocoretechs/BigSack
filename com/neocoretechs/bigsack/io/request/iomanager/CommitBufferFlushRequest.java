@@ -18,7 +18,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  *
  */
 public final class CommitBufferFlushRequest implements CompletionLatchInterface {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private int tablespace;
 	private CyclicBarrier barrierSynch;
 	private CountDownLatch barrierCount;

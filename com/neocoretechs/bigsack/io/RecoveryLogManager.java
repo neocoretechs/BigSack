@@ -171,6 +171,7 @@ public final class RecoveryLogManager  {
 	 * Take a checkpoint. Force buffer flush, then write checkpoint. A checkpoint demarcates
 	 * a recovery position in logs from which a recovery will roll forward. An undo from a checkpoint
 	 * will restore the raw store to its state at that checkpoint. Use with caution and only with wise counsel. 
+	 * TODO Make it a request? Or is a checkpoint imperative?
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */

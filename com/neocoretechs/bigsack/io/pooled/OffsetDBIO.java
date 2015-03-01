@@ -1,35 +1,36 @@
 package com.neocoretechs.bigsack.io.pooled;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
+//import java.io.DataInputStream;
+//import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.channel.DBSeekableByteChannel;
-import com.neocoretechs.bigsack.io.stream.DBInputStream;
-import com.neocoretechs.bigsack.io.stream.DBOutputStream;
+//import com.neocoretechs.bigsack.io.stream.DBInputStream;
+//import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	private static final boolean DEBUG = false;
 	// DataStream for DB I/O
 	//private DataInputStream DBInput;
 	//private DataOutputStream DBOutput;
-	private DBSeekableByteChannel dbByteChannel;
+	private DBSeekableByteChannel[] dbByteChannel = new DBSeekableByteChannel[DBPhysicalConstants.DTABLESPACES];
 	
 	public OffsetDBIO(String objname, String remoteObjName, boolean create, long transId) throws IOException {
 		super(objname, remoteObjName, create, transId);
 		//DBInput = new DataInputStream(new DBInputStream(this));
 		//DBOutput = new DataOutputStream(new DBOutputStream(this));
-		dbByteChannel = new DBSeekableByteChannel(this);
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			dbByteChannel[i] = new DBSeekableByteChannel(this);
 	}
 	
 	protected OffsetDBIO(String dbname, String remoteDbName) throws IOException {
 		super(dbname, remoteDbName);
 		//DBInput = new DataInputStream(new DBInputStream(this));
 		//DBOutput = new DataOutputStream(new DBOutputStream(this));
-		dbByteChannel = new DBSeekableByteChannel(this);
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			dbByteChannel[i] = new DBSeekableByteChannel(this);
 	}
 
 	//public synchronized DataInputStream getDBInput() {
@@ -38,7 +39,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 	//public synchronized DataOutputStream getDBOutput() {
 	//	return DBOutput;
 	//}
-	public DBSeekableByteChannel getDBByteChannel() { return dbByteChannel; }
+	public DBSeekableByteChannel getDBByteChannel(int tblsp) { return dbByteChannel[tblsp]; }
 
 	/**
 	* seek_fwd - long seek forward from current spot

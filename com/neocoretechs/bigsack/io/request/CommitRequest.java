@@ -24,7 +24,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
  *
  */
 public final class CommitRequest implements IoRequestInterface {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private MappedBlockBuffer blockManager;
 	private CyclicBarrier barrierSynch;
 	private int tablespace;
