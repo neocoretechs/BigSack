@@ -43,11 +43,14 @@ import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.CopyOption;
+import java.nio.file.DirectoryIteratorException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.zip.CRC32;
@@ -149,6 +152,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 {
 	private static final boolean DEBUG = false;
 	private static final boolean DUMPLOG = false;
+	private static final boolean MEASURE = true; // take stats of log writes etc
 	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
 	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
 	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
@@ -174,7 +178,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	// 4 bytes of length at the beginning, 8 bytes of log instance,4 bytes ending length for backwards scan
 
 	public static final int LOG_RECORD_OVERHEAD = 16;
-	private static final boolean MEASURE = false;
 
 	protected static final String LOG_SYNC_STATISTICS = "LogSyncStatistics";
 
@@ -1482,11 +1485,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 				if (dais.readInt() != fid)
 	            {
-	                throw new IOException( dbName );
+	                throw new IOException( dbName +" tablespace "+tablespace+" corrupted, fails verification read for "+fid);
 	            }
 	
 				int rtablespace = dais.readInt();
-				assert(tablespace == rtablespace) : "Log control file shows different tablespace than instantiated LogToFile:"+rtablespace+" iinstead of "+tablespace;
+				assert(tablespace == rtablespace) : "Log control file for "+dbName+" shows different tablespace than instantiated LogToFile:"+rtablespace+" iinstead of "+tablespace;
 				value = dais.readLong();
 	
 				if (DEBUG)
@@ -1805,7 +1808,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 		if (DEBUG) {
 			assert(fid != -1);//, "invalid log format Id");
-			System.out.println("RecoveryLog boot starting");
+			System.out.println("RecoveryLogManager boot starting");
 		}
 		
 		// try to access the log
@@ -1965,34 +1968,38 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	}
 	
 	/**
-	*    Stop the log factory
-	*	<P> MT- caller provide synchronization
+	* Stop the log factory. Close the LogAccessFile. If not corrupt, not log archived, and not flagged to keep all,
+	* remove obsolete log files
 	* @throws IOException 
 	*/
 	public synchronized void stop() throws IOException {
 		// stop our checkpoint 
 		if (logOut != null) {
 				try {
-					logOut.close();
+					logOut.close(); // closes actual file
 				}
 				catch (IOException ioe) {}
 				logOut = null;
 		}
-		if (DEBUG) {
-			System.out.println("number of waits = " +
+		//if (DEBUG) {
+			System.out.println("LogToFile.stop invoked for db "+dbName+" tablespace "+tablespace+". Number of waits = " +
 						   mon_numLogFlushWaits +
-						   "\nnumber of times flush called = " +
+						   ". Number of times flush called = " +
 						   mon_flushCalls +
-						   "\nnumber of sync called = " +
+						   "\nNumber of synch calls = " +
 						   mon_syncCalls +
-						   "\ntotal number of bytes written to log = " +
+						   " Total number of log bytes written = " +
 						   LogAccessFile.mon_numBytesToLog +
-						   "\ntotal number of writes to log file = " +
-						   LogAccessFile.mon_numWritesToLog);
-		}	
+						   " Total number of log writes = " +
+						   LogAccessFile.mon_numWritesToLog + 
+						   "\nCorrupt:"+corrupt+". Log Archive:"+logArchived()+". Keep all logs:"+keepAllLogs);
+			System.out.println();
+		//}	
 		// delete obsolete log files,left around by earlier crashes
-		if(corrupt == null && !logArchived() && !keepAllLogs)	
+		// if we have no corruption, are not in log archive mode, and the keep all logs flag is false
+		if(corrupt == null && !logArchived() && !keepAllLogs) {
 			deleteObsoleteLogfiles();
+		}
 	}
 
 	/* Delete the log files that might have been left around after failure.
@@ -2000,11 +2007,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 */
 	private void deleteObsoleteLogfiles() throws IOException {
 		File logDir;
-		//find the first  log file number that is  useful
+		//find the first log file number that is  useful
 		long firstLogNeeded = getFirstLogNeeded(currentCheckpoint);
         if (firstLogNeeded == -1)
 			return;
-
         // when  backup is in progress, log files that are yet to
         // be copied to the backup should not be deleted,  even 
         // if they are not required  for crash recovery.
@@ -2018,9 +2024,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             if (logFileNeededForBackup < firstLogNeeded)
                 firstLogNeeded = logFileNeededForBackup;
         }
-
 		logDir = getLogDirectory();
-			
+		/*	
 		String[] logfiles = privList(logDir);
 		if (logfiles != null)
 		{
@@ -2052,6 +2057,33 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				}
 			}
 		}
+		*/
+		List<Path> logfiles = listLogFiles(logDir);
+		File uselessLogFile = null;
+		long fileNumber;
+		for(int i=0 ; i < logfiles.size(); i++) {
+			// delete the log files that are not needed any more
+			//File flog = new File(logfiles[i]);
+			//if( DEBUG )
+				System.out.println("LogToFile.deleteObsoleteLogfiles examining log file: "+logfiles.get(i)+" for tablespace:"+tablespace+" for "+dbName+" for fileset size:"+logfiles.size());
+			String fileIndex = "";
+			for(int k = (logfiles.get(i).toString().length()-5); k > 0; k--) {
+					if( logfiles.get(i).toString().charAt(k) < '0' || logfiles.get(i).toString().charAt(k) > '9')
+						break;
+					fileIndex = logfiles.get(i).toString().charAt(k)+fileIndex;
+			}
+			fileNumber = Long.parseLong(fileIndex);
+			if(fileNumber < firstLogNeeded ) {
+					uselessLogFile = new File(logfiles.get(i).toString());
+					if (privDelete(uselessLogFile)) {
+						if (DEBUG) {
+							System.out.println("LogToFile.deleteObsoleteLogFiles truncating obsolete log file " + uselessLogFile.getPath());
+						}
+					} else {
+							System.out.println("LogToFile.deleteObsoleteLogFiles Fail to truncate obsolete log file " + uselessLogFile.getPath());
+					}
+			}
+		}
 	}
 	
 	/* Delete the log files that might have been left around after commit.
@@ -2059,9 +2091,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * our task here is to delete those files from 2 onward if they exist.
 	 */
 	public synchronized void deleteObsoleteLogfilesOnCommit() throws IOException {
-		File logDir;
-		logDir = getLogDirectory();
-			
+		File logDir = getLogDirectory();
+		/*	
 		String[] logfiles = privList(logDir);
 		if (logfiles != null)
 		{
@@ -2101,32 +2132,61 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				}
 			}
 		}
+		*/
+		List<Path> logfiles = listLogFiles(logDir);
+		File uselessLogFile = null;
+		long fileNumber;
+		for(int i=0 ; i < logfiles.size(); i++)
+		{
+			// delete the log files that are not needed any more
+			//File flog = new File(logfiles[i]);
+			//if( DEBUG )
+				System.out.println("LogToFile.deleteObsoleteLogFilesOnCommit Examining log file: "+logfiles.get(i)+" for "+dbName+" tablespace "+tablespace);
+	
+				String fileIndex = "";
+				for(int k = (logfiles.get(i).toString().length()-5); k > 0; k--) {
+					if( logfiles.get(i).toString().charAt(k) < '0' || logfiles.get(i).toString().charAt(k) > '9')
+						break;
+					fileIndex = logfiles.get(i).toString().charAt(k)+fileIndex;
+				}
+				fileNumber = Long.parseLong(fileIndex);
+				if( fileNumber > 1 ) {
+					uselessLogFile = new File(logfiles.get(i).toString());
+					if (privDelete(uselessLogFile))
+					{
+						if (DEBUG) {
+							System.out.println("LogToFile.deleteObsoleteLogfilesOnCommit Deleted obsolete log file " + uselessLogFile.getPath());
+						}
+					}
+					else
+					{
+						// if we cant delete, throw exception
+						// if we try something like truncate to header + 0 for EOF then later
+						// we regret it because we have no previous instance linkage to re-init our file
+						throw new IOException("Cannot delete obsolete log file "+uselessLogFile+", try manual deletion and continue");
+					}
+				}
+		}
 	}
-	/*
-	 * Serviceable methods
+	/**
+	 * Extract specific database and tablespace logs for this instance
+	 * @param logDir
+	 * @return
+	 * @throws IOException
 	 */
-
-	public boolean serviceASAP()
-	{
-		return false;
+	private List<Path> listLogFiles(File logDir) throws IOException {
+		Path path = /*getLogDirectory()*/logDir.toPath();
+	    List<Path> result = new ArrayList<>();
+	    try (DirectoryStream<Path> stream = Files.newDirectoryStream(path, dbName+tablespace+".*.log")) {
+	           for (Path entry: stream) {
+	               result.add(entry);
+	           }
+	       } catch (DirectoryIteratorException ex) {
+	           // I/O error encounted during the iteration, the cause is an IOException
+	           throw ex.getCause();
+	       }
+	       return result;
 	}
-
-	// @return true, if this work needs to be done on a user thread immediately
-	public boolean serviceImmediately()
-	{
-		return false;
-	}	
-
-	/*
-	public void getLogFactoryProperties() {
-		 log switch interval 
-		logSwitchInterval = LOG_SWITCH_INTERVAL_MAX;
-		checkpointInterval = CHECKPOINT_INTERVAL_MAX;
-	}
-	*/
-	/*
-	** Implementation specific methods
-	*/
 
 	/**
 	* This is the primary workhorse method to insert log records.
@@ -2703,7 +2763,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 			if (++test_logWritten > test_numRecordToFillLog)
 				throw new IOException("TestLogFull " + test_numRecordToFillLog +
-									  " written " + test_logWritten);
+									  " written " + test_logWritten+" for db "+dbName+" tablespace "+tablespace);
 
 		}	
 	}

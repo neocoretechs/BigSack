@@ -202,3 +202,4 @@
 /IoResponse.class
 /IsNewRequest.class
 /CommitRequest.class
+/RemoteCommitRequest.class

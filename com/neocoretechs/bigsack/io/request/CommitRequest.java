@@ -1,15 +1,11 @@
 package com.neocoretechs.bigsack.io.request;
 
 import java.io.IOException;
-import java.io.Serializable;
-import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
-import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.IoManagerInterface;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
+import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
 /**
@@ -21,56 +17,36 @@ import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
  * does a commit it will await the barrier synch. 
  * Once released from barrier synch a countdown latch is decreased which activates the multi
  * threading IO manager countdown latch waiter when count reaches 0, thereby releasing the thread
- * to proceed.
+ * to proceed. The commit request proxies a request to the buffer pools to flush. Instead of waiting and
+ * queuing to an empty queue we just queue a request to the end to serialize it.
  * Copyright (C) NeoCoreTechs 2014
  * @author jg
  *
  */
 public final class CommitRequest implements IoRequestInterface {
 	private static boolean DEBUG = true;
-	private MappedBlockBuffer ioManager;
+	private MappedBlockBuffer blockManager;
 	private CyclicBarrier barrierSynch;
 	private int tablespace;
 	private CountDownLatch barrierCount;
-	public CommitRequest(MappedBlockBuffer blockBuffer, CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
-		this.ioManager= blockBuffer;
+	private RecoveryLogManager recoveryLog;
+	private IoInterface ioManager;
+	public CommitRequest(MappedBlockBuffer blockBuffer, RecoveryLogManager rlog, CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
+		this.blockManager = blockBuffer;
+		this.recoveryLog = rlog;
 		this.barrierSynch = barrierSynch;
 		this.barrierCount = barrierCount;
 	}
 	@Override
 	public synchronized void process() throws IOException {
+		CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
+		cbfr.setIoInterface(ioManager);
+		blockManager.queueRequest(cbfr);	
 		if( DEBUG )
-			System.out.println("CommitRequest processing tablespace "+tablespace+ " latches "+barrierCount+
-					" barrier waiters:"+barrierSynch.getNumberWaiting()+
-					" barrier parties:"+barrierSynch.getParties()+
-					" barier broken:"+barrierSynch.isBroken());
-		Commit();
-		barrierCount.countDown();
-	}
-	/**
-	 * Queue a request that invokes ioManager.commitBufferFlush() when the queue has finished, as its queued last presumably
-	 * @throws IOException
-	 */
-	private void Commit() throws IOException {
-		CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(ioManager, barrierCount, barrierSynch);
-		ioManager.queueRequest(cbfr);
-		
-		if( DEBUG )
-			System.out.println("CommitRequest flushed buffer, awaiting barrier synch tablespace "+tablespace+ " latches "+barrierCount+
+			System.out.println("CommitRequest queued flushed buffer, tablespace "+tablespace+ " latches "+barrierCount+
 				" barrier waiters:"+barrierSynch.getNumberWaiting()+
 				" barrier parties:"+barrierSynch.getParties()+
 				" barier broken:"+barrierSynch.isBroken());
-		// wait at the barrier until all other tablespaces arrive at their result
-		try {
-			barrierSynch.await();
-		} catch (InterruptedException | BrokenBarrierException e) {
-			// executor shutdown on wait
-			if( DEBUG )
-				System.out.println("CommitRequest barrier synch await broken with "+e);
-		}
-		if( DEBUG )
-			System.out.println("CommitRequest flushed buffer, exiting");
-		// return and call countdown on latch
 	}
 	@Override
 	public synchronized long getLongReturn() {
@@ -87,6 +63,7 @@ public final class CommitRequest implements IoRequestInterface {
 	 */
 	@Override
 	public synchronized void setIoInterface(IoInterface ioi) {
+		ioManager = ioi;
 	}
 	
 	@Override

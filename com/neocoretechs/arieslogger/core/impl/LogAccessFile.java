@@ -161,7 +161,7 @@ public class LogAccessFile
         int lenCs = logChecksum.updateChecksum();
         // write checksum, its ready to go
         writeToLog(logChecksum.checksumBuffer.array(), 0, lenCs);
-        syncLogAccessFile();
+        //syncLogAccessFile();
         // write currentBuffer to log immediately after checksum record
         int totalLogRecordLength = length + LOG_RECORD_FIXED_OVERHEAD_SIZE;
         // add another log overhead for checksum log record

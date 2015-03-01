@@ -8,6 +8,7 @@ import java.nio.channels.SeekableByteChannel;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.channel.DBSeekableByteChannel;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
+import com.neocoretechs.bigsack.session.BigSackSession;
 
 public final class ObjectDBIO extends OffsetDBIO {
 	private static boolean DEBUG = false;
@@ -134,5 +135,6 @@ public final class ObjectDBIO extends OffsetDBIO {
 	public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
 		this.customClassLoader = customClassLoader;
 	}
+	
 
 }

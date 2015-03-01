@@ -2,55 +2,70 @@ package com.neocoretechs.bigsack.io.request.cluster;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
+import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.RecoveryLogManager;
+import com.neocoretechs.bigsack.io.IoManagerInterface;
+import com.neocoretechs.bigsack.io.cluster.NodeBlockBuffer;
+import com.neocoretechs.bigsack.io.cluster.NodeBlockBufferInterface;
+import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
 /**
- * A special case of request the does not propagate outward to workers but instead is
- * used to serialize commit/rollback etc. on the request queue. In lieu of waiting for a synchronization
+ * Request is passed to workers and commits blocks on nodes. In lieu of waiting for a synchronization
  * or waiting for the queue to empty, queue this type of special request to assure completion.
  * This is an intent parallel computation component of a tablespace wide request.
  * We are using a CyclicBarrier set up with the number of tablespaces and after each thread
  * does a commit it will await the barrier synch. 
  * Once released from barrier synch a countdown latch is decreased which activates the multi
  * threading IO manager countdown latch waiter when count reaches 0, thereby releasing the thread
- * to proceed. The commit request is a proxy to send the commit request to the block pools. Rather than
- * wait for a semaphore or something we are queuing a request to run when appropriate to achieve 
- * serial computation
+ * to proceed.
+ * The IoInterface is set before processing the request on the remote node.
+ * the Iointerface is implemented by TCPWorker or UDPWorker which further extends IoWorker
+ * to include the NodeBlockBufferInterface (and distributeWorkerResponseInterface) 
+ * which allows access to the NodeBlockBuffer.
  * Copyright (C) NeoCoreTechs 2014
  * @author jg
  *
  */
-public final class CommitRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
+public final class RemoteCommitRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
 	private static final long serialVersionUID = 1L;
-	private MappedBlockBuffer blockManager;
 	private CyclicBarrier barrierSynch;
 	private int tablespace;
 	private CountDownLatch barrierCount;
-	private RecoveryLogManager recoveryLog;
-	private IoInterface ioManager;
+	private IoInterface ioUnit;
+	private NodeBlockBuffer blockBuffer;
 	/**
 	 * We re use the barriers, they are cyclic, so they are stored as fields
-	 * in the blockManager and passed here
+	 * in the ioManager and passed here
 	 * @param blockBuffer
 	 * @param barrierSynch
 	 * @param barrierCount
 	 */
-	public CommitRequest(MappedBlockBuffer blockBuffer, RecoveryLogManager rlog, CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
-		this.blockManager = blockBuffer;
-		this.recoveryLog = rlog;
+	public RemoteCommitRequest(CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
 		this.barrierSynch = barrierSynch;
 		this.barrierCount = barrierCount;
 	}
 	@Override
 	public synchronized void process() throws IOException {
-		CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
-		cbfr.setIoInterface(ioManager);
-		blockManager.queueRequest(cbfr);
+		Commit();
+		barrierCount.countDown();
+	}
+	/**
+	 * Wair for the barrier synch to arrive then flip countdown
+	 * @throws IOException
+	 */
+	private void Commit() throws IOException {
+		blockBuffer.force();
+		// wait at the barrier until all other tablespaces arrive at their result
+		try {
+			barrierSynch.await();
+		} catch (InterruptedException | BrokenBarrierException e) {
+			// executor shutdown on wait
+		}
 	}
 	@Override
 	public synchronized long getLongReturn() {
@@ -67,7 +82,8 @@ public final class CommitRequest extends AbstractClusterWork implements Completi
 	 */
 	@Override
 	public synchronized void setIoInterface(IoInterface ioi) {
-		ioManager = ioi;
+		this.ioUnit = ioi;	
+		blockBuffer = ((NodeBlockBufferInterface)ioUnit).getBlockBuffer();
 	}
 	
 	@Override

@@ -3,8 +3,10 @@ package com.neocoretechs.bigsack.io.pooled;
 import java.io.IOException;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.Optr;
-import com.neocoretechs.bigsack.io.RecoveryLog;
+import com.neocoretechs.bigsack.io.RecoveryLogManager;
+import com.neocoretechs.bigsack.session.BigSackSession;
 
 /*
 * Copyright (c) 2003,2014 NeoCoreTechs
@@ -32,7 +34,7 @@ import com.neocoretechs.bigsack.io.RecoveryLog;
 /**
 * Session-level IO used by GlobalDBIO
 * This module is where the recovery logs are initialized because the logs operate at the block (database page) level.
-* When this module is instantiated the RecoveryLog is assigned to 'ulog' and a roll forward recovery
+* When this module is instantiated the RecoveryLogManager is assigned to 'ulog' and a roll forward recovery
 * is started. If there are any records in the log file they will scanned for low water marks and
 * checkpoints etc and the determination is made based on the type of log record encountered.
 * Our log granularity is the page level. We store DB blocks and their original mirrors to use in
@@ -65,7 +67,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	public BlockDBIO(String objname, String remoteDbName, boolean create, long transId) throws IOException {
 		super(objname, remoteDbName, create, transId);
 		// create the ARIES protocol recovery log
-		setUlog(new RecoveryLog(this));
+		setUlog(new RecoveryLogManager(this));
 		// attempt recovery if needed
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 			getUlog().getLogToFile(i).recover();
@@ -78,7 +80,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	protected BlockDBIO(String dbname, String remoteDbName) throws IOException {
 		super(dbname, remoteDbName, false, -1);
 		// create the ARIES protocol recovery log
-		setUlog(new RecoveryLog(this));
+		setUlog(new RecoveryLogManager(this));
 	}
 	/**
 	 * Get the data block portion of our block access index
@@ -110,7 +112,6 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	public synchronized void deallocOutstanding() throws IOException {
 		if (lbai != null) {
 			dealloc(lbai.getBlockNum());
-			//globalIO.Fforce();
 			lbai = null;
 		}		
 	}
@@ -120,9 +121,9 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 * @throws IOException
 	 */
 	public synchronized void deallocOutstandingCommit() throws IOException {
+		System.out.println("BlockDBIO.deallocOutstandingCommit invoked.");
 		deallocOutstanding();
-		commitBufferFlush();
-		getUlog().commit();
+		commitBufferFlush(); // calls iomanager
 	}
 	/**
 	 * Deallocate the outstanding block and call rollback on the recovery log
@@ -132,6 +133,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 		deallocOutstanding();
 		rollbackBufferFlush();
 		getUlog().rollBack();
+		getUlog().stop();
+		getIOManager().Fclose();
 	}
 	
 	/**

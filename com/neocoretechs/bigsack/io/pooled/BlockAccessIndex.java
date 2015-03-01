@@ -106,14 +106,15 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 				return;
 		}
 		// blocks not same and not first
+		if( accesses > 0 )
+			throw new IOException("****COMMIT BUFFER access "+accesses+" for buffer "+this+" with "+bnum);
+		if(blk.isIncore() && blk.isInlog())
+			throw new IOException("****COMMIT BUFFER block in core and log simultaneously for buffer "+this+" with "+bnum);
+		
 		if (blk.isIncore() && !blk.isInlog()) {
 				globalIO.getUlog().writeLog(this);
 		}
-		if (accesses > 0)
-				throw new IOException("Attempt to read into allocated block "
-						+ this
-						+ " with "
-						+ bnum);
+
 		blockNum = bnum;
 		byteindex = 0;
 		globalIO.getIOManager().FseekAndRead(blockNum, blk);

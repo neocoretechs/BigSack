@@ -11,6 +11,8 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 
 /**
+ * The MappedBlockBuffer is the buffer pool for each tablespace of each db. It functions
+ * as the request processor for IoManagerInterface implementors.
  * The class functions as the used block list for BlockAccessIndex elements that represent our
  * in memory pool of disk blocks. Its construction involves keeping track of the list of
  * free blocks as well to move items between the two. 
@@ -32,7 +34,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	private static final boolean DEBUG = false;
 	private boolean shouldRun = true;
 	private ArrayList<BlockAccessIndex> freeBL; // free block list
-	private GlobalDBIO globalIO;
+	private BlockDBIOInterface globalIO;
 	private int tablespace;
 	private int minBufferSize = 10; // minimum number of buffers to reclaim on flush attempt
 	private BlockingQueue<CompletionLatchInterface> requestQueue;
@@ -46,7 +48,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	public MappedBlockBuffer(GlobalDBIO globalIO, int tablespace) {
 		super(globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES);
 		POOLBLOCKS = globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES;
-		this.globalIO = globalIO;
+		this.globalIO = (BlockDBIOInterface) globalIO;
 		this.tablespace = tablespace;
 		this.freeBL = new ArrayList<BlockAccessIndex>(POOLBLOCKS ); // free blocks
 		// populate with blocks, they're all free for now
@@ -56,6 +58,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		minBufferSize = POOLBLOCKS/10; // we need at least one
 		requestQueue = new ArrayBlockingQueue<CompletionLatchInterface>(QUEUEMAX, true); // true maintains FIFO order
 	}
+	
+	public BlockDBIOInterface getIOManager() { return globalIO; }
 	/**
 	 * Get an element from free list 0 and remove and return it
 	 * @return
@@ -155,9 +159,13 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 				BlockAccessIndex ebaii = (elbn.nextElement());
 				if( DEBUG )
 					System.out.println("MappedBlockBuffer.checkBufferFlush Block buffer "+ebaii);
+				if( ebaii.getAccesses() > 0 )
+					throw new IOException("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
+				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
+					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
 				if (ebaii.getAccesses() == 0) {
 					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
-						globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+						((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 						//throw new IOException("Accesses 0 but incore true " + ebaii);
 					}
 					// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
@@ -194,7 +202,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
 				if (ebaii.getAccesses() == 0) {
 					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
-						globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+						((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 					}
 					freeBL.add(ebaii);
 				}
@@ -213,8 +221,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 					if (ebaii.getAccesses() == 0 && ebaii.getBlk().isIncore() ) {
 						if(DEBUG)
 							System.out.println("fully writing "+ebaii.getBlockNum()+" "+ebaii.getBlk());
-						globalIO.getIOManager().FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
-						globalIO.getIOManager().Fforce();
+						((GlobalDBIO)globalIO).getIOManager().FseekAndWriteFully(ebaii.getBlockNum(), ebaii.getBlk());
+						((GlobalDBIO)globalIO).getIOManager().Fforce();
 						ebaii.getBlk().setIncore(false);
 					}
 		}
@@ -230,9 +238,13 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			Enumeration<BlockAccessIndex> elbn = this.elements();
 			while (elbn.hasMoreElements()) {
 				BlockAccessIndex ebaii = (elbn.nextElement());
+				if( ebaii.getAccesses() > 0 )
+					throw new IOException("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
+				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
+					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
 				if (ebaii.getAccesses() == 0) {
 						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
-							globalIO.getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+							((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 							//throw new IOException("Accesses 0 but incore true " + ebaii);
 						}
 						// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
@@ -243,8 +255,12 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 						return;
 				}
 			}
-			throw new IOException("Cannot free new block from pool, increase poool size");
+			throw new IOException("Cannot free new block from pool, increase pool size");
 		}
+	}
+	
+	public String toString() {
+		return "MappedBlockBuffer tablespace "+tablespace+" size:"+this.size()+" free:"+freeBL.size()+" requests:"+requestQueue.size();
 	}
 	
 	public void queueRequest(CompletionLatchInterface ior) {

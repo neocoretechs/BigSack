@@ -5,6 +5,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
@@ -13,6 +14,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
+import com.neocoretechs.bigsack.io.request.cluster.CommitRequest;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 import com.neocoretechs.bigsack.io.request.cluster.FSeekAndReadFullyRequest;
 import com.neocoretechs.bigsack.io.request.cluster.FSeekAndReadRequest;
@@ -23,6 +25,7 @@ import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlockRequest;
 import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlocksRequest;
 import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
+import com.neocoretechs.bigsack.io.request.cluster.RemoteCommitRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
@@ -31,6 +34,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
+import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.SessionManager;
 
 /**
@@ -45,10 +49,11 @@ import com.neocoretechs.bigsack.session.SessionManager;
  *
  */
 public final class ClusterIOManager implements IoManagerInterface {
+	private static final boolean DEBUG = false;
+	private GlobalDBIO globalIO;
 	protected DistributedIOWorker ioWorker[];
 	protected int L3cache = 0;
 	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
-	private static final boolean DEBUG = false;
 	private static int currentPort = 10000; // starting UDP port, increments as assigned
 	private static int messageSeq = 0; // monotonically increasing request id
 	// barrier synch for specific functions, cyclic (reusable)
@@ -61,6 +66,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * Instantiate our master node array per database that communicate with our worker nodes
 	 */
 	public ClusterIOManager(GlobalDBIO globalIO) {
+		this.globalIO = globalIO;
 		//ioWorker = new UDPMaster[DBPhysicalConstants.DTABLESPACES];
 		ioWorker = new DistributedIOWorker[DBPhysicalConstants.DTABLESPACES];
 		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
@@ -448,19 +454,50 @@ public final class ClusterIOManager implements IoManagerInterface {
 			return;
 		}
 	}
-
+	/**
+	 * When something comes through the TCPWorker or UDPWorker the ioInterface is set to the TCPWorker
+	 * or UDPWorker, which also implement NodeBlockBufferInterface, so we have access to the node block buffer
+	 * through the ioInterface if the request traverses those classes. If we are in standalone the MultiThreadedIoManager
+	 * uses an alternate request method.
+	 * We queue a request to the local block buffer to commit after the preceding requests finish.
+	 * We queue a request to the master to forward to the workers to commit their blocks.
+	 */
 	@Override
 	public void commitBufferFlush() throws IOException {
+		if( DEBUG ) {
+			System.out.println("ClusterIOManager.commitBufferFlush");
+		}
 		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			//blockBuffer[i].commitBufferFlush();
-			CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockBuffer[i], cdl, commitBarrierSynch);
-			blockBuffer[i].queueRequest(cbfr);
+			CommitRequest cbfr = new CommitRequest(blockBuffer[i], globalIO.getUlog(), commitBarrierSynch, cdl);
+			ioWorker[i].queueRequest(cbfr);
 		}
 		try {
 			cdl.await();
 		} catch (InterruptedException e) {
-			return;
+			return; // executor shutdown
+		}
+		if( DEBUG ) {
+			System.out.println("ClusterIOManager.commitBufferFlush local buffers synched, messaging remote workers");
+		}
+		// local buffers are flushed, queue request outbound to flush remote buffers, possibly updated by
+		// our commit of local buffers pushing blocks out.
+		cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
+		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			iori[i] = new RemoteCommitRequest(commitBarrierSynch, cdl);
+			ioWorker[i].queueRequest(iori[i]);
+		}
+		try {
+			cdl.await();
+		} catch (InterruptedException e) {}
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			// remove old requests
+			ioWorker[i].removeRequest((AbstractClusterWork) iori[i]);
+		}
+		if( DEBUG ) {
+			System.out.println("ClusterIOManager.commitBufferFlush exiting.");
 		}
 	}
 

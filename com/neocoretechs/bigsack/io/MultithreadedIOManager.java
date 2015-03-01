@@ -26,6 +26,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
+
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
  * Requests are queued to the IO worker assigned to the tablespace desired and can operate in parallel
@@ -401,12 +402,12 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	@Override
 	public void commitBufferFlush() throws IOException {
+		System.out.println("MultithreadedIOManager.commitBufferFlush invoked.");
 		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
-		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
 		// queue to each tablespace
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			iori[i] = new CommitRequest(blockBuffer[i], commitBarrierSynch, barrierCount);
-			ioWorker[i].queueRequest(iori[i]);
+			IoRequestInterface iori  = new CommitRequest(blockBuffer[i], globalIO.getUlog(), commitBarrierSynch, barrierCount);
+			ioWorker[i].queueRequest(iori);
 		}
 		try {
 			barrierCount.await();

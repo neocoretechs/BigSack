@@ -374,3 +374,4 @@
 /ThreadPoolManager$LocalThreadFactory.class
 /ThreadPoolManager.class
 /UndoableBlock.class
+/RecoveryLogManager.class

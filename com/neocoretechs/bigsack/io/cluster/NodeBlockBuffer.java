@@ -6,7 +6,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
-
+/**
+ * Implementation of the simple block pool cache for a remote worker node.
+ * We deal strictly with long pointers and datablocks, no further semantics at this level.
+ * A concurrentHashMap of entries with fundamental operations is supported.
+ * @author jg
+ *
+ */
 public final class NodeBlockBuffer  {
 	private static boolean DEBUG = true;
 	private static int NODEPOOLBLOCKS = 10000;
@@ -43,7 +49,7 @@ public final class NodeBlockBuffer  {
 	 */
 	public void force() throws IOException {
 		if( DEBUG )
-		System.out.println("Shutting down node block buffer with "+blockBuffer.size()+" entries.");
+		System.out.println("NodeBlockBuffer.force writing node block buffer with "+blockBuffer.size()+" entries.");
 		int stillIn = 0;
 		Enumeration<Long> e = blockBuffer.keys();
 		Long rec = -1L;

@@ -39,11 +39,11 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * is the concept of element 0 of those arrays being 'this', hence the special treatment in CRUD 
 * @author Groff
 */
-public class BTreeKeyPage implements Serializable {
+public final class BTreeKeyPage implements Serializable {
+	static final boolean DEBUG = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	static int MAXKEYS = 4;
 	int numKeys = 0;
-	static final boolean DEBUG = false;
 
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")

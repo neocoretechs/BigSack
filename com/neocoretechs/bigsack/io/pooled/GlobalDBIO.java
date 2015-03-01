@@ -7,13 +7,15 @@ import java.util.*;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
+import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
-import com.neocoretechs.bigsack.io.RecoveryLog;
+import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
+import com.neocoretechs.bigsack.session.BigSackSession;
 /*
 * Copyright (c) 1997,2003,2014 NeoCoreTechs
 * All rights reserved.
@@ -54,11 +56,11 @@ public class GlobalDBIO {
 	protected boolean isNew = false; // if we create and no data yet
 	private IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
 
-	private RecoveryLog ulog;		
+	private RecoveryLogManager ulog;		
 	private long new_node_pos_blk = -1L;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 
-	public RecoveryLog getUlog() {
+	public RecoveryLogManager getUlog() {
 		return ulog;
 	}
 	
@@ -448,6 +450,7 @@ public class GlobalDBIO {
 	public void checkBufferFlush() throws IOException {
 		ioManager.freeupBlock();
 	}
+	
 	public void commitBufferFlush() throws IOException {
 		ioManager.commitBufferFlush();
 	}
@@ -638,7 +641,7 @@ public class GlobalDBIO {
 		return transId;
 	}
 
-	public void setUlog(RecoveryLog ulog) {
+	public void setUlog(RecoveryLogManager ulog) {
 		this.ulog = ulog;
 	}
 

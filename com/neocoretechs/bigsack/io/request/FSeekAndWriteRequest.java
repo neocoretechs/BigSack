@@ -1,11 +1,8 @@
 package com.neocoretechs.bigsack.io.request;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.concurrent.CountDownLatch;
 
-import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**

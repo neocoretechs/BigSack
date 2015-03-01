@@ -35,16 +35,17 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 */
 /**
 * This class is the bridge to the recovery log subsystem which is based on the ARIES protocol.
-* LogToFile is the main ARIES subsystem class used, with FileLogger being the higher level construct
+* LogToFile is the main ARIES subsystem class used, with FileLogger being the higher level construct.
+* We keep arrays of FileLogger, LogToFile, etc by tablespace and multiplex the calls to the proper tablespace
 * @author Groff
 */
-public final class RecoveryLog  {
-	private static boolean DEBUG = false;
+public final class RecoveryLogManager  {
+	private static boolean DEBUG = true;
 	private BlockDBIO blockIO;
-	FileLogger[] fl = null;
-	LogToFile[] ltf = null;
-	LogInstance[] firstTrans = null;
-	BlockAccessIndex tblk = null;
+	private FileLogger[] fl = null;
+	private LogToFile[] ltf = null;
+	private LogInstance[] firstTrans = null;
+	private BlockAccessIndex tblk = null;
 	
 	public BlockDBIO getBlockIO() {
 		return blockIO;
@@ -54,7 +55,7 @@ public final class RecoveryLog  {
 	 * @param tglobalio
 	 * @throws IOException
 	 */
-	public RecoveryLog(BlockDBIO tglobalio) throws IOException {
+	public RecoveryLogManager(BlockDBIO tglobalio) throws IOException {
 		blockIO = tglobalio;
 		tblk = new BlockAccessIndex(blockIO); // for writeLog reserved
 		ltf = new LogToFile[DBPhysicalConstants.DTABLESPACES];
@@ -67,12 +68,23 @@ public final class RecoveryLog  {
 		}
 	}
 	/**
-	 * Close the random access files and buffers for recovery log
+	 * Close the random access files and buffers for recovery log. Call stop in LogToFile
+	 * Closes logAccessfile and calls deleteObsoleteLogFiles IF NO CORRUPTION
 	 * @throws IOException
 	 */
-	public void stop( ) throws IOException {
+	public synchronized void stop( ) throws IOException {
+		if( DEBUG )
+			System.out.println("RecoveryLogManager.stop invoked.");
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 			ltf[i].stop();
+		if( DEBUG )
+			System.out.println("RecoveryLogManager.stop terminated.");
+	}
+	
+	public synchronized void stop(int tblsp) throws IOException {
+		if( DEBUG )
+			System.out.println("RecoveryLog.stop invoked for tablespace "+tblsp);
+		ltf[tblsp].stop();
 	}
 	
 	public LogToFile getLogToFile(int tablespace) {
@@ -85,10 +97,10 @@ public final class RecoveryLog  {
 	* @param blk The block instance, payload of block about to be written to log
 	* @exception IOException if cannot open or write
 	*/
-	public void writeLog(BlockAccessIndex blk) throws IOException {
-		if( DEBUG ) {
-			System.out.println("RecoveryLog.writeLog "+blk.toString());
-		}
+	public synchronized void writeLog(BlockAccessIndex blk) throws IOException {
+		//if( DEBUG ) {
+		//	System.out.println("RecoveryLogManager.writeLog "+blk.toString());
+		//}
 		tblk.setTemplateBlockNumber(blk.getBlockNum());
 		blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
@@ -105,27 +117,42 @@ public final class RecoveryLog  {
 	 * 
 	 * @throws IOException
 	 */
-	public void commit() throws IOException {
-		if(DEBUG) System.out.println("Commit called");
+	public synchronized void commit() throws IOException {
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			if(DEBUG) System.out.println("RecoveryLogManager.commit called for db "+ltf[i].getDBName()+" tablespace "+i+" log seq. int.");
 			firstTrans[i] = null;
+			ltf[i].stop();
+			ltf[i].deleteObsoleteLogfilesOnCommit();
 			ltf[i].initializeLogFileSequence();
 		}
 	}
-	
+	/**
+	 * Remove archived files and reset log file 1 to its primordial state
+	 * 
+	 * @throws IOException
+	 */
+	public synchronized void commit(int tblsp) throws IOException {
+			if(DEBUG) System.out.println("RecoveryLogManager.commit called for db "+ltf[tblsp].getDBName()+" tablespace "+tblsp+" log seq. int.");
+			firstTrans[tblsp] = null;
+			ltf[tblsp].stop();
+			ltf[tblsp].deleteObsoleteLogfilesOnCommit();
+			ltf[tblsp].initializeLogFileSequence();
+	}
 	/**
 	 * Version of method called when starting and we see an undolog ready to restore 
 	 * @throws IOException
 	 */
-	public void rollBack() throws IOException {
+	public synchronized void rollBack() throws IOException {
 		rollBackCache(); // synch main file buffs
 		blockIO.forceBufferClear(); // flush buffer pools
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			if( firstTrans[i] != null)
+			if( firstTrans[i] != null) {
 				fl[i].undo(blockIO, firstTrans[i], null);
-			else
-				if( Props.DEBUG) System.out.println("No initial transaction recorded for rollback in tablespace "+i+" in "+blockIO.getDBName());
-			firstTrans[i] = null;
+				if(DEBUG) System.out.println("RecoveryLogManager.rollback Undo initial transaction recorded for rollback in tablespace "+i+" in "+ltf[i].getDBName());
+				firstTrans[i] = null;
+				ltf[i].deleteObsoleteLogfilesOnCommit();
+				ltf[i].initializeLogFileSequence();
+			}
 		}
 	}
 	
@@ -134,9 +161,9 @@ public final class RecoveryLog  {
 	* therein
 	* @exception IOException If we can't replace blocks
 	*/
-	public void rollBackCache() throws IOException {
+	public synchronized void rollBackCache() throws IOException {
 		if(DEBUG )
-			System.out.println("RecoveryLog.rollbackCache invoked");
+			System.out.println("RecoveryLogManager.rollbackCache invoked");
 		blockIO.getIOManager().Fforce(); // make sure we synch our main file buffers
 	}
 	
@@ -147,11 +174,11 @@ public final class RecoveryLog  {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public void checkpoint() throws IllegalAccessException, IOException {
+	public synchronized void checkpoint() throws IllegalAccessException, IOException {
 		blockIO.forceBufferWrite();
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 			ltf[i].checkpoint(true);
-		if( DEBUG ) System.out.println("Checkpoint taken");
+		if( DEBUG ) System.out.println("RecoveryLogManager.checkpoint. Checkpoint taken for db "+blockIO.getDBName());
 	}
 
 

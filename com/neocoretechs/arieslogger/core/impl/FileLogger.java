@@ -189,11 +189,12 @@ public final class FileLogger implements Logger {
 			instance = logToFile.appendLogRecord(logOutputBuffer.array(), 0,
 									completeLength, preparedLogArray,
 									optionalDataOffset,
-									optionalDataLength); 
-			logInstance = new LogCounter(instance);
+									optionalDataLength);
 			flush();
+			logInstance = new LogCounter(instance);
+			
 			operation.applyChange(xact, logInstance, logOutputBuffer);
-
+		
 			if (DEBUG) {	    
                 System.out.println("FileLogger.logAndDo: Write log record: tranId=" + transactionId +
                     " instance: " + logInstance.toString() + " length: " +
@@ -419,13 +420,12 @@ public final class FileLogger implements Logger {
 
 		@param redoLWM          - if checkpoint seen, starting from this point
                                   on, apply redo if necessary
-	  	@param undoInstances 	- array filled with valid scanned undo instances upon completion
+	  	@param ttabInstance 	- checkpoint instance from control file, startng point
 
 		@return the log instance of the next log record (or the instance just
 		after the last log record).  This is used to determine where the log
 		truly ends
 
-		@exception StandardException Standard  error policy
 		@exception IOException error reading log file
 		@exception ClassNotFoundException log file corrupted
 
@@ -444,14 +444,12 @@ public final class FileLogger implements Logger {
 
 		// end debug info
 
-		long tranId = -1;
-
         // the current log instance
 		long instance = LogCounter.INVALID_LOG_INSTANCE;
 
 		StreamLogScan undoScan  = null;
 		Loggable      op        = null;
-		long          logEnd    = 0;  // we need to determine the log's true end
+		long          logEnd    = LogCounter.getLogFilePosition(ttabInstance);  // we need to determine the log's true end
 
 		try 
         {
@@ -554,6 +552,16 @@ public final class FileLogger implements Logger {
 			}// while redoScan.getNextRecord() != null
 			
             logEnd = ((Scan)redoScan).getScannedEndInstance();
+            if( logEnd == LogCounter.INVALID_LOG_INSTANCE) {
+            	if( instance == LogCounter.INVALID_LOG_INSTANCE ) {
+            		//hmm, never really got anything, use the checkpoint
+            		logEnd = LogCounter.getLogFilePosition(ttabInstance);
+            	} else {
+            		// instance good, logend bad
+            		logEnd = LogCounter.getLogFilePosition(instance)-4;
+            	}
+            	// good as it gets
+            }
             
 		} finally {
 			// close all the io streams
@@ -578,7 +586,7 @@ public final class FileLogger implements Logger {
                          LogCounter.getLogFilePosition(logEnd)));
 			System.out.println(
                     "----------------------------------------------------\n" +
-                    "End of recovery redo\n" + 
+                    "End of recovery redo for "+blockio.getDBName()+"\n" + 
                     "Scanned = " + scanCount + " log records" +
                     ", redid = " + redoCount +
                     " ( compensation = " + clrCount + " )" +

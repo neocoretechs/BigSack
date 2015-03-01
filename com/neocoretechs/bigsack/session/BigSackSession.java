@@ -6,6 +6,8 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.request.CommitRequest;
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetKVIterator;
@@ -265,8 +267,6 @@ public final class BigSackSession {
 	*/
 	public void Close(boolean rollback) throws IOException {
 		rollupSession(rollback);
-		//SessionManager.releaseSession(this);
-		bTree.getIO().getIOManager().Fclose();
 	}
 	
 	public void Open() throws IOException {
@@ -277,7 +277,7 @@ public final class BigSackSession {
 	* @exception IOException for low level failure
 	*/
 	public void Rollback() throws IOException {
-		rollupSession(true);
+		Close(true);
 	}
 	
 	/**
@@ -285,7 +285,7 @@ public final class BigSackSession {
 	* @exception IOException For low level failure
 	*/
 	public void Commit() throws IOException {
-		rollupSession(false);
+		Close(false);
 	}
 	/**
 	 * Checkpoint the current transaction
@@ -310,8 +310,6 @@ public final class BigSackSession {
 		} else {
 			bTree.getRoot().putPages(bTree.getIO());
 			bTree.getIO().deallocOutstandingCommit();
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-				bTree.getIO().getUlog().getLogToFile(i).deleteObsoleteLogfilesOnCommit();
 		}
 	}
 	

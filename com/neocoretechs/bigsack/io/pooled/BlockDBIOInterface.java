@@ -46,4 +46,6 @@ public interface BlockDBIOInterface {
 	public long stealBlock() throws IOException;
 	public boolean getnextblk() throws IOException;
 	public void findOrAddBlock(long nextblk) throws IOException;
+	public void deallocOutstandingCommit() throws IOException;
+	public void deallocOutstandingRollback() throws IOException;
 }

@@ -26,7 +26,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-
 import java.util.HashMap;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
@@ -532,13 +531,20 @@ public class Scan implements StreamLogScan {
 
 			// sanity check it 
 			if (LogCounter.getLogFileNumber(currentInstance) != currentLogFileNumber ||
-				LogCounter.getLogFilePosition(currentInstance) != recordStartPosition)
-						throw new IOException("Wrong LogInstance on log record " +
+				LogCounter.getLogFilePosition(currentInstance) != recordStartPosition) {
+						System.out.println("*****WARNING Wrong LogInstance on log record " +
 								LogCounter.toDebugString(currentInstance) + 
 								 " version real position (" +
 								 currentLogFileNumber + "," +
-								 recordStartPosition + ")");
-			
+								 recordStartPosition + ") HIGH PROBABLILTY OF DATABSE CORRUPTION");
+				// insanity, try to recover last good position and use up until that point
+				// at this point our options are limited
+						currentInstance = LogCounter.makeLogInstanceAsLong(previousFileNumber, previousStartPosition+4);
+						scannedEndInstance = currentInstance;
+						scan.close();
+						scan = null;
+						return null;
+			}
 			//if( DEBUG )
 			//	System.out.println("Scan.getNextRecordForward: Current instance: "+
 			//					 LogCounter.toDebugString(currentInstance));
