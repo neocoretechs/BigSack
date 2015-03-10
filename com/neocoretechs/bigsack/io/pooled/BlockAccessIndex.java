@@ -35,6 +35,7 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 */
 @SuppressWarnings("rawtypes")
 public final class BlockAccessIndex implements Comparable, Serializable {
+	private static boolean DEBUG = false;
 	private static final long serialVersionUID = -7046561350843262757L;
 	private Datablock blk;
 	private transient int accesses = 0;
@@ -43,20 +44,24 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 
 	private transient GlobalDBIO globalIO;
 
-	public BlockAccessIndex(GlobalDBIO globalIO) {
+	public BlockAccessIndex(GlobalDBIO globalIO) throws IOException {
 		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
 		this.globalIO = globalIO;
 	}
 	/** This constructor used for setting search templates */
 	public BlockAccessIndex() {
 	}
-	/** This method can be used for ThreadLocal post-init after using default ctor */
-	public void init(GlobalDBIO globalIO) {
+	/** This method can be used for ThreadLocal post-init after using default ctor 
+	 * @throws IOException if block superceded a block under write or latched 
+	 * */
+	public void init(GlobalDBIO globalIO) throws IOException {
 		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
 		this.globalIO = globalIO;
 	}
 	
 	public void resetBlock() {
+		accesses = 0;
+		byteindex = 0;
 		blk.resetBlock();
 	}
 	
@@ -82,10 +87,13 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 			db += "NULL";
 		db += " data "
 			+ blk == null ?  "null block" : blk.toBriefString()
-			+ " accesses: "
+			+ " accesses:"
 			+ accesses
-			+ " byteindex "
+			+ " byteindex:"
 			+ byteindex
+			+ " inLog:"
+			+ blk.isInlog()
+			+ "."
 			;
 		return db;
 	}
@@ -94,38 +102,47 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		return blockNum;
 	}
 	/**
-	 * Through GlobalIO.addBlockAccess to here, we set up the block, and if necessary get it
-	 * via IOManager.FSeekAndRead request
+	 * Set the block number and make sure we are not overwriting a previous entry that is active.
+	 * It should have 1 access, it should not be incore or in the log. Setting an invalid block also fails assertion
 	 * @param bnum
 	 * @throws IOException
 	 */
-	public void setBlockNum(long bnum) throws IOException {
-		assert (blockNum != -1L);
+	public void setBlockNumber(long bnum) throws IOException {
+		assert (bnum != -1L) : "****Attempt to set block number invalid";
+	
+		//if( GlobalDBIO.valueOf(bnum).equals("Tablespace_1_114688"))
+		//	System.out.println("BlockAccessIndex.setBlockNum. Tablespace_1_114688");
+		
+		// add an access, latch immediately
+		addAccess();
+		// We are about to replace the current block, make sure it is not under write or latched by someone else
+		// or we would be trashing data. We already latched it so there should be only 1
+		if( accesses > 1 ) 
+			throw new IOException("****Attempt to overwrite latched block, accesses "+accesses+" for buffer "+this+" with "+bnum);
+		/*
 		if (bnum == blockNum) {
 				byteindex = 0;
 				return;
 		}
-		// blocks not same and not first
-		if( accesses > 0 )
-			throw new IOException("****COMMIT BUFFER access "+accesses+" for buffer "+this+" with "+bnum);
-		if(blk.isIncore() && blk.isInlog())
-			throw new IOException("****COMMIT BUFFER block in core and log simultaneously for buffer "+this+" with "+bnum);
+		// If its been written but not yet in log, write it
 		
 		if (blk.isIncore() && !blk.isInlog()) {
 				globalIO.getUlog().writeLog(this);
 		}
-
+		 */
 		blockNum = bnum;
 		byteindex = 0;
+	
+		/*
 		globalIO.getIOManager().FseekAndRead(blockNum, blk);
+		
+		//if( GlobalDBIO.valueOf(bnum).equals("Tablespace_1_114688"))
+		//	System.out.println("BlockAccessIndex.setBlockNum. Tablespace_1_114688"+this+" "+blk.blockdump());
+		assert(blk.getBytesinuse() > 0 && blk.getBytesused() > 0) : "BlockAccessIndex.setBlockNum unusable block returned from read at "+GlobalDBIO.valueOf(blockNum)+" "+blk.blockdump();
+		*/
 	}
-	/**
-	* Used to locate elements in tables
-	* @param tbn The template block number to search for
-	*/
-	public void setTemplateBlockNumber(long tbn) {
-		blockNum = tbn;
-	}
+
+
 	@Override
 	public int compareTo(Object o) {
 		if (blockNum < ((BlockAccessIndex) o).blockNum)
@@ -149,7 +166,21 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public Datablock getBlk() {
 		return blk;
 	}
-	public void setBlk(Datablock blk) {
+	/**
+	 * Set the presumably latched blockaccessindex with the datablock of data.
+	 * Check to make sure the previous block is not in danger 
+	 * @param blk
+	 */
+	public void setBlk(Datablock blk) throws IOException {
+		// blocks not same and not first, check for condition of the block we are replacing
+		if( blk.isIncore() ) 
+			throw new IOException("****Attempt to overwrite block in core for buffer "+this);
+		blk.setIncore(false);
+		blk.setInlog(false);
+		// We are about to replace the current block, make sure it is not under write or latched by someone else
+		// or we would be trashing data. We already latched it so there should be only 1
+		if( accesses > 1 ) 
+			throw new IOException("****Attempt to overwrite latched block, accesses "+accesses+" for buffer "+this);
 		this.blk = blk;
 	}
 	public short getByteindex() {

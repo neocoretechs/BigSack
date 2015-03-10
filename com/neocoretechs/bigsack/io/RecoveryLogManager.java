@@ -5,7 +5,7 @@ import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.impl.FileLogger;
 import com.neocoretechs.arieslogger.core.impl.LogToFile;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
+
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -40,7 +40,7 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 * @author Groff
 */
 public final class RecoveryLogManager  {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private BlockDBIO blockIO;
 	private FileLogger[] fl = null;
 	private LogToFile[] ltf = null;
@@ -98,10 +98,10 @@ public final class RecoveryLogManager  {
 	* @exception IOException if cannot open or write
 	*/
 	public synchronized void writeLog(BlockAccessIndex blk) throws IOException {
-		//if( DEBUG ) {
-		//	System.out.println("RecoveryLogManager.writeLog "+blk.toString());
-		//}
-		tblk.setTemplateBlockNumber(blk.getBlockNum());
+		if( DEBUG ) {
+			System.out.println("RecoveryLogManager.writeLog "+blk.toString());
+		}
+		tblk.setBlockNumber(blk.getBlockNum());
 		blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		int tblsp = GlobalDBIO.getTablespace(blk.getBlockNum());
@@ -110,7 +110,10 @@ public final class RecoveryLogManager  {
 		else
 			fl[tblsp].logAndDo(blockIO, undoBlk);
 		blk.getBlk().setInlog(true);
-		return;
+		tblk.resetBlock();
+		if( DEBUG ) {
+			System.out.println("RecoveryLogManager.writeLog EXIT with "+blk.toString());
+		}
 	}
 	/**
 	 * Remove archived files and reset log file 1 to its primordial state

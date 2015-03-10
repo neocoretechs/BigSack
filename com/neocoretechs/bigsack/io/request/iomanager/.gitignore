@@ -27,3 +27,4 @@
 /ForceBufferClearRequest.class
 /FreeupBlockRequest.class
 /GetUsedBlockRequest.class
+/FsizeRequest.class

@@ -2,7 +2,6 @@ package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.io.Serializable;
 
-import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
@@ -297,10 +296,11 @@ public final class BTreeKeyPage implements Serializable {
 				dataUpdatedArray[i] = false;
 				// if it gets nulled, should probably delete
 				if (dataArray[i] != null) {
-					dataIdArray[i] = sdbio.new_node_position(); // pack page
+					dataIdArray[i] = sdbio.getNewNodePosition(); // pack page
 					byte[] pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
 					sdbio.add_object(dataIdArray[i], pb, pb.length);
-					sdbio.set_new_node_position();
+					// set new node position to the current block to pack pages
+					sdbio.setNewNodePosition();
 				}
 			}
 		}

@@ -48,7 +48,6 @@ final class LogAccessFileBuffer
 		}
 		buffer.position(reserve);
         greatestInstance = LogCounter.makeLogInstanceAsLong(1,LogToFile.LOG_FILE_HEADER_SIZE);
-        assert(reserve > 0) : "initialization to less than zero bytes";
     }
 
 }

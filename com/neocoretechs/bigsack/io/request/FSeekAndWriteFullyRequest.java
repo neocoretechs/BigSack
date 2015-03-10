@@ -22,7 +22,7 @@ public final class FSeekAndWriteFullyRequest implements IoRequestInterface {
 		this.dblk = dblk;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		FseekAndWriteFully();
 		barrierCount.countDown();
 	}
@@ -33,23 +33,23 @@ public final class FSeekAndWriteFullyRequest implements IoRequestInterface {
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return offset;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return dblk;
 	}
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;		
 	}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
-	public synchronized String toString() {
+	public String toString() {
 		return "FSeekAndWriteFullyRequest for tablespace "+tablespace+" offset "+offset;
 	}
 

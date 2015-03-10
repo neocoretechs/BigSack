@@ -50,7 +50,7 @@ public final class RemoteCommitRequest extends AbstractClusterWork implements Co
 		this.barrierCount = barrierCount;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		Commit();
 		barrierCount.countDown();
 	}
@@ -68,12 +68,12 @@ public final class RemoteCommitRequest extends AbstractClusterWork implements Co
 		}
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return -1L;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return new Long(-1L);
 	}
 	/**
@@ -81,16 +81,16 @@ public final class RemoteCommitRequest extends AbstractClusterWork implements Co
 	 * It is the default way to set the active IO unit
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;	
 		blockBuffer = ((NodeBlockBufferInterface)ioUnit).getBlockBuffer();
 	}
 	
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
-	public synchronized String toString() {
+	public String toString() {
 		return "Commit Request for tablespace "+tablespace;
 	}
 	@Override

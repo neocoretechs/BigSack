@@ -46,7 +46,7 @@ import com.neocoretechs.bigsack.session.BigSackSession;
 public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	private static final boolean DEBUG = false;
 	private BlockAccessIndex lbai  = null;
-
+	private long newNodePosBlk = -1L;
 	protected synchronized Datablock getBlk() { return lbai.getBlk(); }
 	public synchronized short getByteindex() { return lbai.byteindex; }
 	protected synchronized void moveByteindex(short runcount) { lbai.byteindex += runcount; }
@@ -102,7 +102,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 */
 	synchronized void setLbn(BlockAccessIndex tbai) throws IOException {
 		lbai = tbai;
-		alloc(lbai);
+		lbai.addAccess();
 		lbai.setByteindex((short) 0);
 	}
 	/**
@@ -111,7 +111,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	 */
 	public synchronized void deallocOutstanding() throws IOException {
 		if (lbai != null) {
-			dealloc(lbai.getBlockNum());
+			dealloc(lbai);
 			lbai = null;
 		}		
 	}
@@ -146,6 +146,8 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	public synchronized void findOrAddBlock(long tbn) throws IOException {
 		if( DEBUG )
 			System.out.println("BlockDBIO.findOrAddBlock:"+valueOf(tbn)+" current:"+lbai);
+		// If the current entry is the one we are looking for, set byteindex to 0 and return
+		// if not, call 'dealloc' and find our target
 		if (lbai != null) {
 			if (tbn == lbai.getBlockNum()) {
 				if( DEBUG )
@@ -153,9 +155,10 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 				lbai.setByteindex((short) 0);
 				return;
 			}
-			dealloc(lbai.getBlockNum());
+			dealloc(lbai);
 		}
-		setLbn(findOrAddBlockAccess(tbn));
+		
+		setLbn(ioManager.findOrAddBlockAccess(tbn));
 	}
 	
 	/**
@@ -189,6 +192,7 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @exception IOException If we cannot read next block
 	*/
 	public synchronized boolean getnextblk() throws IOException {
+		lbai.decrementAccesses();
 		if (lbai.getBlk().getNextblk() == -1L) {
 			if( DEBUG )
 				System.out.println("BlockDBIO.getnextblk returning with no next block "+lbai);
@@ -224,11 +228,11 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public synchronized Optr new_node_position() throws IOException {
-		if (getNew_node_pos_blk() == -1L) {
+	public synchronized Optr getNewNodePosition() throws IOException {
+		if (newNodePosBlk == -1L) {
 			stealBlock();
 		} else {
-			objseek(getNew_node_pos_blk());
+			objseek(newNodePosBlk);
 			// ok, 5 bytes is rather arbitrary but seems a waste to start a big ole object so close to the end of a block
 			if (getDatablock().getBytesused()+5 >= DBPhysicalConstants.DATASIZE)
 				stealBlock();
@@ -241,10 +245,13 @@ public class BlockDBIO extends GlobalDBIO implements BlockDBIOInterface {
 	* Attempts to cluster entries in used blocks near insertion point.
 	* We leave it to the app to decide when to call this and use for packing
 	*/
-	public synchronized void set_new_node_position() {
-		setNew_node_pos_blk(getCurblock());
+	public synchronized void setNewNodePosition() {
+		newNodePosBlk = getCurblock();
 	}
-
+	
+	public synchronized void setNewNodePosition(long newPos) {
+		newNodePosBlk = newPos;
+	}
 	/**
 	* size - determine number elements, override this with concrete
 	* @return The number of elements

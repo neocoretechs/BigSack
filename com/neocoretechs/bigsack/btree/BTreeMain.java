@@ -54,7 +54,7 @@ public final class BTreeMain {
 	int stackDepth;
 	boolean atKey;
 	private static boolean DEBUG = false;
-	private static boolean TEST = false;
+	private static boolean TEST = true;
 	private ObjectDBIO sdbio;
 
 	public BTreeMain(ObjectDBIO sdbio) throws IOException {

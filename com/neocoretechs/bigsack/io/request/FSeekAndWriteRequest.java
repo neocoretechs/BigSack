@@ -11,6 +11,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  *
  */
 public final class FSeekAndWriteRequest implements IoRequestInterface {
+	private static boolean DEBUG = false;
 	private IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;
@@ -22,7 +23,9 @@ public final class FSeekAndWriteRequest implements IoRequestInterface {
 		this.dblk = dblk;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
+		if( DEBUG )
+			System.out.println(this);
 		FseekAndWrite();
 		barrierCount.countDown();
 	}
@@ -33,23 +36,23 @@ public final class FSeekAndWriteRequest implements IoRequestInterface {
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return offset;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return dblk;
 	}
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;		
 	}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
-	public synchronized String toString() {
+	public String toString() {
 		return "FSeekAndWriteRequest for tablespace "+tablespace+" offset "+offset;
 	}
 

@@ -52,6 +52,8 @@ public final class UndoableBlock implements Undoable, Serializable {
 		}
 		blkV2.getBlk().setPageLSN(instance.getValueAsLong());
 		xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
+		// deallocate
+		blkV2.decrementAccesses();
 	}
 
 	@Override

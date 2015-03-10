@@ -1,20 +1,16 @@
 package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectInputStream;
-import java.nio.channels.SeekableByteChannel;
 
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.channel.DBSeekableByteChannel;
-import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
-import com.neocoretechs.bigsack.session.BigSackSession;
+//import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 
 public final class ObjectDBIO extends OffsetDBIO {
 	private static boolean DEBUG = false;
 	public ObjectDBIO(String objname, String remoteObjName, boolean create, long transId) throws IOException {
 		super(objname, remoteObjName, create, transId);
-		setNew_node_pos_blk(-1L);
+		setNewNodePosition(-1L);
 	}
 	/**
 	 * Connect without recovery log, to debug or for some read-only purpose
@@ -47,7 +43,9 @@ public final class ObjectDBIO extends OffsetDBIO {
 	 */
 	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
 		objseek(loc);
+		assert(getBlockIndex().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
 		writen(o, osize);
+		assert(getBlockIndex().getAccesses() > 0 && getBlockIndex().getBlk().isIncore()) : "Block "+loc+" unlatched after write, accesses: "+getBlockIndex().getAccesses();
 	}
 	/**
 	* Read Object in pool: deserialize the byte array.
@@ -72,9 +70,13 @@ public final class ObjectDBIO extends OffsetDBIO {
 			Od = s.readObject();
 			s.close();
 			*/
+
 			int tblsp = GlobalDBIO.getTablespace(iloc);
 			DBSeekableByteChannel dbByteChannel = getDBByteChannel(tblsp);
 			dbByteChannel.setBlockNumber(iloc);
+			//if(DEBUG)
+			//System.out.print(" Deserialize "+GlobalDBIO.valueOf(iloc)+" current block "+getBlockIndex()+" DUMP:"+getBlockIndex().getBlk().blockdump());
+			
 			Od = GlobalDBIO.deserializeObject(dbByteChannel);
 		} catch (IOException ioe) {
 			throw new IOException(

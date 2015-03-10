@@ -22,7 +22,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		//DBInput = new DataInputStream(new DBInputStream(this));
 		//DBOutput = new DataOutputStream(new DBOutputStream(this));
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			dbByteChannel[i] = new DBSeekableByteChannel(this);
+			dbByteChannel[i] = new DBSeekableByteChannel(this,i);
 	}
 	
 	protected OffsetDBIO(String dbname, String remoteDbName) throws IOException {
@@ -30,7 +30,7 @@ public class OffsetDBIO extends BlockDBIO implements OffsetDBIOInterface {
 		//DBInput = new DataInputStream(new DBInputStream(this));
 		//DBOutput = new DataOutputStream(new DBOutputStream(this));
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			dbByteChannel[i] = new DBSeekableByteChannel(this);
+			dbByteChannel[i] = new DBSeekableByteChannel(this,i);
 	}
 
 	//public synchronized DataInputStream getDBInput() {

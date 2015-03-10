@@ -1198,11 +1198,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 */
 	private LogAccessFile allocateNewLogFile(RandomAccessFile theLog, File logFile, 
 						long prevLogInst, long fileNumber, int logSize) throws IOException {
-        //if (DEBUG)
-        //{
-            int currentPostion = (int)theLog.getFilePointer();
-            assert(currentPostion == LOG_FILE_HEADER_SIZE) : "New Log File Is not Correctly Initialized";
-        //}
+ 
 		if( DEBUG) {
 			LogCounter pli = new LogCounter(prevLogInst);
 			System.out.println("LogToFile.allocateNewLogFile Setting log "+logFile.getName()+" file#:"+fileNumber+
@@ -1981,7 +1977,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				catch (IOException ioe) {}
 				logOut = null;
 		}
-		//if (DEBUG) {
+		if(MEASURE) {
 			System.out.println("LogToFile.stop invoked for db "+dbName+" tablespace "+tablespace+". Number of waits = " +
 						   mon_numLogFlushWaits +
 						   ". Number of times flush called = " +
@@ -1994,7 +1990,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						   LogAccessFile.mon_numWritesToLog + 
 						   "\nCorrupt:"+corrupt+". Log Archive:"+logArchived()+". Keep all logs:"+keepAllLogs);
 			System.out.println();
-		//}	
+		}	
 		// delete obsolete log files,left around by earlier crashes
 		// if we have no corruption, are not in log archive mode, and the keep all logs flag is false
 		if(corrupt == null && !logArchived() && !keepAllLogs) {
@@ -2064,7 +2060,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		for(int i=0 ; i < logfiles.size(); i++) {
 			// delete the log files that are not needed any more
 			//File flog = new File(logfiles[i]);
-			//if( DEBUG )
+			if( DEBUG )
 				System.out.println("LogToFile.deleteObsoleteLogfiles examining log file: "+logfiles.get(i)+" for tablespace:"+tablespace+" for "+dbName+" for fileset size:"+logfiles.size());
 			String fileIndex = "";
 			for(int k = (logfiles.get(i).toString().length()-5); k > 0; k--) {
@@ -2140,7 +2136,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		{
 			// delete the log files that are not needed any more
 			//File flog = new File(logfiles[i]);
-			//if( DEBUG )
+			if( DEBUG )
 				System.out.println("LogToFile.deleteObsoleteLogFilesOnCommit Examining log file: "+logfiles.get(i)+" for "+dbName+" tablespace "+tablespace);
 	
 				String fileIndex = "";

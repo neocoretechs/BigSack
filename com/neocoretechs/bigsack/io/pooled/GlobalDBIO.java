@@ -7,7 +7,7 @@ import java.util.*;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
-import com.neocoretechs.bigsack.btree.BTreeMain;
+
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
@@ -15,7 +15,7 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
-import com.neocoretechs.bigsack.session.BigSackSession;
+
 /*
 * Copyright (c) 1997,2003,2014 NeoCoreTechs
 * All rights reserved.
@@ -54,10 +54,10 @@ public class GlobalDBIO {
 	private String remoteDBName;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
-	private IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
+	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
 
 	private RecoveryLogManager ulog;		
-	private long new_node_pos_blk = -1L;
+
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 
 	public RecoveryLogManager getUlog() {
@@ -148,7 +148,7 @@ public class GlobalDBIO {
 	    
 		Fopen(dbName, remoteDBName, create);
 	
-		if (create && isnew()) {
+		if (create && isNew()) {
 			isNew = true;
 			// init the Datablock arrays, create freepool
 			createBuckets();
@@ -157,7 +157,7 @@ public class GlobalDBIO {
 
 	}
 	
-	private boolean isnew() {
+	private boolean isNew() {
 		return ioManager.isNew();
 	}
 
@@ -409,36 +409,14 @@ public class GlobalDBIO {
 	}
 
 	/**
-	 * Latching block
-	 * @param lbn The block number to allocate
-	 */
-	protected void alloc(long lbn) throws IOException {
-		BlockAccessIndex bai = getUsedBlock(lbn);
-		alloc(bai);
-	}
-
-	/**
 	* Latching block, increment access count
 	* @param bai The block access and index object
 	*/
+	/*
 	protected void alloc(BlockAccessIndex bai) throws IOException {
 		bai.addAccess();
 	}
-	/**
-	 * deallocation involves decrementing the access number if the block is in use
-	 * @param lbn
-	 * @throws IOException
-	 */
-	protected void dealloc(long lbn) throws IOException {
-		BlockAccessIndex bai = getUsedBlock(lbn);
-		if (bai == null) {
-			// If we get here our threaded buffer manager must have done our job for us
-			//throw new IOException(
-			//	"Could not locate " + lbn + " for deallocation");
-			return;
-		}
-		dealloc(bai);
-	}
+	*/
 	protected void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
@@ -468,39 +446,6 @@ public class GlobalDBIO {
 	*/
 	public void forceBufferClear() {
 			ioManager.forceBufferClear();
-	}
-
-	/**
-	* Add a block to table of blocknums and block access index.
-	* Comes here for acquireBlock. No setting of block in BlockAccessIndex, no initial read
-	* @param Lbn block number to add
-	* @exception IOException if new dblock cannot be created
-	*/
-	private BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		return ioManager.addBlockAccessNoRead(Lbn);
-	}
-
-	/**
-	* findOrAddBlockAccess - find and return block in pool or bring
-	* it in and add it to pool<br> Always ends up calling alloc, here or in addBlock.
-	* @param bn The block number to add
-	* @return The index into the block array
-	* @exception IOException if cannot read
-	*/
-	protected BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
-		if( DEBUG ) {
-			System.out.println("GlobalDBIO.findOrAddBlockAccess "+valueOf(bn));
-		}
-		return ioManager.findOrAddBlockAccess(bn);
-	}
-
-	/**
-	* Get a block access control instance from L2 cache
-	* @param tmpBai2 The template containing the block number, used to locate key
-	* @return The key found or whatever set returns otherwise if nothing a null is returned
-	*/
-	private BlockAccessIndex getUsedBlock(long loc) {
-		return ioManager.getUsedBlock(loc);
 	}
 
 	/**
@@ -575,6 +520,8 @@ public class GlobalDBIO {
 	/**
 	 * acquireblk - get block from unused chunk or create chunk and get<br>
 	 * return acquired block
+	 * Add a block to table of blocknums and block access index.
+	 * No setting of block in BlockAccessIndex, no initial read reading through ioManager.addBlockAccessnoRead
 	 * @param lastGoodBlk The block for us to link to
 	 * @return The BlockAccessIndex
 	 * @exception IOException if db not open or can't get block
@@ -592,7 +539,7 @@ public class GlobalDBIO {
 		ablk.getBlk().setInlog(false);
 		dealloc(ablk);
 		// new block number for BlockAccessIndex set in addBlockAccessNoRead
-		BlockAccessIndex dblk = addBlockAccessNoRead(new Long(newblock));
+		BlockAccessIndex dblk =  ioManager.addBlockAccessNoRead(new Long(newblock));
 		dblk.getBlk().setPrevblk(lastGoodBlk.getBlockNum());
 		dblk.getBlk().setNextblk(-1L);
 		dblk.getBlk().setBytesused((short) 0);
@@ -606,7 +553,7 @@ public class GlobalDBIO {
 	 * stealblk - get block from unused chunk or create chunk and get.
 	 * We dont try to link it to anything because our little linked lists
 	 * of instance blocks are not themselves linked to anything<br>
-	 * return acquired block
+	 * return acquired block. Read through the ioManager calling addBlockAccessNoRead with new block
 	 * @param currentBlk Current block so we can deallocate and replace it off chain
 	 * @return The BlockAccessIndex of stolen blk
 	 * @exception IOException if db not open or can't get block
@@ -618,7 +565,7 @@ public class GlobalDBIO {
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
 		newblock = makeVblock(tbsp, ioManager.getNextFreeBlock(tbsp));
 		// new block number for BlockAccessIndex set in addBlockAccessNoRead
-		BlockAccessIndex dblk = addBlockAccessNoRead(new Long(newblock));
+		BlockAccessIndex dblk = ioManager.addBlockAccessNoRead(new Long(newblock));
 		dblk.getBlk().setPrevblk(-1L);
 		dblk.getBlk().setNextblk(-1L);
 		dblk.getBlk().setBytesused((short) 0);
@@ -627,14 +574,6 @@ public class GlobalDBIO {
 		dblk.getBlk().setIncore(false);
 		dblk.getBlk().setInlog(false);
 		return dblk;
-	}
-
-	protected long getNew_node_pos_blk() {
-		return new_node_pos_blk;
-	}
-
-	protected void setNew_node_pos_blk(long new_node_pos_blk) {
-		this.new_node_pos_blk = new_node_pos_blk;
 	}
 
 	public long getTransId() {

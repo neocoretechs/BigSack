@@ -40,19 +40,22 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	private BlockingQueue<CompletionLatchInterface> requestQueue;
 	private static int POOLBLOCKS;
 	private static int QUEUEMAX = 256; // max requests before blocking
+	private static int cacheHit = 0; // cache hit rate
+	private static int cacheMiss = 0;
 	/**
 	 * Construct the buffer for this tablespace and link the global IO manager
 	 * @param globalIO
 	 * @param tablespace
+	 * @throws IOException If we try to add an active block the the freechain
 	 */
-	public MappedBlockBuffer(GlobalDBIO globalIO, int tablespace) {
+	public MappedBlockBuffer(GlobalDBIO globalIO, int tablespace) throws IOException {
 		super(globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES);
 		POOLBLOCKS = globalIO.getMAXBLOCKS()/DBPhysicalConstants.DTABLESPACES;
 		this.globalIO = (BlockDBIOInterface) globalIO;
 		this.tablespace = tablespace;
-		this.freeBL = new ArrayList<BlockAccessIndex>(POOLBLOCKS ); // free blocks
+		this.freeBL = new ArrayList<BlockAccessIndex>(POOLBLOCKS); // free blocks
 		// populate with blocks, they're all free for now
-		for (int i = 0; i < globalIO.getMAXBLOCKS(); i++) {
+		for (int i = 0; i < POOLBLOCKS; i++) {
 			freeBL.add(new BlockAccessIndex(globalIO));
 		}
 		minBufferSize = POOLBLOCKS/10; // we need at least one
@@ -64,30 +67,38 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	 * Get an element from free list 0 and remove and return it
 	 * @return
 	 */
-	public BlockAccessIndex take() {
-		synchronized(freeBL) {
+	public synchronized BlockAccessIndex take() {
 			return freeBL.remove(0);
-		}
+
 	}
 	
-	public void put(BlockAccessIndex bai) { 
-		synchronized(freeBL) {
+	public synchronized void put(BlockAccessIndex bai) { 
+			//if( GlobalDBIO.valueOf(bai.getBlockNum()).equals("Tablespace_1_114688"))
+			//	System.out.println("PUTTING Tablespace_1_114688");
 			freeBL.add(bai); 
-		}
 	}
 	
 	public synchronized void forceBufferClear() {
 		Enumeration<BlockAccessIndex> it = elements();
 		while(it.hasMoreElements()) {
 				BlockAccessIndex bai = (BlockAccessIndex) it.nextElement();
+				//if( GlobalDBIO.valueOf(bai.getBlockNum()).equals("Tablespace_1_114688"))
+				//	System.out.println("CLEARING Tablespace_1_114688");
 				bai.resetBlock();
 				put(bai);
 		}
 		clear();
 	}
 	
-	public BlockAccessIndex getUsedBlock(long loc) {
-		return get(loc);
+	public synchronized BlockAccessIndex getUsedBlock(long loc) {
+		if( DEBUG )
+			System.out.println("MappedBlockBuffer.getusedBlock Calling for USED BLOCK "+GlobalDBIO.valueOf(loc)+" "+loc);
+		//if( GlobalDBIO.valueOf(loc).equals("Tablespace_1_114688"))
+		//	System.out.println("GETTING USED Tablespace_1_114688 "+get(loc));
+		BlockAccessIndex bai = get(loc);
+		if( bai == null ) ++cacheMiss;
+		else ++cacheHit;
+		return bai;
 	}
 	
 	/**
@@ -100,14 +111,19 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	public synchronized BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
 		// make sure we have open slots
 		if( DEBUG ) {
-			System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn));
+			System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn)+" "+this);
 		}
+		//if( GlobalDBIO.valueOf(Lbn).equals("Tablespace_1_114688"))
+		//	System.out.println("addBlockAccess Tablespace_1_114688");
 		checkBufferFlush();
 		BlockAccessIndex bai = take();
-		bai.setBlockNum(Lbn.longValue());
+		((GlobalDBIO) globalIO).getIOManager().FseekAndRead(Lbn, bai.getBlk());
+		bai.setBlockNumber(Lbn);
+		//if( GlobalDBIO.valueOf(Lbn).equals("Tablespace_1_114688"))
+		//	System.out.println("addBlockAccess Tablespace_1_114688:"+bai+" "+bai.getBlk().blockdump());
 		put(Lbn, bai);
 		if( DEBUG ) {
-				System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn)+" returning after freeBL take "+bai);
+				System.out.println("MappedBlockBuffer.addBlockAccess "+GlobalDBIO.valueOf(Lbn)+" returning after freeBL take "+bai+" "+this);
 		}
 		return bai;
 	}
@@ -118,22 +134,32 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	* @exception IOException if new dblock cannot be created
 	*/
 	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
+		if( DEBUG ) {
+			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+GlobalDBIO.valueOf(Lbn)+" "+this);
+		}
 		// make sure we have open slots
 		checkBufferFlush();
+		//if( GlobalDBIO.valueOf(Lbn).equals("Tablespace_1_114688"))
+		//	System.out.println("putting Tablespace_1_114688");
 		BlockAccessIndex bai = take();
-		bai.setTemplateBlockNumber(Lbn.longValue());
+		bai.setBlockNumber(Lbn);
 		put(Lbn, bai);//put(bai, null);
+		if( DEBUG ) {
+			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+GlobalDBIO.valueOf(Lbn)+" returning after freeBL take "+bai+" "+this);
+		}
 		return bai;
 	}
 	
 	public synchronized BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
 		if( DEBUG ) {
-			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn));
+			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn)+" "+this);
 		}
+		//if( GlobalDBIO.valueOf(bn).equals("Tablespace_1_114688"))
+		//	System.out.println("findoraddblockaccess Tablespace_1_114688");
 		Long Lbn = new Long(bn);
 		BlockAccessIndex bai = getUsedBlock(bn);
 		if( DEBUG ) {
-			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn)+" got block "+bai);
+			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn)+" got block "+bai+" "+this);
 		}
 		if (bai != null) {
 			return bai;
@@ -142,13 +168,21 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		return addBlockAccess(Lbn);
 	}
 	/**
-	* Toss out pool blocks not in use, ignore those bound for write
+	* Attempt to free pool blocks by the following:
 	* we will try to allocate at least 1 free block if size is 0, if we cant, throw exception
-	* If we must sweep buffer, try to fee up at least 1/10 of total
+	* If we must sweep buffer, try to fee up to minBufferSize
 	* We collect the elements and then transfer them from used to free block list
+	* 1) Try and roll through the buffer finding 0 access blocks
+	* 2) if 0 access block found, check if its in core, written and then deallocated but not written
+	* 3) If its in core and not in log, write the log then the block
+	* 4) If BOTH in core and in log, throw an exception, should NEVER be in core and under write.
+	* 5) If it is not the 0 index block per tablespace then add it to list of blocks to remove
+	* 6) check whether minimum blocks to recover reached, if so continue to removal
+	* 7) If no blocks reached at end, an error must be thrown
 	* 
 	*/
 	public synchronized void checkBufferFlush() throws IOException {
+		int latched = 0;
 			int bufSize = this.size();
 			if( bufSize < POOLBLOCKS )
 				return;
@@ -157,12 +191,13 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			BlockAccessIndex[] found = new BlockAccessIndex[minBufferSize];// our candidates
 			while (elbn.hasMoreElements()) {
 				BlockAccessIndex ebaii = (elbn.nextElement());
+				//if( GlobalDBIO.valueOf(ebaii.getBlockNum()).equals("Tablespace_1_114688"))
+				//	System.out.println("checkBufferFlush Tablespace_1_114688 "+ebaii);
 				if( DEBUG )
 					System.out.println("MappedBlockBuffer.checkBufferFlush Block buffer "+ebaii);
-				if( ebaii.getAccesses() > 0 )
-					throw new IOException("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
-				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
-					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
+				if( ebaii.getAccesses() > 1 )
+					System.out.println("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
+				assert(!(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())) : "****COMMIT BUFFER block in core and log simultaneously! "+ebaii;
 				if (ebaii.getAccesses() == 0) {
 					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 						((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
@@ -175,14 +210,49 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 					if( ++numGot == minBufferSize ) {
 						break;
 					}
+				} else {
+					++latched;
 				}
 			}
-			if( numGot == 0 )
-				throw new IOException("Unable to free up blocks in buffer pool");
+			//
+			// We found none this way, proceed to look for accessed blocks
+			int latched2 = 0;
+			if( numGot == 0 ) {
+				elbn = this.elements();
+				while (elbn.hasMoreElements()) {
+					BlockAccessIndex ebaii = (elbn.nextElement());
+					//if( GlobalDBIO.valueOf(ebaii.getBlockNum()).equals("Tablespace_1_114688"))
+					//	System.out.println("checkBufferFlush Tablespace_1_114688 "+ebaii);
+					if( DEBUG )
+						System.out.println("MappedBlockBuffer.checkBufferFlush PHASE II Block buffer "+ebaii+" "+this);
+					if (ebaii.getAccesses() == 1) {
+						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
+							if( DEBUG )
+								System.out.println("MappedBlockBuffer.checkBufferFlush set to write pool entry to log "+ebaii);
+							((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+							//throw new IOException("Accesses 0 but incore true " + ebaii);
+						}
+						// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
+						if( ebaii.getBlockNum() == 0L )
+							continue;
+						found[numGot] = ebaii;
+						if( ++numGot == minBufferSize ) {
+							break;
+						}
+					} else {
+						++latched2;
+					}
+				}
+				if( numGot == 0 )
+					throw new IOException("Unable to free up blocks in buffer pool with "+latched+" singley and "+latched2+" MULTIPLY latched.");
+			}
 			
 			for(int i = 0; i < numGot; i++) {
-				if( found[i] != null ) {
+				if( found[i] != null ) {				
 					this.remove(found[i].getBlockNum());
+					//if( GlobalDBIO.valueOf(found[i].getBlockNum()).equals("Tablespace_1_114688"))
+					//	System.out.println("REMOVING via checkBufferFlush Tablespace_1_114688");
+					found[i].decrementAccesses();
 					found[i].resetBlock();
 					freeBL.add(found[i]);
 				}
@@ -196,18 +266,24 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		Enumeration<BlockAccessIndex> elbn = this.elements();
 		while (elbn.hasMoreElements()) {
 				BlockAccessIndex ebaii = (elbn.nextElement());
-				if( ebaii.getAccesses() > 0 )
+				if( ebaii.getAccesses() > 1 )
 					throw new IOException("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
 				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
 					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
-				if (ebaii.getAccesses() == 0) {
+				if (ebaii.getAccesses() < 2) {
 					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 						((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 					}
+					ebaii.decrementAccesses();
+					ebaii.getBlk().resetBlock();
 					freeBL.add(ebaii);
+					//if( GlobalDBIO.valueOf(ebaii.getBlockNum()).equals("Tablespace_1_114688"))
+					//	System.out.println("FREELIST ADD Tablespace_1_114688");
 				}
 		}
 		clear();
+		cacheHit = 0;
+		cacheMiss = 0;
 	}
 	/**
 	 * Commit all outstanding blocks in the buffer, bypassing the log subsystem. Should be used with forethought
@@ -238,10 +314,12 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			Enumeration<BlockAccessIndex> elbn = this.elements();
 			while (elbn.hasMoreElements()) {
 				BlockAccessIndex ebaii = (elbn.nextElement());
-				if( ebaii.getAccesses() > 0 )
+				if( ebaii.getAccesses() > 1 )
 					throw new IOException("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
 				if(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())
 					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii);
+				//if( GlobalDBIO.valueOf(ebaii.getBlockNum()).equals("Tablespace_1_114688"))
+				//	System.out.println("freeup block Tablespace_1_114688 "+ebaii);
 				if (ebaii.getAccesses() == 0) {
 						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
 							((GlobalDBIO)globalIO).getUlog().writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
@@ -251,6 +329,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 						if( ebaii.getBlockNum() == 0L )
 							continue;
 						remove(ebaii.getBlockNum());
+						//if( GlobalDBIO.valueOf(ebaii.getBlockNum()).equals("Tablespace_1_114688"))
+						//	System.out.println("FREEUP BLOCK Tablespace_1_114688");
 						freeBL.add(ebaii);
 						return;
 				}
@@ -259,8 +339,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		}
 	}
 	
-	public String toString() {
-		return "MappedBlockBuffer tablespace "+tablespace+" size:"+this.size()+" free:"+freeBL.size()+" requests:"+requestQueue.size();
+	public synchronized String toString() {
+		return "MappedBlockBuffer tablespace "+tablespace+" blocks:"+this.size()+" free:"+freeBL.size()+" requests:"+requestQueue.size()+" cache hit="+cacheHit+" miss="+cacheMiss;
 	}
 	
 	public void queueRequest(CompletionLatchInterface ior) {
@@ -284,7 +364,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			try {
 				ior.setTablespace(tablespace);
 				if( DEBUG ) {
-					System.out.println("MappedBlockBuffer.run processing request "+ior);
+					System.out.println("MappedBlockBuffer.run processing request "+ior+" "+this);
 				}
 				ior.process();
 			} catch (IOException e) {

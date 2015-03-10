@@ -6,8 +6,14 @@ import java.util.concurrent.CountDownLatch;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
-
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+/**
+ * Deal with virtual blocks and extract block
+ * @author jg
+ *
+ */
 public final class GetNextFreeBlockRequest implements IoRequestInterface {
+	private static boolean DEBUG = false;
 	private IoInterface ioUnit;
 	Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private int tablespace;
@@ -19,7 +25,7 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 	}
 	
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		getNextFreeBlock();
 		barrierCount.countDown();
 	}
@@ -31,11 +37,16 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 	*/
 	private void getNextFreeBlock() throws IOException {
 		if( nextFreeBlock != -1) {
-			nextFreeBlock  += (long) DBPhysicalConstants.DBLOCKSIZ;
+			long tblock = GlobalDBIO.getBlock(nextFreeBlock) + (long) DBPhysicalConstants.DBLOCKSIZ;
+			nextFreeBlock = GlobalDBIO.makeVblock(tablespace, tblock);
 			long tsize = ioUnit.Fsize();
-			if (nextFreeBlock >= tsize) {
+			if( DEBUG )
+				System.out.println("GetNextFreeBlockRequest FOUND:"+GlobalDBIO.valueOf(nextFreeBlock)+" size:"+tsize);
+			if (GlobalDBIO.getBlock(nextFreeBlock) >= tsize) {
 				// extend tablespace in pool-size increments
 				long newLen = tsize + (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
+				if( DEBUG )
+					System.out.println("GetNextFreeBlockRequest FOUND EXTEND:"+GlobalDBIO.valueOf(nextFreeBlock)+" size:"+tsize+" setting to "+newLen);
 				ioUnit.Fset_length(newLen);
 				while (tsize < newLen) {
 					ioUnit.Fseek(tsize);
@@ -47,9 +58,11 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 		} else {
 			// no next free, extend tablespace and set next free to prev end
 			long tsize = ioUnit.Fsize();
-			nextFreeBlock = tsize;
+			nextFreeBlock = GlobalDBIO.makeVblock(tablespace,tsize);
 			// extend tablespace in pool-size increments
 			long newLen = tsize + (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
+			if( DEBUG )
+				System.out.println("GetNextFreeBlockRequest NO FREE, EXTEND:"+GlobalDBIO.valueOf(nextFreeBlock)+" size:"+tsize+" setting to "+newLen);
 			ioUnit.Fset_length(newLen);
 			while(tsize < newLen) {
 				ioUnit.Fseek(tsize);
@@ -60,12 +73,12 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 		}
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return nextFreeBlock;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return new Long(nextFreeBlock);
 	}
 	/**
@@ -73,15 +86,15 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 	 * It is the default way to set the active IO unit
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;	
 	}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
-	public synchronized String toString() {
-		return "GetNextFreeBlockRequest for tablespace "+tablespace;
+	public String toString() {
+		return "GetNextFreeBlockRequest for tablespace "+tablespace+" next free block "+GlobalDBIO.valueOf(nextFreeBlock);
 	}
 
 }

@@ -29,7 +29,7 @@ public final class GetNextFreeBlocksRequest extends AbstractClusterWork implemen
 		this.barrierCount = barrierCount;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		getNextFreeBlocks();
 		barrierCount.countDown();
 	}
@@ -59,12 +59,12 @@ public final class GetNextFreeBlocksRequest extends AbstractClusterWork implemen
 		}
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return nextFreeBlock;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return new Long(nextFreeBlock);
 	}
 	/**
@@ -72,18 +72,18 @@ public final class GetNextFreeBlocksRequest extends AbstractClusterWork implemen
 	 * It is the default way to set the active IO unit
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;	
 	}
 	/**
 	 * This method also set by queueRequest
 	 */
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return getUUID()+",tablespace:"+tablespace+":GetNextFreeBlocksRequest:"+nextFreeBlock;
 	}
 	/**

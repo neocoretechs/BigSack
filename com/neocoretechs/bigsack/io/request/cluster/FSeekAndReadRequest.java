@@ -27,7 +27,7 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 		this.dblk = dblk;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		FseekAndRead(this.offset, this.dblk);
 		barrierCount.countDown();
 	}
@@ -60,28 +60,28 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 		if( DEBUG ) System.out.println("FseekAndRead in "+this.toString()+" exiting");
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return offset;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return this.dblk;
 	}
 	/**
 	 * This interface implemented method is called by IoWorker before processing
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;
 		blockBuffer = ((NodeBlockBufferInterface)ioUnit).getBlockBuffer();
 	}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return getUUID()+",tablespace:"+tablespace+" FSeekAndReadRequest:"+offset+" data: "+dblk;
 	}
 	/**

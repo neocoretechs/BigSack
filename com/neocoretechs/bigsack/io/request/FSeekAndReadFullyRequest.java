@@ -19,7 +19,7 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 		this.dblk = dblk;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		FseekAndReadFully(this.offset, this.dblk);
 		barrierCount.countDown();
 	}
@@ -42,28 +42,28 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 		tblk.read(ioUnit);
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return offset;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return this.dblk;
 	}
 	/**
 	 * This interface implemented method is called by IoWorker before processing
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;		
 	}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
 	
 	public synchronized String toString() {
-		return "ForceBufferClearRequest for tablespace "+tablespace+" offset "+offset;
+		return "FSeekandReadFully request for tablespace "+tablespace+" offset "+offset+" "+ioUnit.Fname();
 	}
 
 }

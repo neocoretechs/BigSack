@@ -10,7 +10,6 @@ import com.neocoretechs.arieslogger.logrecords.Undoable;
 import com.neocoretechs.bigsack.io.UndoableBlock;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**
  * <P> The sequence of events in recovery redo of a Loggable operation is:
 		<NL>
@@ -45,6 +44,8 @@ public class CompensationBlock implements Compensation, Serializable {
 	public void applyChange(BlockDBIO xact, LogInstance instance, Object in) throws IOException {
 		BlockAccessIndex blk = ((UndoableBlock)op).getBlkV1();
 		xact.FseekAndWrite(blk.getBlockNum(), blk.getBlk());
+		// unlatch
+		blk.decrementAccesses();
 	}
 
 	@Override

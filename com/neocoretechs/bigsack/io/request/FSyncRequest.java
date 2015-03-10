@@ -30,7 +30,7 @@ public final class FSyncRequest implements IoRequestInterface {
 		this.barrierCount = barrierCount;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		Fsync();
 		barrierCount.countDown();
 	}
@@ -45,12 +45,12 @@ public final class FSyncRequest implements IoRequestInterface {
 		}
 	}
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return -1L;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return new Long(-1L);
 	}
 	/**
@@ -58,15 +58,15 @@ public final class FSyncRequest implements IoRequestInterface {
 	 * It is the default way to set the active IO unit
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioUnit = ioi;	
 	}
 	
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
-	public synchronized String toString() {
+	public String toString() {
 		return "FSyncRequest for tablespace "+tablespace;
 	}
 

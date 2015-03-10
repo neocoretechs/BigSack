@@ -27,15 +27,14 @@ import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
 import com.neocoretechs.bigsack.io.request.cluster.RemoteCommitRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
+
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
-import com.neocoretechs.bigsack.session.BigSackSession;
-import com.neocoretechs.bigsack.session.SessionManager;
+
 
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
@@ -64,8 +63,9 @@ public final class ClusterIOManager implements IoManagerInterface {
 	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	/**
 	 * Instantiate our master node array per database that communicate with our worker nodes
+	 * @throws IOException 
 	 */
-	public ClusterIOManager(GlobalDBIO globalIO) {
+	public ClusterIOManager(GlobalDBIO globalIO) throws IOException {
 		this.globalIO = globalIO;
 		//ioWorker = new UDPMaster[DBPhysicalConstants.DTABLESPACES];
 		ioWorker = new DistributedIOWorker[DBPhysicalConstants.DTABLESPACES];
@@ -250,7 +250,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		}
 	}
 	
-	private long Fsize(int tblsp) throws IOException {
+	public long Fsize(int tblsp) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.Fsize ");
 		CountDownLatch barrierCount = new CountDownLatch(1);
@@ -386,7 +386,11 @@ public final class ClusterIOManager implements IoManagerInterface {
 				return;
 		}
 	}
-
+	/**
+	 * Load up a block from the freelist with the assumption that it will be filled in later. Do not 
+	 * check for whether it should be logged,etc. As part of the 'acquireblock' process, this takes place. Latch it
+	 * as soon as possible though
+	 */
 	@Override
 	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(Lbn);

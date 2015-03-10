@@ -37,6 +37,7 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 * @author Groff
 */
 public final class MmapIO implements IoInterface {
+	private static boolean DEBUG = false;
 	private boolean fisopen, fisnew;
 	private File WO;
 	private FileOutputStream FO;
@@ -54,6 +55,8 @@ public final class MmapIO implements IoInterface {
 	}
 	/** create is true for 'create if not existing' */
 	public boolean Fopen(String fname, boolean create) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fopen "+fname+" "+create);
 		WO = new File(fname);
 		if (!WO.exists()) {
 			if (create) {
@@ -86,6 +89,8 @@ public final class MmapIO implements IoInterface {
 	}
 	// re-open file
 	public void Fopen() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fopen "+WO);
 		RA = new RandomAccessFile(WO, "rw");
 		FC = RA.getChannel();
 		long iSize;
@@ -106,6 +111,8 @@ public final class MmapIO implements IoInterface {
 	 * lots of opinions but this way just seems to have to work
 	 */
 	public void Fclose() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fopen "+WO);
 		if (fisopen) {
 			Fforce();
 			FC.close();
@@ -115,18 +122,26 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public long Ftell() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Ftell "+linkedMappedByteBuff.position());
 		return linkedMappedByteBuff.position();
 	}
 	
 	public void Fseek(long offset) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fseek "+offset+" pos:"+linkedMappedByteBuff.position());
 		linkedMappedByteBuff.position((int) offset);
 	}
 	
 	public long Fsize() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fsize "+linkedMappedByteBuff.capacity());
 		return linkedMappedByteBuff.capacity();
 	}
 	
 	public void Fset_length(long newlen) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fset_length NEW LENGTH:"+newlen);
 		if (newlen < FC.size()) {
 			linkedMappedByteBuff.force();
 			linkedMappedByteBuff = null;
@@ -140,20 +155,33 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public void Fforce() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fforce ATTEMPTING FORCE");
 		linkedMappedByteBuff.force();
 		FC.force(true);
 		RA.getFD().sync();
 	}
-	
+	/**
+	 * Position file at newSize - 1 block, and write blank block
+	 * @param newSize
+	 * @throws IOException
+	 */
 	private void Fextend(long newSize) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fextend "+newSize);
 		FC.position(newSize - DBPhysicalConstants.DBLOCKSIZ);
 		FC.write(bPageBuff);
 		bPageBuff.rewind();
 		FC.force(false);
 	}
-
+	/**
+	 * Extend by 1 block by writing page buffer if position is at capacity value
+	 * @throws IOException
+	 */
 	@SuppressWarnings("unused")
 	private void Fextend() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fextend ");
 		long fPos = linkedMappedByteBuff.position();
 		if (fPos == linkedMappedByteBuff.capacity()) {
 			FC.write(bPageBuff);
@@ -163,6 +191,8 @@ public final class MmapIO implements IoInterface {
 	}
 	// writing..
 	public void Fwrite(byte[] obuf) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fwrite @"+linkedMappedByteBuff.position()+" bytes:"+obuf.length);
 		try {
 			linkedMappedByteBuff.put(obuf);
 		} catch (Exception bue) {
@@ -171,6 +201,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public void Fwrite(byte[] obuf, int osiz) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fwrite @"+linkedMappedByteBuff.position()+" bytes:"+obuf.length+" size:"+osiz);
 		try {
 			linkedMappedByteBuff.put(obuf, 0, osiz);
 		} catch (Exception bue) {
@@ -179,6 +211,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public void Fwrite_int(int obuf) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fwrite int @"+linkedMappedByteBuff.position()+" val:"+obuf);
 		try {
 			linkedMappedByteBuff.putInt(obuf);
 		} catch (Exception bue) {
@@ -187,6 +221,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public void Fwrite_long(long obuf) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fwrite long @"+linkedMappedByteBuff.position()+" val:"+obuf);
 		try {
 			linkedMappedByteBuff.putLong(obuf);
 		} catch (Exception bue) {
@@ -195,6 +231,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public void Fwrite_short(short obuf) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fwrite short @"+linkedMappedByteBuff.position()+" val:"+obuf);
 		try {
 			linkedMappedByteBuff.putShort(obuf);
 		} catch (Exception bue) {
@@ -204,6 +242,8 @@ public final class MmapIO implements IoInterface {
 	
 	// reading...
 	public int Fread(byte[] b, int osiz) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fread @"+linkedMappedByteBuff.position()+" buf:"+b.length+" size:"+osiz);
 		try {
 			linkedMappedByteBuff.get(b, 0, osiz);
 			return osiz;
@@ -213,6 +253,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public int Fread(byte[] b) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fread @"+linkedMappedByteBuff.position()+" buf:"+b.length);
 		try {
 			linkedMappedByteBuff.get(b);
 			return b.length;
@@ -222,6 +264,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public int Fread_int() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fread int @"+linkedMappedByteBuff.position());
 		try {
 			return linkedMappedByteBuff.getInt();
 		} catch (Exception bue) {
@@ -230,6 +274,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public long Fread_long() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fread long @"+linkedMappedByteBuff.position());
 		try {
 			return linkedMappedByteBuff.getLong();
 		} catch (Exception bue) {
@@ -238,6 +284,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public short Fread_short() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fread short @"+linkedMappedByteBuff.position());
 		try {
 			return linkedMappedByteBuff.getShort();
 		} catch (Exception bue) {
@@ -246,14 +294,20 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public String FTread() throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.FTread @"+linkedMappedByteBuff.position());
 		return RA.readLine();
 	}
 	
 	public void FTwrite(String ins) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.FTwrite @"+linkedMappedByteBuff.position()+" len:"+ins.length());
 		RA.writeBytes(ins);
 	}
 	
 	public void Fdelete() {
+		if( DEBUG )
+			System.out.println("MMapIO.FDelete");
 		WO.delete();
 	}
 	
@@ -274,6 +328,8 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public Channel getChannel() {
+		if( DEBUG )
+			System.out.println("MMapIO.getChannel:"+FC);
 		return FC;
 	}
 }

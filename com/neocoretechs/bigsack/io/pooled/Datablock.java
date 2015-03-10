@@ -40,6 +40,7 @@ import com.neocoretechs.bigsack.io.IoInterface;
 * @author Groff
 */
 public final class Datablock implements Externalizable {
+	private static boolean DEBUG = false;
 	private long prevblk = -1L; // offset to prev blk in chain
 	private long nextblk = -1L; // offset of next blk in chain
 	private short bytesused; // bytes used this blk-highwater mark
@@ -66,15 +67,15 @@ public final class Datablock implements Externalizable {
 	* @param fobj the IoInterface
 	* @exception IOException error writing field
 	*/
-	public void write(IoInterface fobj) throws IOException {
-		synchronized(fobj) {
+	public void  write(IoInterface fobj) throws IOException {
+		//synchronized(fobj) {
 			fobj.Fwrite_long(getPrevblk());
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
 			fobj.Fwrite_long(getPageLSN());
 			fobj.Fwrite(data);
-		}
+		//}
 	}
 	/**
 	* write the header and used data portion to IoInterface implementor
@@ -82,7 +83,7 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error writing field
 	*/
 	public void writeUsed(IoInterface fobj) throws IOException {
-		synchronized(fobj) {
+		//synchronized(fobj) {
 			fobj.Fwrite_long(getPrevblk());
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
@@ -92,11 +93,13 @@ public final class Datablock implements Externalizable {
 				fobj.Fwrite(data);
 			else
 				fobj.Fwrite(data, getBytesused());
-		}
+		//}
 	}
 
 	
 	public void resetBlock() {
+		if( DEBUG )
+		System.out.println("Datablock,resetBlock "+this);
 		prevblk = -1L;
 		nextblk = -1L;
 		bytesused = 0;
@@ -133,7 +136,7 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error reading field
 	*/
 	public void read(IoInterface fobj) throws IOException {
-		synchronized(fobj) {
+		//synchronized(fobj) {
 			setPrevblk(fobj.Fread_long());
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
@@ -143,7 +146,7 @@ public final class Datablock implements Externalizable {
 				throw new IOException(
 						"Datablock read size invalid " + this.toString());
 			}
-		}
+		//}
 	}
 	/**
 	* read the header and used data portion from IoInterface implementor
@@ -151,7 +154,7 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error reading field
 	*/
 	public void readUsed(IoInterface fobj) throws IOException {
-		synchronized(fobj) {
+		//synchronized(fobj) {
 			setPrevblk(fobj.Fread_long());
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
@@ -174,7 +177,7 @@ public final class Datablock implements Externalizable {
 						+ String.valueOf(getBytesinuse()));
 				}
 			}
-		}
+		//}
 	}
 	
 	/**
@@ -214,10 +217,16 @@ public final class Datablock implements Externalizable {
 	}
 	
 	/** for debugging, write block info */
-	void blockdump() {
-		if( Props.DEBUG ) System.out.println(this.toString());
+	public String blockdump() {
+		int nzero=0;
+		for(int i =0;i<datasize;i++) {
+		        if(data[i] != 0) {
+		               ++nzero;
+		        }
+		}
+		return "Blockdump "+this.toString()+" "+(nzero == 0 ? "NO Non-Zero elements found" : nzero+" non-zero elements found");
+		
 	}
-
 
 	/**
 	* deep copy
@@ -256,60 +265,44 @@ public final class Datablock implements Externalizable {
 		//                break;
 		//        }
 		//} o+=
-		String o =
-			"prev = "
-				+ getPrevblk()
+		//String o =
+		return	"DBLK: prev = "
+				+ prevblk
 				+ " next = "
-				+ getNextblk()
+				+ nextblk
 				+ " bytesused = "
-				+ getBytesused()
+				+ bytesused
 				+ " bytesinuse = "
 				+ bytesinuse
 				+ " pageLSN: "
-				+ getPageLSN()
+				+ pageLSN
 				+ " incore "
-				+ isIncore();
-		return o;
+				+ incore;
+		//return o;
 	}
-	public synchronized short getBytesinuse() {
+	public short getBytesinuse() {
 		return bytesinuse;
 	}
-	public synchronized void setBytesinuse(short bytesinuse) {
+	public void setBytesinuse(short bytesinuse) {
 		this.bytesinuse = bytesinuse;
 	}
-	public synchronized String toBriefString() {
-		return ( getPrevblk() !=-1 || getNextblk() !=-1 || getBytesused() != 0 || bytesinuse != 0 || 
-				 getPageLSN() != -1 || isIncore()) ?
-				"prev = "
-					+ getPrevblk()
-					+ " next = "
-					+ getNextblk()
-					+ " bytesused = "
-					+ getBytesused()
-					+ " bytesinuse = "
-					+ bytesinuse
-					+ " pageLSN: "
-					+ getPageLSN()
-					+ " incore "
-					+ isIncore()
-			: "";
-	}
-	public synchronized String toVblockBriefString() {
-		return ( getPrevblk() !=-1 || getNextblk() !=-1 || getBytesused() != 0 || bytesinuse != 0 || 
-				 getPageLSN() != -1 || isIncore()) ?
-				"prev = "
+	
+	public String toBriefString() {
+		return ( prevblk !=-1 || nextblk !=-1 || bytesused != 0 || bytesinuse != 0 || 
+				 pageLSN != -1 || incore) ?
+				"DBLK prev = "
 					+ GlobalDBIO.valueOf(getPrevblk())
 					+ " next = "
 					+ GlobalDBIO.valueOf(getNextblk())
 					+ " bytesused = "
-					+ getBytesused()
+					+ bytesused
 					+ " bytesinuse = "
 					+ bytesinuse
 					+ " pageLSN: "
-					+ getPageLSN()
+					+ pageLSN
 					+ " incore "
-					+ isIncore()
-			: "";
+					+ incore
+			:  "[[ Block Empty ]]";
 	}
 	public boolean isIncore() {
 		return incore;
@@ -317,16 +310,16 @@ public final class Datablock implements Externalizable {
 	public void setIncore(boolean incore) {
 		this.incore = incore;
 	}
-	public synchronized long getPrevblk() {
+	public long getPrevblk() {
 		return prevblk;
 	}
-	public synchronized void setPrevblk(long prevblk) {
+	public void setPrevblk(long prevblk) {
 		this.prevblk = prevblk;
 	}
-	public synchronized long getNextblk() {
+	public long getNextblk() {
 		return nextblk;
 	}
-	public synchronized void setNextblk(long nextblk) {
+	public void setNextblk(long nextblk) {
 		this.nextblk = nextblk;
 	}
 	public short getBytesused() {
@@ -335,10 +328,10 @@ public final class Datablock implements Externalizable {
 	public void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
-	public synchronized long getPageLSN() {
+	public long getPageLSN() {
 		return pageLSN;
 	}
-	public synchronized void setPageLSN(long version) {
+	public void setPageLSN(long version) {
 		this.pageLSN = version;
 	}
 	public boolean isInlog() {

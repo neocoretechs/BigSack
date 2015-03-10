@@ -212,3 +212,4 @@
 /GetNextFreeBlocksRequest.class
 /IoRequestInterface.class
 /IoResponseInterface.class
+/FsizeRequest.class

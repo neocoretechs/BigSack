@@ -9,7 +9,13 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
-
+/**
+ * This is an IoManager based request which will call into the block buffer for this
+ * tablespace and bring a block into the pool without connecting it to any data.
+ * The scenario is present in block acquisition
+ * @author jg
+ *
+ */
 public final class AddBlockAccessNoReadRequest implements CompletionLatchInterface {
 	private int tablespace;
 	private CountDownLatch barrierCount;
@@ -21,9 +27,13 @@ public final class AddBlockAccessNoReadRequest implements CompletionLatchInterfa
 		this.barrierCount = barrierCount;
 		this.block = block;
 	}
+	/**
+	 * addBlockAccessNoRead will latch through setBlockNumber of blockAccessIndex
+	 */
 	@Override
 	public synchronized void process() throws IOException {
 		returnObject = blockBuffer.addBlockAccessNoRead(block);
+		// trip the countdown latch in waiting processor thread
 		barrierCount.countDown();
 	}
 
