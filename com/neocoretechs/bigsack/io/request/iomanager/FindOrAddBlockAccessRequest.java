@@ -22,18 +22,18 @@ public final class FindOrAddBlockAccessRequest implements CompletionLatchInterfa
 		this.block = block;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		returnObject = blockBuffer.findOrAddBlockAccess(block);
 		barrierCount.countDown();
 	}
 
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return block;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return returnObject;
 	}
 	/**
@@ -46,7 +46,7 @@ public final class FindOrAddBlockAccessRequest implements CompletionLatchInterfa
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return "FindOrAddBlockAccessRequest for tablespace "+tablespace+" block "+GlobalDBIO.valueOf(block);
 	}
 	@Override

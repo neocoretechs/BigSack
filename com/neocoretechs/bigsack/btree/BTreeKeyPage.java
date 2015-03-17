@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.io.Serializable;
 
 import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
@@ -39,7 +40,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff
 */
 public final class BTreeKeyPage implements Serializable {
-	static final boolean DEBUG = false;
+	static final boolean DEBUG = true;
 	static final long serialVersionUID = -2441425588886011772L;
 	static int MAXKEYS = 4;
 	int numKeys = 0;
@@ -86,7 +87,7 @@ public final class BTreeKeyPage implements Serializable {
 	* @return loc.
 	*/
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	int search(Comparable targetKey) {
+	synchronized int search(Comparable targetKey) {
 		int lo = 0;
 		int hi = this.numKeys - 1;
 		int mid = 0;
@@ -118,7 +119,7 @@ public final class BTreeKeyPage implements Serializable {
 	* @param index The index of key array to begin offset
 	*/
 	@SuppressWarnings("rawtypes")
-	void insert(Comparable newKey, Object newData, int index) {
+	synchronized void insert(Comparable newKey, Object newData, int index) {
 		// If adding to right, no moving to do
 		if (index < numKeys)
 			// move elements down
@@ -150,7 +151,7 @@ public final class BTreeKeyPage implements Serializable {
 	* numKeys is decremented
 	* @param index the index of the item on this page to delete
 	*/
-	void delete(int index) {
+	synchronized void delete(int index) {
 		// If its the rightmost key ignore move
 		if (index < numKeys - 1)
 			// Move all up
@@ -174,7 +175,7 @@ public final class BTreeKeyPage implements Serializable {
 		setUpdated(true);
 	}
 
-	void deleteData(ObjectDBIO sdbio, int index) throws IOException {
+	synchronized void deleteData(ObjectDBIO sdbio, int index) throws IOException {
 		if (dataArray[index] != null && !dataIdArray[index].isEmptyPointer()) {
 			if( DEBUG ) {
 				System.out.print("Deleting :"+dataIdArray[index]+"\r\n");
@@ -200,7 +201,7 @@ public final class BTreeKeyPage implements Serializable {
 	* @return The deserialized page instance
 	* @exception IOException If retrieval fails
 	*/
-	public BTreeKeyPage getPage(ObjectDBIO sdbio, int index) throws IOException {
+	public synchronized BTreeKeyPage getPage(ObjectDBIO sdbio, int index) throws IOException {
 		if(DEBUG) {
 			System.out.println("Entering BTreeKeyPage with target index "+index);
 			for(int i = 0; i < pageIdArray.length; i++) {
@@ -241,8 +242,7 @@ public final class BTreeKeyPage implements Serializable {
 	* @exception IOException If retrieval fails
 	*/
 	static BTreeKeyPage getPageFromPool(ObjectDBIO sdbio, long pos) throws IOException {
-		if (pos == -1L)
-			throw new IOException("Page index invalid in getPage");
+		assert(pos != -1L) : "Page index invalid in getPage "+sdbio.getDBName();
 		sdbio.findOrAddBlock(pos);
 		BTreeKeyPage btk =
 			(BTreeKeyPage) (sdbio.deserializeObject(pos));
@@ -262,7 +262,7 @@ public final class BTreeKeyPage implements Serializable {
 	 * @param sdbio The ObjectDBIO instance
 	 * @exception IOException If write fails
 	 */
-	public void putPage(ObjectDBIO sdbio) throws IOException {
+	public synchronized void putPage(ObjectDBIO sdbio) throws IOException {
 		if (!isUpdated()) {
 			if( DEBUG ) System.out.println("page not updated, returning from putPage");
 			return;
@@ -270,10 +270,15 @@ public final class BTreeKeyPage implements Serializable {
 		byte[] pb = GlobalDBIO.getObjectAsBytes(this);
 		if( DEBUG ) System.out.println("BTreeKeyPage putPage Got "+pb.length+" bytes");
 		if (pageId == -1L) {
-			pageId = sdbio.stealBlock();
+			BlockAccessIndex lbai = sdbio.stealblk();
+			pageId = lbai.getBlockNum();
+			// extract tablespace since we steal blocks from any
+			int tablespace = GlobalDBIO.getTablespace(pageId);
 			if( DEBUG ) System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
+			sdbio.add_object(tablespace, pb, pb.length);
+		} else {
+			sdbio.add_object(Optr.valueOf(pageId), pb, pb.length);
 		}
-		sdbio.add_object(Optr.valueOf(pageId), pb, pb.length);
 		if( DEBUG ) System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length+" page:"+this);
 		setUpdated(false);
 	}
@@ -285,7 +290,7 @@ public final class BTreeKeyPage implements Serializable {
 	* @param sdbio The BlockDBIO instance
 	* @exception IOException if write fails 
 	*/
-	public void putPages(ObjectDBIO sdbio) throws IOException {
+	public synchronized void putPages(ObjectDBIO sdbio) throws IOException {
 		for (int i = 0; i <= numKeys; i++) {
 			if (pageArray[i] != null) {
 				pageArray[i].putPages(sdbio);
@@ -296,18 +301,19 @@ public final class BTreeKeyPage implements Serializable {
 				dataUpdatedArray[i] = false;
 				// if it gets nulled, should probably delete
 				if (dataArray[i] != null) {
-					dataIdArray[i] = sdbio.getNewNodePosition(); // pack page
+					// pack the page into this tablespace and within blocks at the last known good position
+					dataIdArray[i] = sdbio.getIOManager().getNewNodePosition(GlobalDBIO.getTablespace(pageIdArray[i]));
 					byte[] pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
 					sdbio.add_object(dataIdArray[i], pb, pb.length);
 					// set new node position to the current block to pack pages
-					sdbio.setNewNodePosition();
+					//sdbio.setNewNodePosition();
 				}
 			}
 		}
 		putPage(sdbio);
 	}
 
-	void putPageToArray(BTreeKeyPage fromPage, int index) {
+	synchronized void putPageToArray(BTreeKeyPage fromPage, int index) {
 		pageArray[index] = fromPage;
 		if (fromPage != null)
 			pageIdArray[index] = fromPage.pageId;
@@ -317,12 +323,12 @@ public final class BTreeKeyPage implements Serializable {
 	}
 
 	@SuppressWarnings("rawtypes")
-	void putKeyToArray(Comparable key, int index) {
+	synchronized void putKeyToArray(Comparable key, int index) {
 		keyArray[index] = key;
 		setUpdated(true);
 	}
 
-	Object getDataFromArray(ObjectDBIO sdbio, int index) throws IOException {
+	synchronized Object getDataFromArray(ObjectDBIO sdbio, int index) throws IOException {
 		if (dataArray[index] == null && !dataIdArray[index].isEmptyPointer() ) {
 			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
 			dataUpdatedArray[index] = false;
@@ -330,20 +336,20 @@ public final class BTreeKeyPage implements Serializable {
 		return dataArray[index];
 	}
 
-	void putDataToArray(Object data, int index) {
+	synchronized void putDataToArray(Object data, int index) {
 		dataArray[index] = data;
 		dataIdArray[index] = Optr.emptyPointer;
 		dataUpdatedArray[index] = true;
 		setUpdated(true);
 	}
 
-	void nullPageArray(int index) {
+	synchronized void nullPageArray(int index) {
 		pageArray[index] = null;
 		pageIdArray[index] = -1L;
 		setUpdated(true);
 	}
 	
-	public String toString() {
+	public synchronized String toString() {
 		StringBuffer sb = new StringBuffer();
 		//sb.append("Page ");
 		//sb.append(hashCode());

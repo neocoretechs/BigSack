@@ -1,5 +1,5 @@
 package com.neocoretechs.bigsack.session;
-import java.io.File;
+
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Hashtable;
@@ -39,7 +39,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff
 */
 public final class SessionManager {
-	private static boolean DEBUG = false;
+	private static boolean DEBUG = true;
 	private static Hashtable<String, BigSackSession> SessionTable = new Hashtable<String, BigSackSession>();
 	@SuppressWarnings("rawtypes")
 	private static Hashtable<?, ?> AdminSessionTable = new Hashtable();
@@ -175,9 +175,15 @@ public final class SessionManager {
 		if (hps == null) {
 			// did'nt find it, create anew, throws IllegalAccessException if no go
 			// Global IO and main Btree index
+			if( DEBUG )
+				System.out.println("SessionManager.ConectNoRecovery bringing up IO");
 			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName);
+			if( DEBUG )
+				System.out.println("SessionManager.ConectNoRecovery bringing up BTree");
 			BTreeMain bTree =  new BTreeMain(objIO);
 			hps = new BigSackSession(bTree, uid, gid);
+			if( DEBUG )
+				System.out.println("SessionManager.ConectNoRecovery logging session");
 			SessionTable.put(dbname, hps);
 		} else
 			// if closed, then open, else if open this does nothing

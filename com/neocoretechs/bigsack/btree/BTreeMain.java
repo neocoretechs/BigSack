@@ -53,8 +53,8 @@ public final class BTreeMain {
 	int[] indexStack;
 	int stackDepth;
 	boolean atKey;
-	private static boolean DEBUG = false;
-	private static boolean TEST = true;
+	private static boolean DEBUG = true;
+	private static boolean TEST = false;
 	private ObjectDBIO sdbio;
 
 	public BTreeMain(ObjectDBIO sdbio) throws IOException {
@@ -77,6 +77,7 @@ public final class BTreeMain {
 				++numKeys;
 			}
 			System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
+			// deallocate outstanding blocks in all tablespaces
 			sdbio.deallocOutstanding();
 		} else {
 			System.out.println("Database "+sdbio.getDBName()+" ready.");
@@ -91,7 +92,7 @@ public final class BTreeMain {
 	* @exception IOException if read failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Object seek(Comparable targetKey) throws IOException {
+	public synchronized Object seek(Comparable targetKey) throws IOException {
 		if (search(targetKey)) {
 			setCurrent();
 			return getCurrentObject();
@@ -107,7 +108,7 @@ public final class BTreeMain {
 	* @exception IOException If write fails 
 	*/
 	@SuppressWarnings("rawtypes")
-	public int add(Comparable newKey, Object newObject) throws IOException {
+	public synchronized int add(Comparable newKey, Object newObject) throws IOException {
 		int i, j, k;
 		Comparable saveKey = null;
 		Object saveObject = null;
@@ -216,7 +217,7 @@ public final class BTreeMain {
 	* @exception IOException If write fails 
 	*/
 	@SuppressWarnings("rawtypes")
-	public int add(Comparable newKey) throws IOException {
+	public synchronized int add(Comparable newKey) throws IOException {
 		int i, j, k;
 		Comparable saveKey = null;
 		//Object saveObject = null;
@@ -319,7 +320,7 @@ public final class BTreeMain {
 	* @exception IOException if seek or write failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public int delete(Comparable newKey) throws IOException {
+	public synchronized int delete(Comparable newKey) throws IOException {
 		BTreeKeyPage tpage;
 		int tindex;
 		BTreeKeyPage leftPage;
@@ -558,7 +559,7 @@ public final class BTreeMain {
 	 * Rewind current position to beginning of tree
 	 * @exception IOException If read fails
 	 */
-	public void rewind() throws IOException {
+	public synchronized void rewind() throws IOException {
 		currentPage = getRoot();
 		currentIndex = 0;
 		clearStack();
@@ -574,7 +575,7 @@ public final class BTreeMain {
 	 * Set current position to end of tree
 	 * @exception IOException If read fails
 	 */
-	public void toEnd() throws IOException {
+	public synchronized void toEnd() throws IOException {
 		currentPage = getRoot();
 		if (getNumKeys() != 0) {
 			clearStack();
@@ -593,7 +594,7 @@ public final class BTreeMain {
 	* @return 0 if ok, != 0 if error
 	* @exception IOException If read fails
 	*/
-	public int gotoNextKey() throws IOException {
+	public synchronized int gotoNextKey() throws IOException {
 
 		//if (getNumKeys() == 0)
 		//	return (EOF);
@@ -644,7 +645,7 @@ public final class BTreeMain {
 	* @return 0 if ok, <>0 if error
 	* @exception IOException If read fails
 	*/
-	public int gotoPrevKey() throws IOException {
+	public synchronized int gotoPrevKey() throws IOException {
 		if (getNumKeys() == 0)
 			return (BOF);
 
@@ -683,7 +684,7 @@ public final class BTreeMain {
 	* Set the current object and key based on value of currentPage
 	* and currentIndex
 	*/
-	public void setCurrent() throws IOException {
+	public synchronized void setCurrent() throws IOException {
 		atKey = true;
 		setCurrentKey(currentPage.keyArray[currentIndex]);
 		setCurrentObject(currentPage.getDataFromArray(getIO(), currentIndex));
@@ -697,7 +698,7 @@ public final class BTreeMain {
 	* @exception IOException If read fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public boolean search(Comparable targetKey) throws IOException {
+	public synchronized boolean search(Comparable targetKey) throws IOException {
 		// File empty?
 		if (getNumKeys() == 0) {
 			if( DEBUG ) System.out.println("*** NO KEYS! ***");

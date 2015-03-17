@@ -1,16 +1,30 @@
 package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
 
 import com.neocoretechs.bigsack.io.Optr;
-import com.neocoretechs.bigsack.io.channel.DBSeekableByteChannel;
 //import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
-
-public final class ObjectDBIO extends OffsetDBIO {
-	private static boolean DEBUG = false;
+import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
+import com.neocoretechs.bigsack.session.SessionManager;
+/**
+* Create the block IO and up through the chain to global IO. After constructing, create an IO manager of the proper
+* type based on our cluster or standalone configuration. In the IO manager the block pool objects and associated
+* buffers along with the threaded IO workers are spun up, one for each tablespace of each database.
+* In addition a recovery log instance for each tablespace is created
+* and determine if a roll forward recovery is needed. The flow is create_recovery_log which calls boot()
+* undolog instance is then set after construction. Finally, the LogToFile instance is extracted and 'recover' is called
+* @param objname The database table
+* @param remoteDbName The remote location of tablespaces 
+* @param create True to create if not existing
+* @param transId The Transaction id
+* @exception IOException If problems setting up IO
+*/
+public final class ObjectDBIO extends GlobalDBIO {
+	private static boolean DEBUG = true;
 	public ObjectDBIO(String objname, String remoteObjName, boolean create, long transId) throws IOException {
 		super(objname, remoteObjName, create, transId);
-		setNewNodePosition(-1L);
 	}
 	/**
 	 * Connect without recovery log, to debug or for some read-only purpose
@@ -18,7 +32,7 @@ public final class ObjectDBIO extends OffsetDBIO {
 	 * @throws IOException 
 	 */
 	public ObjectDBIO(String dbname, String remote) throws IOException {
-		super(dbname, remote);
+		super(dbname, remote, SessionManager.getGlobalTransId());
 	}
 
 	// Are we using custom class loader for serialized versions?
@@ -31,9 +45,10 @@ public final class ObjectDBIO extends OffsetDBIO {
 	* @exception IOException if the block cannot be sought or written
 	*/
 	public synchronized void delete_object(Optr loc, int osize) throws IOException {
-		objseek(loc);
-		deleten(osize);
+		ioManager.objseek(loc);
+		ioManager.deleten(loc, osize);
 	}
+	
 	/**
 	 * Add an object, which in this case is a load of bytes.
 	 * @param loc Location to add this
@@ -42,10 +57,27 @@ public final class ObjectDBIO extends OffsetDBIO {
 	 * @exception IOException If the adding did not happen
 	 */
 	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
-		objseek(loc);
-		assert(getBlockIndex().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
-		writen(o, osize);
-		assert(getBlockIndex().getAccesses() > 0 && getBlockIndex().getBlk().isIncore()) : "Block "+loc+" unlatched after write, accesses: "+getBlockIndex().getAccesses();
+		int tblsp = ioManager.objseek(loc);
+		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
+		ioManager.writen(tblsp, o, osize);
+		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
+			   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
+			"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
+	}
+	/**
+	 * Add an object, which in this case is a load of bytes.
+	 * @param loc Location to add this
+	 * @param o The byte payload to add to pool
+	 * @param osize  The size of the payload to add from array
+	 * @exception IOException If the adding did not happen
+	 */
+	public synchronized void add_object(int tblsp, byte[] o, int osize) throws IOException {
+		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : 
+			"Writing unlatched "+ioManager.getBlockStream(tblsp).getLbai()+" with payload:"+osize;
+		ioManager.writen(tblsp, o, osize);
+		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
+			   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
+				   "Block "+ioManager.getBlockStream(tblsp).getLbai()+" unlatched after write";
 	}
 	/**
 	* Read Object in pool: deserialize the byte array.
@@ -56,35 +88,38 @@ public final class ObjectDBIO extends OffsetDBIO {
 	*/
 	public synchronized Object deserializeObject(long iloc) throws IOException {
 		// read Object at ptr to byte array
+		int tblsp = GlobalDBIO.getTablespace(iloc);
+		if(DEBUG)
+			System.out.print(" Deserialize "
+					+GlobalDBIO.valueOf(iloc)+" current block "+ioManager.getBlockStream(tblsp));
 		Object Od = null;
 		try {
-			/*
+
 			ObjectInput s;
-			objseek(iloc);
+			ioManager.objseek(iloc);
 			if (isCustomClassLoader())
 				s =	new CObjectInputStream(
-						getDBInput(),
+						ioManager.getBlockStream(tblsp).getDBInput(),
 						getCustomClassLoader());
 			else
-				s = new ObjectInputStream(getDBInput());
+				s = new ObjectInputStream(ioManager.getBlockStream(tblsp).getDBInput());
 			Od = s.readObject();
-			s.close();
-			*/
-
+			s.close();		
+			/*
 			int tblsp = GlobalDBIO.getTablespace(iloc);
 			DBSeekableByteChannel dbByteChannel = getDBByteChannel(tblsp);
 			dbByteChannel.setBlockNumber(iloc);
-			//if(DEBUG)
-			//System.out.print(" Deserialize "+GlobalDBIO.valueOf(iloc)+" current block "+getBlockIndex()+" DUMP:"+getBlockIndex().getBlk().blockdump());
-			
+			if(DEBUG)
+				System.out.print(" Deserialize "+GlobalDBIO.valueOf(iloc)+" current block "+getBlockIndex()+" DUMP:"+getBlockIndex().getBlk().blockdump());
 			Od = GlobalDBIO.deserializeObject(dbByteChannel);
-		} catch (IOException ioe) {
+			*/
+		} catch (IOException | ClassNotFoundException ioe) {
 			throw new IOException(
 				"deserializeObject from long: "
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
-		}
+		} 
 		if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
 		return Od;
 	}
@@ -98,22 +133,25 @@ public final class ObjectDBIO extends OffsetDBIO {
 	public synchronized Object deserializeObject(Optr iloc) throws IOException {
 		// read Object at ptr to byte array
 		Object Od;
+		int tblsp = GlobalDBIO.getTablespace(iloc.getBlock());
+		if(DEBUG)
+			System.out.print(" Deserialize "
+					+iloc+" current block "+ioManager.getBlockStream(tblsp));
 		try {
-			/*
 			ObjectInput s;
-			objseek(iloc);
+			ioManager.objseek(iloc);
 			if (isCustomClassLoader())
-				s =	new CObjectInputStream(getDBInput(), getCustomClassLoader());
+				s =	new CObjectInputStream(ioManager.getBlockStream(tblsp).getDBInput(), getCustomClassLoader());
 			else
-				s = new ObjectInputStream(getDBInput());
+				s = new ObjectInputStream(ioManager.getBlockStream(tblsp).getDBInput());
 			Od = s.readObject();
-			s.close();
-			*/
-			int tblsp = GlobalDBIO.getTablespace(iloc.getBlock());
+			s.close();	
+			/*
 			DBSeekableByteChannel dbByteChannel = getDBByteChannel(tblsp);
 			dbByteChannel.setBlockNumber(iloc.getBlock());
 			Od = GlobalDBIO.deserializeObject(dbByteChannel);
-		} catch (IOException ioe) {
+			*/
+		} catch (IOException | ClassNotFoundException ioe) {
 			throw new IOException(
 				"deserializeObject from pointer: "
 					+ ioe.toString()

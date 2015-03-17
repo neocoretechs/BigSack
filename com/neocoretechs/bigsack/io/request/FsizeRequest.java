@@ -9,14 +9,16 @@ public class FsizeRequest implements IoRequestInterface {
 	private static boolean DEBUG = false;
 	private int tablespace;
 	private CountDownLatch barrierCount;
-	private IoInterface ioManager;
+	private IoInterface ioUnit;
 	private long size;
 	public FsizeRequest(CountDownLatch barrierCount) {
 		this.barrierCount = barrierCount;
 	}
 	@Override
 	public void process() throws IOException {
-		size = ioManager.Fsize();
+		synchronized(ioUnit) {
+		size = ioUnit.Fsize();
+		}
 		barrierCount.countDown();
 	}
 	@Override
@@ -34,14 +36,14 @@ public class FsizeRequest implements IoRequestInterface {
 	 */
 	@Override
 	public void setIoInterface(IoInterface ioi) {
-		ioManager = ioi;
+		ioUnit = ioi;
 	}
 	@Override
 	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
 	public String toString() {
-		return "FSize Request for tablespace "+tablespace;
+		return "FSize Request for "+ioUnit.Fname()+" tablespace "+tablespace;
 	}
 
 }

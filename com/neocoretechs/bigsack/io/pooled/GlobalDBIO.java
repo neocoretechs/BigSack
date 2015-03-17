@@ -7,11 +7,9 @@ import java.util.*;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
-
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
-import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
@@ -48,7 +46,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private String dbName;
 	private String remoteDBName;
@@ -56,18 +54,11 @@ public class GlobalDBIO {
 	protected boolean isNew = false; // if we create and no data yet
 	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
 
-	private RecoveryLogManager ulog;		
-
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 
-	public RecoveryLogManager getUlog() {
-		return ulog;
-	}
-	
 	public IoManagerInterface getIOManager() {
 		return ioManager;
 	}
-	
 	
 	/**
 	* Translate the virtual tablspace (first 3 bits) and block to real block
@@ -139,11 +130,11 @@ public class GlobalDBIO {
 		if (Props.toString("Model").startsWith("Cluster")) {
 			if( DEBUG )
 				System.out.println("Cluster Node IO Manager coming up...");
-			ioManager = new ClusterIOManager(this);
+			ioManager = new ClusterIOManager((ObjectDBIO) this);
 		} else {
 			if( DEBUG )
 				System.out.println("Multithreaded IO Manager coming up...");
-			ioManager = new MultithreadedIOManager(this);
+			ioManager = new MultithreadedIOManager((ObjectDBIO) this);
 		}
 	    
 		Fopen(dbName, remoteDBName, create);
@@ -184,7 +175,7 @@ public class GlobalDBIO {
 	* @return The long virtual block if there was a next space else 0
 	* @exception IOException if seek to new position fails
 	*/
-	public long nextTableSpace(int prevSpace) throws IOException {
+	public static long nextTableSpace(int prevSpace) throws IOException {
 		int tempSpace = prevSpace;
 		while (++tempSpace < DBPhysicalConstants.DTABLESPACES) {
 				return makeVblock(tempSpace, 0L);
@@ -203,6 +194,8 @@ public class GlobalDBIO {
 	* @see IoInterface
 	*/
 	boolean Fopen(String fname, String remote, boolean create) throws IOException {
+		if( DEBUG )
+			System.out.println("GlobalDBIO.Fopen "+fname+" "+remote+" "+create);
 		return ioManager.Fopen(fname, remote, L3cache, create);
 	}
 	
@@ -210,7 +203,7 @@ public class GlobalDBIO {
 	 * Re-open tablespace
 	 * @throws IOException
 	 */
- 	void Fopen() throws IOException {
+ 	synchronized void Fopen() throws IOException {
  		ioManager.Fopen();
 	}
 
@@ -417,26 +410,18 @@ public class GlobalDBIO {
 		bai.addAccess();
 	}
 	*/
-	protected void dealloc(BlockAccessIndex bai) throws IOException {
+	protected static void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
 
-	/**
-	 * Part of general block/page buffer maintenance that can come through here
-	 * @throws IOException
-	 */
-	public void checkBufferFlush() throws IOException {
-		ioManager.freeupBlock();
-	}
-	
-	public void commitBufferFlush() throws IOException {
+	public synchronized void commitBufferFlush() throws IOException {
 		ioManager.commitBufferFlush();
 	}
 	
-	public void rollbackBufferFlush() {
+	public synchronized void rollbackBufferFlush() {
 		forceBufferClear();
 	}
-	public void forceBufferWrite() throws IOException {
+	public synchronized void forceBufferWrite() throws IOException {
 		ioManager.directBufferWrite();
 	}
 	/**
@@ -444,10 +429,33 @@ public class GlobalDBIO {
 	* Take the used block list, reset the blocks, move to to free list, then
 	* finally clear the used block list. We do this during rollback to remove any modified
 	*/
-	public void forceBufferClear() {
+	public synchronized void forceBufferClear() {
 			ioManager.forceBufferClear();
 	}
-
+	
+	public void findOrAddBlock(long pos) throws IOException {
+		ioManager.findOrAddBlockAccess(pos);	
+	}
+	
+	public void deallocOutstanding() throws IOException {
+		ioManager.deallocOutstanding();	
+	}
+	
+	public BlockAccessIndex stealblk() throws IOException {
+		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
+		ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getLbai());
+		return ioManager.getBlockStream(tbsp).getLbai();
+	}
+	
+	public void deallocOutstandingRollback() throws IOException {
+		ioManager.deallocOutstandingRollback();
+	}
+	
+	public void deallocOutstandingCommit() throws IOException {
+		ioManager.deallocOutstandingCommit();
+		
+	}
+	
 	/**
 	* Create initial buckets
 	* @exception IOException if buckets cannot be created
@@ -509,86 +517,23 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */
 	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
-		//if( DEBUG )
-		//	System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+		if( DEBUG )
+			System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.blockdump()+"|");
 		// send write command and queues be damned, writes only happen
 		// immediately after log writes
 		ioManager.FseekAndWrite(toffset, tblk);
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}	
 
-	/**
-	 * acquireblk - get block from unused chunk or create chunk and get<br>
-	 * return acquired block
-	 * Add a block to table of blocknums and block access index.
-	 * No setting of block in BlockAccessIndex, no initial read reading through ioManager.addBlockAccessnoRead
-	 * @param lastGoodBlk The block for us to link to
-	 * @return The BlockAccessIndex
-	 * @exception IOException if db not open or can't get block
-	 */
-	protected BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
-		long newblock;
-		BlockAccessIndex ablk = lastGoodBlk;
-		// this way puts it all in one tablespace
-		//int tbsp = getTablespace(lastGoodBlk.getBlockNum());
-		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
-		newblock = makeVblock(tbsp, ioManager.getNextFreeBlock(tbsp));
-		// update old block
-		ablk.getBlk().setNextblk(newblock);
-		ablk.getBlk().setIncore(true);
-		ablk.getBlk().setInlog(false);
-		dealloc(ablk);
-		// new block number for BlockAccessIndex set in addBlockAccessNoRead
-		BlockAccessIndex dblk =  ioManager.addBlockAccessNoRead(new Long(newblock));
-		dblk.getBlk().setPrevblk(lastGoodBlk.getBlockNum());
-		dblk.getBlk().setNextblk(-1L);
-		dblk.getBlk().setBytesused((short) 0);
-		dblk.getBlk().setBytesinuse ((short)0);
-		dblk.getBlk().setPageLSN(-1L);
-		dblk.getBlk().setIncore(true);
-		dblk.getBlk().setInlog(false);
-		return dblk;
-	}
-	/**
-	 * stealblk - get block from unused chunk or create chunk and get.
-	 * We dont try to link it to anything because our little linked lists
-	 * of instance blocks are not themselves linked to anything<br>
-	 * return acquired block. Read through the ioManager calling addBlockAccessNoRead with new block
-	 * @param currentBlk Current block so we can deallocate and replace it off chain
-	 * @return The BlockAccessIndex of stolen blk
-	 * @exception IOException if db not open or can't get block
-	 */
-	protected BlockAccessIndex stealblk(BlockAccessIndex currentBlk) throws IOException {
-		long newblock;
-		if (currentBlk != null)
-			dealloc(currentBlk);
-		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
-		newblock = makeVblock(tbsp, ioManager.getNextFreeBlock(tbsp));
-		// new block number for BlockAccessIndex set in addBlockAccessNoRead
-		BlockAccessIndex dblk = ioManager.addBlockAccessNoRead(new Long(newblock));
-		dblk.getBlk().setPrevblk(-1L);
-		dblk.getBlk().setNextblk(-1L);
-		dblk.getBlk().setBytesused((short) 0);
-		dblk.getBlk().setBytesinuse((short)0);
-		dblk.getBlk().setPageLSN(-1L);
-		dblk.getBlk().setIncore(false);
-		dblk.getBlk().setInlog(false);
-		return dblk;
-	}
-
 	public long getTransId() {
 		return transId;
-	}
-
-	public void setUlog(RecoveryLogManager ulog) {
-		this.ulog = ulog;
 	}
 
 	public int getMAXBLOCKS() {
 		return MAXBLOCKS;
 	}
 
-	public void setMAXBLOCKS(int mAXBLOCKS) {
+	public synchronized void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
 	}
 

@@ -28,7 +28,7 @@ import com.neocoretechs.arieslogger.core.Logger;
 import com.neocoretechs.arieslogger.core.StreamLogScan;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.ScanHandle;
-import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.File; // Plain files are used for backups
@@ -68,11 +68,11 @@ import java.util.zip.CRC32;
 	is monotonically increasing.
 	<P>
 	The log belongs to a log factory of a RawStore.  In the current implementation,
-	each RawStore only has one log factory, so each RawStore only has one log
+	each RawStore only has one log factory, so each RawStore only has one log PER TABLESPACE 
 	(which composed of multiple log files).
 	At any given time, a log factory only writes new log records to one log file,
 	this log file is called the 'current log file'.
-	Everytime a checkpoint is taken, a new log file is created and all subsequent
+	Every time a checkpoint is taken, a new log file is created and all subsequent
 	log records will go to the new log file.  After a checkpoint is taken, old
 	and useless log files will be deleted.
 	<P>
@@ -330,7 +330,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
     
     // Name of the BigSack database to log
     private String dbName;
-	private BlockDBIO blockIO;
+	private ObjectDBIO blockIO;
 	private int tablespace;
    
 	/**
@@ -338,7 +338,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * @param blockIO
 	 * @param tablespace
 	 */
-	public LogToFile(BlockDBIO blockIO, int tablespace) {
+	public LogToFile(ObjectDBIO blockIO, int tablespace) {
 		this.blockIO = blockIO;
 		this.tablespace = tablespace;
 		this.dbName = (new File(blockIO.getDBName())).getName();

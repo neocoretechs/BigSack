@@ -28,7 +28,7 @@ import com.neocoretechs.arieslogger.core.StreamLogScan;
 import com.neocoretechs.arieslogger.logrecords.Compensation;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
-import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.IOException;
@@ -136,7 +136,7 @@ public final class FileLogger implements Logger {
 
 		@exception IOException  Standard error policy
 	*/
-	public synchronized LogInstance logAndDo(BlockDBIO xact, Loggable operation) throws IOException 
+	public synchronized LogInstance logAndDo(ObjectDBIO xact, Loggable operation) throws IOException 
 	{
 		LogInstance logInstance = null;
 		try {		
@@ -226,7 +226,7 @@ public final class FileLogger implements Logger {
 
 		@exception IOException  Standard error policy
 	 */
-	public synchronized /*LogInstance*/ void logAndUndo(BlockDBIO xact, 
+	public synchronized /*LogInstance*/ void logAndUndo(ObjectDBIO xact, 
 								 Compensation compensation,
 								 LogInstance undoInstance,
 								 LogRecord lr,
@@ -302,7 +302,7 @@ public final class FileLogger implements Logger {
 
 		@see Logger#undo
 	  */
-	public synchronized void undo(BlockDBIO t, LogInstance undoStartAt, LogInstance undoStopAt) throws IOException {
+	public synchronized void undo(ObjectDBIO t, LogInstance undoStartAt, LogInstance undoStopAt) throws IOException {
 		assert(undoStartAt != null) : "FileLogger.undo startAt position cannot be null";
 		if (DEBUG)
         {
@@ -431,7 +431,7 @@ public final class FileLogger implements Logger {
 
 		@see LogToFile#recover
 	 */
-	protected synchronized long redo(BlockDBIO blockio, 
+	protected synchronized long redo(ObjectDBIO blockio, 
 			StreamLogScan redoScan, 
 			long redoLWM, 
 			long ttabInstance) throws IOException, ClassNotFoundException {
@@ -612,7 +612,7 @@ public final class FileLogger implements Logger {
 	 * @throws ClassNotFoundException
 	 * @return true if success, false if record.getundoable returns null
 	 */
-	public synchronized boolean extractUndoable(BlockDBIO t, 
+	public synchronized boolean extractUndoable(ObjectDBIO t, 
 			LogRecord record, 
 			LogInstance undoInstance) throws IOException, ClassNotFoundException {
 		Undoable lop = record.getUndoable();
@@ -641,7 +641,7 @@ public final class FileLogger implements Logger {
 	}
 
 	@Override
-	public LogInstance logAndUndo(BlockDBIO xact, Compensation operation,
+	public LogInstance logAndUndo(ObjectDBIO xact, Compensation operation,
 			LogInstance undoInstance, Object in) throws IOException {
 		throw new IOException("Log write of CLR unimplemented, use alternate logAndUndo method");
 	}

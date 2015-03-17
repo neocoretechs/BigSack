@@ -12,6 +12,7 @@ public class AnalyzeDB {
 	public static void main(String[] args) throws Exception {
 		// init with no recovery
 		BigSackSession bss = SessionManager.ConnectNoRecovery(args[0], null);
-		bss.analyze(true);
+		System.out.println("Proceeding to analyze "+args[0]);
+		bss.analyze(false);
 	}
 }

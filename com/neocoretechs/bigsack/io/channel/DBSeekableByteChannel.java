@@ -2,10 +2,14 @@ package com.neocoretechs.bigsack.io.channel;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SeekableByteChannel;
+import java.nio.channels.ByteChannel;
+//import java.nio.channels.SeekableByteChannel;
 
+import com.neocoretechs.bigsack.io.MultithreadedIOManager;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+
 /**
  * This class bridges the block pool and the computational elements.
  * It functions as a bytechannel into the block pool to read and write 
@@ -14,16 +18,16 @@ import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
  * @author jg
  *
  */
-public final class DBSeekableByteChannel implements SeekableByteChannel {
+public final class DBSeekableByteChannel implements ByteChannel {
 	private static boolean DEBUG = false;
-	private OffsetDBIOInterface sdbio;
-	private int tablespace;
+	private MultithreadedIOManager sdbio;
+	private BlockAccessIndex lbai;
 	private long blockNum;
 	private int position = 0;
 	private long size = 0;
-	public DBSeekableByteChannel(OffsetDBIOInterface sdbio, int tablespace) {
-		this.sdbio = sdbio;
-		this.tablespace = tablespace;
+	public DBSeekableByteChannel(BlockAccessIndex tlbai, MultithreadedIOManager tsdbio) {
+		lbai = tlbai;
+		sdbio = tsdbio;
 	}
 	/**
 	 * Our block number is a virtual block, we need to go back through the
@@ -35,14 +39,12 @@ public final class DBSeekableByteChannel implements SeekableByteChannel {
 		if( DEBUG ) {
 			System.out.println("DBSeekableByteChannel set block to "+bnum+" "+GlobalDBIO.valueOf(bnum));
 		}
-		assert(GlobalDBIO.getTablespace(bnum) == tablespace) : "Byte channel requested for conflicting tablespace "+GlobalDBIO.valueOf(bnum)+" "+tablespace;
+		//assert(GlobalDBIO.getTablespace(bnum) == ) : "Byte channel requested for conflicting tablespace "+GlobalDBIO.valueOf(bnum)+" "+tablespace;
 		this.blockNum = bnum;
 		sdbio.objseek(blockNum);
 		position = 0;
 		size = 0;
 	}
-	
-	public int getTablespace() { return tablespace; }
 	
 	@Override
 	public void close() throws IOException {
@@ -56,58 +58,24 @@ public final class DBSeekableByteChannel implements SeekableByteChannel {
 	}
 
 	@Override
-	public long position() throws IOException {
-		return position;
-	}
-
-	@Override
-	public SeekableByteChannel position(long arg0) throws IOException {
-		sdbio.objseek(blockNum);
-		position = (int) arg0;
-		if( DEBUG )
-			System.out.println("DBSeekableBytechannel position invoked for "+this);
-		if( position > 0 )
-				sdbio.seek_fwd(position);
-		return this;
-	}
-
-	@Override
 	public int read(ByteBuffer arg0) throws IOException {
+		int tablespace = GlobalDBIO.getTablespace(blockNum);
 		sdbio.objseek(blockNum);
-		sdbio.seek_fwd(position);
-		size = sdbio.readn(arg0, arg0.limit());
+		sdbio.seek_fwd(tablespace, position);
+		size = sdbio.getBlockBuffer(tablespace).readn(lbai, arg0, arg0.limit());
 		if( DEBUG )
 			System.out.print("/// DBSeekableByteChannel read:"+this+" into "+arg0+" ///");
 		position += size;
 		return (int) (size == 0 ? -1: size);
 	}
-
-	@Override
-	public long size() throws IOException {
-		if( DEBUG )
-			System.out.println("DBSeekableBytechannel size invoked for "+this);
-		return size;
-	}
-
-	@Override
-	public SeekableByteChannel truncate(long arg0) throws IOException {
-		if( DEBUG )
-			System.out.println("DBSeekableBytechannel truncate invoked for "+this+" to "+arg0);
-		throw new IOException("not supported");
-	}
-
-	@Override
-	public int write(ByteBuffer arg0) throws IOException {
-		if( DEBUG )
-			System.out.println("DBSeekableBytechannel write invoked for "+this+" from "+arg0);
-		size = sdbio.writen(arg0, arg0.limit());
-		position += size;
-		return (int) size;
-	}
 	
 	@Override
 	public String toString() {
-		return "DBSeekableByteChannel block:"+GlobalDBIO.valueOf(blockNum)+" local pos:"+position+" local size:"+size+" tablespace:"+tablespace+" io:"+sdbio.toString();
+		return "DBSeekableByteChannel block:"+GlobalDBIO.valueOf(blockNum)+" local pos:"+position+" local size:"+size+" tablespace:"+lbai+" io:"+sdbio.toString();
+	}
+	@Override
+	public int write(ByteBuffer arg0) throws IOException {
+		throw new IOException("Non writeable channel");
 	}
 
 }

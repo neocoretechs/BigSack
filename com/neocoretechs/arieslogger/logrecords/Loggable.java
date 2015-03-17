@@ -22,7 +22,7 @@
 package com.neocoretechs.arieslogger.logrecords;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
-import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 import java.io.IOException;
 
@@ -62,7 +62,7 @@ public interface Loggable  {
 
 		@exception IOException Can be thrown by any of the methods of in.
 	*/
-	public void applyChange(BlockDBIO xact, LogInstance instance, Object in) throws IOException;
+	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException;
 
 	/**
 		The log operations are responsible to create the ByteArray, and the log
@@ -106,7 +106,7 @@ public interface Loggable  {
 
 		@see Loggable#releaseResource
 	*/
-	public boolean needsRedo(BlockDBIO xact) throws IOException;
+	public boolean needsRedo(ObjectDBIO xact) throws IOException;
 
 
 	/**
@@ -123,7 +123,7 @@ public interface Loggable  {
 		This method must be safe to be called multiple times.
 
 	*/
-	public void releaseResource(BlockDBIO t);
+	public void releaseResource(ObjectDBIO t);
 
 	/**
 		Each loggable belongs to one or more groups of similar functionality.

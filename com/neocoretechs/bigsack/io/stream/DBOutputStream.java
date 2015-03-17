@@ -2,7 +2,9 @@ package com.neocoretechs.bigsack.io.stream;
 import java.io.IOException;
 import java.io.OutputStream;
 
-import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
 * All rights reserved.
@@ -32,13 +34,15 @@ import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
 * @author Groff
 */
 public final class DBOutputStream extends OutputStream {
-	OffsetDBIOInterface sdbio;
-	public DBOutputStream(OffsetDBIOInterface tsdbio) {
-		sdbio = tsdbio;
+    MappedBlockBuffer sdbio;
+	BlockAccessIndex lbai;
+	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer blockBuffer) {
+		lbai = tlbai;
+		sdbio = blockBuffer;
 	}
 	public void write(int tbyte) throws IOException {
 		try {
-			sdbio.writei(tbyte);
+			sdbio.writei(lbai, tbyte);
 		} catch (Exception e) {
 			throw new IOException(e.toString());
 		}

@@ -10,7 +10,7 @@ import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /**
  * 	Writes out a log record to the log stream, and call its applyChange method to
@@ -46,7 +46,7 @@ public final class UndoableBlock implements Undoable, Serializable {
 		the log stream is passed back to the operation for the applyChange method.
 	 */
 	@Override
-	public void applyChange(BlockDBIO xact, LogInstance instance, Object in) throws IOException {
+	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException {
 		if( Props.DEBUG ) {
 			System.out.println("UndoableBlock.applyChange: instance:"+instance+" raw store"+blkV2.getBlockNum()+","+blkV2.getBlk());
 		}
@@ -75,12 +75,12 @@ public final class UndoableBlock implements Undoable, Serializable {
 		<LI> The recovery system then calls loggable.releaseResource.
 	 */
 	@Override
-	public boolean needsRedo(BlockDBIO xact) throws IOException {
+	public boolean needsRedo(ObjectDBIO xact) throws IOException {
 		return true;
 	}
 
 	@Override
-	public void releaseResource(BlockDBIO xact) {
+	public void releaseResource(ObjectDBIO xact) {
 
 	}
 
@@ -90,7 +90,7 @@ public final class UndoableBlock implements Undoable, Serializable {
 	}
 
 	@Override
-	public Compensation generateUndo(BlockDBIO xact) throws IOException {
+	public Compensation generateUndo(ObjectDBIO xact) throws IOException {
 		return new CompensationBlock();
 	}
 

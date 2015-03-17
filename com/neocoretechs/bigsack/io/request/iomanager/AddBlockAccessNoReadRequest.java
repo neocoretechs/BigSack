@@ -31,19 +31,19 @@ public final class AddBlockAccessNoReadRequest implements CompletionLatchInterfa
 	 * addBlockAccessNoRead will latch through setBlockNumber of blockAccessIndex
 	 */
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		returnObject = blockBuffer.addBlockAccessNoRead(block);
 		// trip the countdown latch in waiting processor thread
 		barrierCount.countDown();
 	}
 
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return block;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return returnObject;
 	}
 	/**
@@ -56,7 +56,7 @@ public final class AddBlockAccessNoReadRequest implements CompletionLatchInterfa
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return "AddBlockAccessNoReadRequest for tablespace "+tablespace+" block "+GlobalDBIO.valueOf(block);
 	}
 	@Override

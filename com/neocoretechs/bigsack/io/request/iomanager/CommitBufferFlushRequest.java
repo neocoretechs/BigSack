@@ -5,11 +5,10 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 /**
  * ioManager request that synchs the buffers via cyclicbarrier after flush is performed
@@ -39,7 +38,7 @@ public final class CommitBufferFlushRequest implements CompletionLatchInterface 
 	 * Then Fclose on IoManager
 	 */
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		// dealloc outstanding block, call commit buffer flush in global IO, call recovery log manager commit
 		if( DEBUG  )
 			System.out.println("CommitBufferFlushRequest.process "+blockBuffer+" "+barrierSynch+" "+barrierCount);
@@ -52,7 +51,7 @@ public final class CommitBufferFlushRequest implements CompletionLatchInterface 
 			// executor requests shutdown
 		}
 		// all buffers flushed, call commit
-		recoveryManager.commit(tablespace);
+		recoveryManager.commit();
 		ioManager.Fclose();
 		barrierCount.countDown();
 		if( DEBUG  )
@@ -60,27 +59,27 @@ public final class CommitBufferFlushRequest implements CompletionLatchInterface 
 	}
 
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return 0L;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return null;
 	}
 	/**
 	 * This interface implemented method is called by IoWorker before processing
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {
+	public void setIoInterface(IoInterface ioi) {
 		this.ioManager = ioi;
 	}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return "CommitBufferFlushRequest for tablespace "+tablespace;
 	}
 	@Override

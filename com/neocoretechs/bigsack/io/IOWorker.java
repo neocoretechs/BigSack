@@ -145,11 +145,11 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	
 	@Override
 	public boolean Fopen(String fname, boolean create) throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			if (!ioUnit.Fopen(fname + "." + String.valueOf(tablespace), create))
 				return false;
 			return true;
-		//}
+		}
 	}
 	
 	@Override
@@ -159,9 +159,9 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	
 	@Override
 	public void Fclose() throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fclose();
-		//}
+		}
 	}
 	/**
 	 * Return the position as a real block number
@@ -177,125 +177,125 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	public void Fseek(long offset) throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker Fseek "+offset);
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fseek(offset);
-		//}
+		}
 	}
 	@Override
 	public long Fsize() throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fsize "+ioUnit.Fsize());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.Fsize();
-		//}
+		}
 	}
 	@Override
 	public void Fset_length(long newlen) throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 		if( DEBUG )
 		System.out.println("IOUnit Fset_length "+newlen);
 			ioUnit.Fset_length(newlen);	
-		//}
+		}
 	}
 	@Override
 	public void Fforce() throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker force ");
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fforce();
-		//}
+		}
 	}
 	@Override
 	public void Fwrite(byte[] obuf) throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fwrite(obuf);
-		//}
+		}
 	}
 	@Override
 	public void Fwrite(byte[] obuf, int osiz) throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fwrite(obuf, osiz);
-		//}
+		}
 	}
 	@Override
 	public void Fwrite_int(int obuf) throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fwrite_int(obuf);
-		//}
+		}
 	}
 	@Override
 	public void Fwrite_long(long obuf) throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fwrite_long(obuf);
-		//}
+		}
 	}
 	@Override
 	public void Fwrite_short(short obuf) throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fwrite_short(obuf);
-		//}
+		}
 	}
 	@Override
 	public int Fread(byte[] b, int osiz) throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fread "+osiz+" @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.Fread(b, osiz);
-		//}
+		}
 	}
 	@Override
 	public int Fread(byte[] b) throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fread "+b.length+" @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.Fread(b);
-		//}
+		}
 	}
 	@Override
 	public long Fread_long() throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fread_long @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.Fread_long();
-		//}
+		}
 	}
 	@Override
 	public int Fread_int() throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fread_int @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.Fread_int();
-		//}
+		}
 	}
 	@Override
 	public short Fread_short() throws IOException {
 		if( DEBUG )
 		System.out.println("IOWorker fread_short @"+Ftell());
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.Fread_short();
-		//}
+		}
 	}
 	@Override
 	public String FTread() throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.FTread();
-		//}
+		}
 	}
 	@Override
 	public void FTwrite(String ins) throws IOException {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.FTwrite(ins);
-		//}
+		}
 	}
 	@Override
 	public void Fdelete() {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			ioUnit.Fdelete();
-		//}
+		}
 	}
 	@Override
 	public String Fname() {
@@ -303,27 +303,27 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	}
 	@Override
 	public boolean isopen() {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.isopen();
-		//}
+		}
 	}
 	@Override
 	public boolean iswriteable() {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.iswriteable();
-		//}
+		}
 	}
 	@Override
 	public boolean isnew() {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.isnew();
-		//}
+		}
 	}
 	@Override
 	public Channel getChannel() {
-		//synchronized(ioUnit) {
+		synchronized(ioUnit) {
 			return ioUnit.getChannel();
-		//}
+		}
 	}
 
 }

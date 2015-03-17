@@ -29,9 +29,10 @@ public final class FSeekAndReadRequest implements IoRequestInterface {
 	 */
 	@Override
 	public void process() throws IOException {
+	
 		assert(ioUnit != null) : "FseekAndReadRequest ioUnit is not initialized";
-		if(DEBUG)
-			System.out.println("FSeekAndReadRequest ioUnit:"+ioUnit);
+		//if(DEBUG)
+		//	System.out.println("FSeekAndReadRequest ioUnit:"+ioUnit);
 		assert(!dblk.isIncore()) : "FseekAndReadRequest block incore preempts read " + offset + " "+ dblk;
 			//if( tablespace ==1 && offset== 114688) {
 			//	System.out.println("FSeekAndReadRequest.process1 pos:"+ioUnit.Ftell()+" open "+ioUnit.isopen()+" write "+ioUnit.iswriteable()+" chan "+ioUnit.getChannel().isOpen());
@@ -44,11 +45,11 @@ public final class FSeekAndReadRequest implements IoRequestInterface {
 			
 		//assert(dblk.getBytesused() > 0 ) : "FseekAndReadRequest block read bad for "+this+" "+dblk.blockdump();
 			
-		if( DEBUG ) 
-			System.out.println("FseekAndRead in "+this.toString()+" exiting");
+		//if( DEBUG ) 
+		//	System.out.println("FseekAndRead in "+this.toString()+" exiting");
 		//if( tablespace ==1 && offset== 114688)
 		//	System.out.println("MultithreadedIOManager.FseekAndReadRequest processing Tablespace_1_114688 "+dblk.blockdump());
-
+	
 		barrierCount.countDown();
 	}
 	@Override

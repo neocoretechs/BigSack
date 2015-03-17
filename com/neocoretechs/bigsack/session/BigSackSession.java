@@ -6,7 +6,6 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetKVIterator;
@@ -292,7 +291,8 @@ public final class BigSackSession {
 	 * @throws IllegalAccessException 
 	 */
 	public void Checkpoint() throws IllegalAccessException, IOException {
-		bTree.getIO().getUlog().checkpoint();
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+				bTree.getIO().getIOManager().getUlog(i).checkpoint();
 	}
 	/**
 	* Generic session roll up.  Data is committed based on rollback param.
@@ -305,7 +305,7 @@ public final class BigSackSession {
 		if (rollback) {
 			bTree.getIO().deallocOutstandingRollback();
 			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-				bTree.getIO().getUlog().getLogToFile(i).deleteOnlineArchivedLogFiles();
+				bTree.getIO().getIOManager().getUlog(i).getLogToFile().deleteOnlineArchivedLogFiles();
 		} else {
 			bTree.getRoot().putPages(bTree.getIO());
 			bTree.getIO().deallocOutstandingCommit();
@@ -330,37 +330,47 @@ public final class BigSackSession {
 	 * @exception Exception
 	 */
 	public void analyze(boolean verbose) throws Exception {
+		System.out.println("Begin BigSack analysis verbose:"+verbose);
 		float totutil = 0;
 		Datablock db = new Datablock(DBPhysicalConstants.DBLOCKSIZ);
-		int itab = 0;
-		long xpos = 0L;
 		int numberBlks = 1;
-		long xblk = bTree.getIO().firstTableSpace();
+		long minBlock = bTree.getIO().firstTableSpace();
+		int itab = 0;
 		do {
 			int tnumberBlks = 1;
 			float ttotutil = 0;
+			int zeroBlocks = 0;
 			long fsiz = bTree.getIO().getIOManager().Fsize(itab);
-			System.out.println("BigSack Analysis|Tablespace "+itab+" bytes: " + fsiz);
-			while (xpos < fsiz) {
-				bTree.getIO().getIOManager().FseekAndRead(xblk, db);
-				//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toString());
+			//long maxBlock = GlobalDBIO.makeVblock(itab, fsiz);
+			
+			System.out.println("BigSack Analysis|Tablespace number "+itab+" bytes: " + fsiz);
+			while (minBlock < fsiz) {
+				bTree.getIO().getIOManager().FseekAndReadFully(minBlock, db);
+				if( db.getBytesused() == 0 || db.getBytesinuse() == 0 && 
+						(db.getData()[0] == 0xAC && db.getData()[1] == 0xED && db.getData()[2] == 0x00 && db.getData()[3] == 0x05) ) {
+					//System.out.println("Block has zero in use values but object stream header for tablespace"+itab+" pos:"+xpos+" Data:"+db+","+db.blockdump());
+					++zeroBlocks;
+				}
+				
+				//if( Props.DEBUG ) 
 				//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toBriefString());
 				if( verbose ) {
-						System.out.println("BigSack Block tablespace "+itab+" pos:"+xpos+" Data:"+db+","+db.blockdump());
+						System.out.println("BigSack Block tablespace "+itab+" zero blocks:"+zeroBlocks+" pos:"+minBlock+" Data:"+db+","+db.blockdump());
 				}
 				totutil += ((float) (db.getBytesinuse()));
 				ttotutil += ((float) (db.getBytesinuse()));
-				xpos += DBPhysicalConstants.DBLOCKSIZ;
-				xblk = GlobalDBIO.makeVblock(itab, xpos);
+				minBlock += DBPhysicalConstants.DBLOCKSIZ;
+	
 				++numberBlks;
 				++tnumberBlks;
+				if( ((float)(tnumberBlks))/1000.0f == (float)(tnumberBlks/1000) ) System.out.print(tnumberBlks+"\r");
 			}
-			xpos = 0;
 			int ttTotal = DBPhysicalConstants.DBLOCKSIZ * tnumberBlks; // bytes total theoretical
 			int taTotal = (int) ((ttotutil / (float)ttTotal) * 100.0); // ratio of total to used
 			System.out.println("BigSack Tablespace "+itab+" utilization: " + (int)ttotutil + " bytes in "+tnumberBlks+" blocks");
 			System.out.println("Maximum possible utilization is "+ttTotal+" bytes, making data Utilization "+taTotal+"%");
-		} while( (xblk = bTree.getIO().nextTableSpace(itab)) != 0);
+			++itab;
+		} while( (minBlock = bTree.getIO().nextTableSpace(itab)) != 0);
 		System.out.println("Total BigSack utilization: " + (int)totutil + " bytes in "+numberBlks+" blocks");
 		int tTotal = DBPhysicalConstants.DBLOCKSIZ * numberBlks; // bytes total theoretical
 		int aTotal = (int) ((totutil / (float)tTotal) * 100.0); // ratio of total to used

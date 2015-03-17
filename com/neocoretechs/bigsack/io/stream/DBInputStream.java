@@ -2,7 +2,8 @@ package com.neocoretechs.bigsack.io.stream;
 import java.io.IOException;
 import java.io.InputStream;
 
-import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 /*
 * Copyright (c) 1998,2003, NeoCoreTechs
 * All rights reserved.
@@ -32,13 +33,15 @@ import com.neocoretechs.bigsack.io.pooled.OffsetDBIOInterface;
 * @author Groff
 */
 public final class DBInputStream extends InputStream {
-	OffsetDBIOInterface sdbio;
-	public DBInputStream(OffsetDBIOInterface tsdbio) {
+	MappedBlockBuffer sdbio;
+	BlockAccessIndex lbai;
+	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
+		lbai = tlbai;
 		sdbio = tsdbio;
 	}
 	public int read() throws IOException {
 		try {
-			return sdbio.readi();
+			return sdbio.readi(lbai);
 		} catch (Exception e) {
 			throw new IOException(e.toString());
 		}

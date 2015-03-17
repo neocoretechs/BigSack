@@ -5,8 +5,8 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.IoInterface;
+
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
 * All rights reserved.
@@ -67,7 +67,7 @@ public final class Datablock implements Externalizable {
 	* @param fobj the IoInterface
 	* @exception IOException error writing field
 	*/
-	public void  write(IoInterface fobj) throws IOException {
+	public synchronized void  write(IoInterface fobj) throws IOException {
 		//synchronized(fobj) {
 			fobj.Fwrite_long(getPrevblk());
 			fobj.Fwrite_long(getNextblk());
@@ -82,7 +82,7 @@ public final class Datablock implements Externalizable {
 	* @param fobj the IoInterface
 	* @exception IOException error writing field
 	*/
-	public void writeUsed(IoInterface fobj) throws IOException {
+	public synchronized void writeUsed(IoInterface fobj) throws IOException {
 		//synchronized(fobj) {
 			fobj.Fwrite_long(getPrevblk());
 			fobj.Fwrite_long(getNextblk());
@@ -97,7 +97,7 @@ public final class Datablock implements Externalizable {
 	}
 
 	
-	public void resetBlock() {
+	public synchronized void resetBlock() {
 		if( DEBUG )
 		System.out.println("Datablock,resetBlock "+this);
 		prevblk = -1L;
@@ -135,7 +135,7 @@ public final class Datablock implements Externalizable {
 	* @param fobj the IoInterface
 	* @exception IOException error reading field
 	*/
-	public void read(IoInterface fobj) throws IOException {
+	public synchronized void read(IoInterface fobj) throws IOException {
 		//synchronized(fobj) {
 			setPrevblk(fobj.Fread_long());
 			setNextblk(fobj.Fread_long());
@@ -153,7 +153,7 @@ public final class Datablock implements Externalizable {
 	* @param fobj the IoInterface
 	* @exception IOException error reading field
 	*/
-	public void readUsed(IoInterface fobj) throws IOException {
+	public synchronized void readUsed(IoInterface fobj) throws IOException {
 		//synchronized(fobj) {
 			setPrevblk(fobj.Fread_long());
 			setNextblk(fobj.Fread_long());
@@ -184,7 +184,7 @@ public final class Datablock implements Externalizable {
 	Write this out.
 	@exception IOException error writing to log stream
 	 */
-	public void writeExternal(ObjectOutput out) throws IOException
+	public synchronized void writeExternal(ObjectOutput out) throws IOException
 	{
 		out.writeLong(getPrevblk());
 		out.writeLong(getNextblk());
@@ -202,7 +202,7 @@ public final class Datablock implements Externalizable {
 	@exception IOException error reading from log stream
 	@exception ClassNotFoundException corrupted log stream
 	 */
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException
+	public synchronized void readExternal(ObjectInput in) throws IOException, ClassNotFoundException
 	{
 		setPrevblk(in.readLong());
 		setNextblk(in.readLong());
@@ -217,7 +217,7 @@ public final class Datablock implements Externalizable {
 	}
 	
 	/** for debugging, write block info */
-	public String blockdump() {
+	public synchronized String blockdump() {
 		int nzero=0;
 		for(int i =0;i<datasize;i++) {
 		        if(data[i] != 0) {
@@ -232,7 +232,7 @@ public final class Datablock implements Externalizable {
 	* deep copy
 	* @return The clone of this block
 	*/
-	Datablock doClone() {
+	synchronized Datablock doClone() {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 		d.setPrevblk(prevblk);
 		d.setNextblk(nextblk);
@@ -246,7 +246,7 @@ public final class Datablock implements Externalizable {
 	* deep copy
 	* @param d The block whose values are set from 'this' instance
 	*/
-	public void doClone(Datablock d) {
+	public synchronized void doClone(Datablock d) {
 		d.setPrevblk(prevblk);
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
@@ -257,7 +257,7 @@ public final class Datablock implements Externalizable {
 		d.setInlog(inlog);
 	}
 	
-	public String toString() {
+	public synchronized String toString() {
 		//String o = new String("Elems all 0");
 		//for(int i =0;i<datasize;i++) {
 		//        if(data[i] != 0) {
@@ -280,14 +280,14 @@ public final class Datablock implements Externalizable {
 				+ incore;
 		//return o;
 	}
-	public short getBytesinuse() {
+	public synchronized short getBytesinuse() {
 		return bytesinuse;
 	}
-	public void setBytesinuse(short bytesinuse) {
+	public synchronized void setBytesinuse(short bytesinuse) {
 		this.bytesinuse = bytesinuse;
 	}
 	
-	public String toBriefString() {
+	public synchronized String toBriefString() {
 		return ( prevblk !=-1 || nextblk !=-1 || bytesused != 0 || bytesinuse != 0 || 
 				 pageLSN != -1 || incore) ?
 				"DBLK prev = "
@@ -304,41 +304,42 @@ public final class Datablock implements Externalizable {
 					+ incore
 			:  "[[ Block Empty ]]";
 	}
-	public boolean isIncore() {
+	public synchronized boolean isIncore() {
 		return incore;
 	}
-	public void setIncore(boolean incore) {
+	public synchronized void setIncore(boolean incore) {
 		this.incore = incore;
 	}
-	public long getPrevblk() {
+	public synchronized long getPrevblk() {
 		return prevblk;
 	}
-	public void setPrevblk(long prevblk) {
+	public synchronized void setPrevblk(long prevblk) {
 		this.prevblk = prevblk;
 	}
-	public long getNextblk() {
+	public synchronized long getNextblk() {
 		return nextblk;
 	}
-	public void setNextblk(long nextblk) {
+	public synchronized void setNextblk(long nextblk) {
 		this.nextblk = nextblk;
 	}
-	public short getBytesused() {
+	public synchronized short getBytesused() {
 		return bytesused;
 	}
-	public void setBytesused(short bytesused) {
+	public synchronized void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
-	public long getPageLSN() {
+	public synchronized long getPageLSN() {
 		return pageLSN;
 	}
-	public void setPageLSN(long version) {
+	public synchronized void setPageLSN(long version) {
 		this.pageLSN = version;
 	}
-	public boolean isInlog() {
+	public synchronized boolean isInlog() {
 		return inlog;
 	}
-	public void setInlog(boolean inlog) {
+	public synchronized void setInlog(boolean inlog) {
 		this.inlog = inlog;
 	}
+	public synchronized byte[] getData() { return data; }
 
 }

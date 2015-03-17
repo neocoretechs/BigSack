@@ -1,7 +1,6 @@
 package com.neocoretechs.bigsack.io.request;
 
 import java.io.IOException;
-import java.io.Serializable;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -53,15 +52,15 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	* @exception IOException if seek or size fails
 	*/
 	private void getNextFreeBlocks() throws IOException {
-		long endBlock = 0L;
-		long endBl = ioUnit.Fsize();
-		nextFreeBlock = -1L; // assume there are none
-		while (endBl > endBlock) {
+		synchronized(ioUnit) {
+			long endBlock = 0L;
+			long endBl = ioUnit.Fsize();
+			nextFreeBlock = -1L; // assume there are none
+			while (endBl > endBlock) {
 				ioUnit.Fseek(endBl - (long) DBPhysicalConstants.DBLOCKSIZ);
 				d.read(ioUnit);
 				if (d.getPrevblk() == -1L
 					&& d.getNextblk() == -1L
-					&& d.getBytesused() == 0
 					&& d.getBytesinuse() == 0) {
 					endBl -= (long) DBPhysicalConstants.DBLOCKSIZ;
 					continue;
@@ -70,6 +69,7 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 					nextFreeBlock = ioUnit.Ftell();// the read position at the end of the block that is used, the new block
 					break;
 				}
+			}
 		}
 		// wait at the barrier until all other tablespaces arrive at their result
 		try {

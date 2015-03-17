@@ -8,11 +8,15 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
+import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.io.request.cluster.AbstractClusterWork;
 import com.neocoretechs.bigsack.io.request.cluster.CommitRequest;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
@@ -27,11 +31,10 @@ import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
 import com.neocoretechs.bigsack.io.request.cluster.RemoteCommitRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
-
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
+//import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 
@@ -49,10 +52,11 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  */
 public final class ClusterIOManager implements IoManagerInterface {
 	private static final boolean DEBUG = false;
-	private GlobalDBIO globalIO;
+	private ObjectDBIO globalIO;
 	protected DistributedIOWorker ioWorker[];
 	protected int L3cache = 0;
 	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
+	protected long[] nextFreed = new long[DBPhysicalConstants.DTABLESPACES];
 	private static int currentPort = 10000; // starting UDP port, increments as assigned
 	private static int messageSeq = 0; // monotonically increasing request id
 	// barrier synch for specific functions, cyclic (reusable)
@@ -65,7 +69,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 	 * Instantiate our master node array per database that communicate with our worker nodes
 	 * @throws IOException 
 	 */
-	public ClusterIOManager(GlobalDBIO globalIO) throws IOException {
+	public ClusterIOManager(ObjectDBIO globalIO) throws IOException {
 		this.globalIO = globalIO;
 		//ioWorker = new UDPMaster[DBPhysicalConstants.DTABLESPACES];
 		ioWorker = new DistributedIOWorker[DBPhysicalConstants.DTABLESPACES];
@@ -73,7 +77,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		// create master buffers for each tablespace
 		ThreadPoolManager.init(new String[]{"BLOCKPOOL"});
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			blockBuffer[i] = new MappedBlockBuffer(globalIO, i);
+			blockBuffer[i] = new MappedBlockBuffer(this, i);
 			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
 		}
 	}
@@ -438,26 +442,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 			return null;
 		}
 	}
-	/**
-	 * Check the free block list for 0 elements. This is a demand response method guaranteed to give us a free block
-	 * if 0, begin a search for an element that has 0 accesses
-	 * if its in core and not yet in log, write through
-	 * @throws IOException
-	 */
-	@Override
-	public void freeupBlock() throws IOException {
-		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
-		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			//blockBuffer[i].freeupBlock();
-			FreeupBlockRequest fbr = new FreeupBlockRequest(blockBuffer[i], cdl);
-			blockBuffer[i].queueRequest(fbr);
-		}
-		try {
-			cdl.await(); // barrier synchronization
-		} catch (InterruptedException e) {
-			return;
-		}
-	}
+
 	/**
 	 * When something comes through the TCPWorker or UDPWorker the ioInterface is set to the TCPWorker
 	 * or UDPWorker, which also implement NodeBlockBufferInterface, so we have access to the node block buffer
@@ -474,7 +459,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			//blockBuffer[i].commitBufferFlush();
-			CommitRequest cbfr = new CommitRequest(blockBuffer[i], globalIO.getUlog(), commitBarrierSynch, cdl);
+			CommitRequest cbfr = new CommitRequest(blockBuffer[i], globalIO.getIOManager().getUlog(i), commitBarrierSynch, cdl);
 			ioWorker[i].queueRequest(cbfr);
 		}
 		try {
@@ -518,6 +503,77 @@ public final class ClusterIOManager implements IoManagerInterface {
 		} catch (InterruptedException e) {
 			return;
 		}
+	}
+
+	@Override
+	public ObjectDBIO getIO() {
+		return globalIO;
+	}
+
+	@Override
+	public RecoveryLogManager getUlog(int tblsp) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Optr getNewNodePosition(int tablespace) throws IOException {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public MappedBlockBuffer getBlockBuffer(int tablespace) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public int objseek(Optr loc) throws IOException {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public int deleten(Optr loc, int size) throws IOException {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public BlockStream getBlockStream(int tblsp) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void writen(int tblsp, byte[] o, int osize) throws IOException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public int objseek(long iloc) throws IOException {
+		return -1;
+		
+	}
+
+	@Override
+	public void deallocOutstandingRollback() throws IOException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void deallocOutstandingCommit() throws IOException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void deallocOutstanding() throws IOException {
+		// TODO Auto-generated method stub
+		
 	}
 	
 	

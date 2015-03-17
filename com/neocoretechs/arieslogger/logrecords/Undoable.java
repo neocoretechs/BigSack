@@ -23,7 +23,7 @@ package com.neocoretechs.arieslogger.logrecords;
 
 import java.io.IOException;
 
-import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /**
 	An Undoable operation is an operation that changed the state of the RawStore
@@ -98,6 +98,6 @@ public interface Undoable extends Loggable {
 		@see Loggable#needsRedo
 
 	*/
-	public Compensation generateUndo(BlockDBIO t) throws IOException;
+	public Compensation generateUndo(ObjectDBIO t) throws IOException;
 
 }

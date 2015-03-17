@@ -42,11 +42,9 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	private long blockNum = -1L;
 	protected short byteindex = -1;
 
-	private transient GlobalDBIO globalIO;
+	public BlockAccessIndex(boolean init) throws IOException {
+		if(init) init();
 
-	public BlockAccessIndex(GlobalDBIO globalIO) throws IOException {
-		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
-		this.globalIO = globalIO;
 	}
 	/** This constructor used for setting search templates */
 	public BlockAccessIndex() {
@@ -54,37 +52,30 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	/** This method can be used for ThreadLocal post-init after using default ctor 
 	 * @throws IOException if block superceded a block under write or latched 
 	 * */
-	public void init(GlobalDBIO globalIO) throws IOException {
+	public synchronized void init() throws IOException {
 		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
-		this.globalIO = globalIO;
 	}
 	
-	public void resetBlock() {
+	public synchronized void resetBlock() {
 		accesses = 0;
 		byteindex = 0;
 		blk.resetBlock();
 	}
 	
-	int getAccesses() {
+	synchronized int getAccesses() {
 		return accesses;
 	}
-	public void addAccess() {
+	public synchronized void addAccess() {
 		++accesses;
 	}
-	public int decrementAccesses() throws IOException {
+	public synchronized int decrementAccesses() throws IOException {
 		if (accesses > 0)
 			--accesses;
 		return accesses;
 	}
 	
-	public String toString() {
-		String db = "BlockAccessIndex: database ";
-		if( globalIO != null ) {
-			db += globalIO.getDBName()
-					+ " block "
-					+ GlobalDBIO.valueOf(blockNum);
-		} else
-			db += "NULL";
+	public synchronized String toString() {
+		String db = "BlockAccessIndex: ";
 		db += " data "
 			+ blk == null ?  "null block" : blk.toBriefString()
 			+ " accesses:"
@@ -98,7 +89,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		return db;
 	}
 
-	public long getBlockNum() {
+	public synchronized long getBlockNum() {
 		return blockNum;
 	}
 	/**
@@ -107,7 +98,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 * @param bnum
 	 * @throws IOException
 	 */
-	public void setBlockNumber(long bnum) throws IOException {
+	public synchronized void setBlockNumber(long bnum) throws IOException {
 		assert (bnum != -1L) : "****Attempt to set block number invalid";
 	
 		//if( GlobalDBIO.valueOf(bnum).equals("Tablespace_1_114688"))
@@ -142,9 +133,8 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		*/
 	}
 
-
 	@Override
-	public int compareTo(Object o) {
+	public synchronized int compareTo(Object o) {
 		if (blockNum < ((BlockAccessIndex) o).blockNum)
 			return -1;
 		if (blockNum > ((BlockAccessIndex) o).blockNum)
@@ -152,7 +142,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		return 0;
 	}
 	@Override
-	public boolean equals(Object o) {
+	public synchronized boolean equals(Object o) {
 		return (blockNum == ((BlockAccessIndex) o).blockNum);
 	}
 	/**
@@ -160,10 +150,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 * and offer optimum distribution
 	 */
 	@Override
-	public int hashCode() {
+	public synchronized int hashCode() {
 		return (int) (0xFFFFFFFF & blockNum);
 	}
-	public Datablock getBlk() {
+	public synchronized Datablock getBlk() {
 		return blk;
 	}
 	/**
@@ -171,7 +161,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 * Check to make sure the previous block is not in danger 
 	 * @param blk
 	 */
-	public void setBlk(Datablock blk) throws IOException {
+	public synchronized void setBlk(Datablock blk) throws IOException {
 		// blocks not same and not first, check for condition of the block we are replacing
 		if( blk.isIncore() ) 
 			throw new IOException("****Attempt to overwrite block in core for buffer "+this);
@@ -183,10 +173,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 			throw new IOException("****Attempt to overwrite latched block, accesses "+accesses+" for buffer "+this);
 		this.blk = blk;
 	}
-	public short getByteindex() {
+	public synchronized short getByteindex() {
 		return byteindex;
 	}
-	public short setByteindex(short byteindex) {
+	public synchronized short setByteindex(short byteindex) {
 		this.byteindex = byteindex;
 		return byteindex;
 	}

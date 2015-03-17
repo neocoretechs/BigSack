@@ -27,9 +27,11 @@ public final class FSeekAndWriteFullyRequest implements IoRequestInterface {
 		barrierCount.countDown();
 	}
 	private void FseekAndWriteFully() throws IOException {
+		synchronized(ioUnit) {
 		ioUnit.Fseek(offset);
 		dblk.write(ioUnit);
 		dblk.setIncore(false);
+		}
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}
 	@Override

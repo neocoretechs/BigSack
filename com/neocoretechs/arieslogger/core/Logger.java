@@ -25,7 +25,7 @@ import java.io.IOException;
 
 import com.neocoretechs.arieslogger.logrecords.Compensation;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
-import com.neocoretechs.bigsack.io.pooled.BlockDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 
 public interface Logger {
@@ -48,7 +48,7 @@ public interface Logger {
 		@return LogInstance that is the LogInstance of the loggable operation 
 
 	   */ 
-	public LogInstance logAndDo(BlockDBIO xact, Loggable operation) throws IOException; 
+	public LogInstance logAndDo(ObjectDBIO xact, Loggable operation) throws IOException; 
 
 	/**
 		Log the compensation operation under the context of the transaction 
@@ -71,7 +71,7 @@ public interface Logger {
 		@return LogInstance that is the LogInstance of the compensation operation
 
 	   */ 
-	public LogInstance logAndUndo(BlockDBIO xact, Compensation operation, LogInstance undoInstance, Object in) throws IOException;
+	public LogInstance logAndUndo(ObjectDBIO xact, Compensation operation, LogInstance undoInstance, Object in) throws IOException;
 
 	/**
 		Flush all unwritten log record up to the log instance indicated to disk.
@@ -119,5 +119,5 @@ public interface Logger {
 
 		@exception
 	  */
-	public void undo(BlockDBIO blockio, LogInstance undoStopAt, LogInstance undoStartAt) throws IOException;
+	public void undo(ObjectDBIO blockio, LogInstance undoStopAt, LogInstance undoStartAt) throws IOException;
 }

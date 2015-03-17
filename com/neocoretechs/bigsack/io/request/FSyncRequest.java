@@ -35,8 +35,12 @@ public final class FSyncRequest implements IoRequestInterface {
 		barrierCount.countDown();
 	}
 	private void Fsync() throws IOException {
-	if (ioUnit != null && ioUnit.isopen())
-		ioUnit.Fforce();
+		synchronized(ioUnit) {
+			if (ioUnit != null && ioUnit.isopen())
+				ioUnit.Fforce();
+			else
+				throw new IOException("IO thread offline or not open");
+		}
 		// wait at the barrier until all other tablespaces arrive at their result
 		try {
 			barrierSynch.await();

@@ -38,8 +38,10 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 							+ String.valueOf(toffset)
 							+ " "
 							+ tblk);
+		synchronized(ioUnit) {
 		ioUnit.Fseek(offset);
 		tblk.read(ioUnit);
+		}
 	}
 	@Override
 	public long getLongReturn() {
@@ -62,7 +64,7 @@ public final class FSeekAndReadFullyRequest implements IoRequestInterface {
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return "FSeekandReadFully request for tablespace "+tablespace+" offset "+offset+" "+ioUnit.Fname();
 	}
 

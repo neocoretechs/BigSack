@@ -19,31 +19,31 @@ public final class ForceBufferClearRequest implements CompletionLatchInterface {
 		this.barrierSynch = forceBarrierSynch;
 	}
 	@Override
-	public synchronized void process() throws IOException {
+	public void process() throws IOException {
 		blockBuffer.forceBufferClear();
 		barrierCount.countDown();
 	}
 
 	@Override
-	public synchronized long getLongReturn() {
+	public long getLongReturn() {
 		return 0L;
 	}
 
 	@Override
-	public synchronized Object getObjectReturn() {
+	public Object getObjectReturn() {
 		return null;
 	}
 	/**
 	 * This interface implemented method is called by IoWorker before processing
 	 */
 	@Override
-	public synchronized void setIoInterface(IoInterface ioi) {}
+	public void setIoInterface(IoInterface ioi) {}
 	@Override
-	public synchronized void setTablespace(int tablespace) {
+	public void setTablespace(int tablespace) {
 		this.tablespace = tablespace;
 	}
 	
-	public synchronized String toString() {
+	public String toString() {
 		return "ForceBufferClearRequest for tablespace "+tablespace;
 	}
 	@Override

@@ -4,7 +4,11 @@ import java.io.IOException;
 
 import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /**
  * This interface enforces the contract for IO managers that facilitate block level operations.
@@ -68,7 +72,7 @@ public interface IoManagerInterface {
 	 * if its in core and not yet in log, write through
 	 * @throws IOException
 	 */
-	public void freeupBlock() throws IOException;
+	//public void freeupBlock() throws IOException;
 	/**
 	 * Commit the outstanding blocks and flush the buffer of pages at end
 	 * @throws IOException
@@ -134,6 +138,27 @@ public interface IoManagerInterface {
 	public boolean isNew();
 
 	public IOWorkerInterface getIOWorker(int tblsp);
+	
+	public RecoveryLogManager getUlog(int tblsp);
+	
+	public ObjectDBIO getIO();
 
+	public Optr getNewNodePosition(int tablespace) throws IOException;
+	
+	public MappedBlockBuffer getBlockBuffer(int tablespace);
+
+	public int objseek(Optr loc) throws IOException;
+
+	public int deleten(Optr loc, int size) throws IOException;
+
+	public BlockStream getBlockStream(int tblsp);
+
+	public void writen(int tblsp, byte[] o, int osize) throws IOException;
+
+	public int objseek(long iloc) throws IOException;
+
+	public void deallocOutstandingRollback() throws IOException;
+	public void deallocOutstandingCommit() throws IOException;
+	public void deallocOutstanding() throws IOException;
 
 }
