@@ -23,8 +23,8 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
  *
  */
 public final class GetNextFreeBlocksRequest implements IoRequestInterface {
-	private final static boolean DEBUG = false;
-	private long nextFreeBlock = 0L;
+	private final static boolean DEBUG = true;
+	private long nextFreeBlock = -1L;
 	private IoInterface ioUnit;
 	private Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private CyclicBarrier barrierSynch;
@@ -38,11 +38,11 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	public void process() throws IOException {
 		long stime = System.currentTimeMillis();
 		if( DEBUG ) {
-			System.out.println("GetNextFreeBlocksRequest tablespace "+tablespace+" start.");
+			System.out.println("GetNextFreeBlocksRequest "+this+" start. ioUnit:"+ioUnit);
 		}
 		getNextFreeBlocks();
 		if( DEBUG ) {
-			System.out.println("GetNextFreeBlocksRequest tablespace "+tablespace+" end in "+(System.currentTimeMillis()-stime)+" ms. with"+GlobalDBIO.valueOf(nextFreeBlock));
+			System.out.println("GetNextFreeBlocksRequest "+this+" end in "+(System.currentTimeMillis()-stime)+" ms.");
 		}
 		barrierCount.countDown();
 	}
@@ -55,7 +55,7 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 		synchronized(ioUnit) {
 			long endBlock = 0L;
 			long endBl = ioUnit.Fsize();
-			nextFreeBlock = -1L; // assume there are none
+			nextFreeBlock = 0L; // assume there are none and if we fall through get block 0
 			while (endBl > endBlock) {
 				ioUnit.Fseek(endBl - (long) DBPhysicalConstants.DBLOCKSIZ);
 				d.read(ioUnit);
@@ -66,9 +66,13 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 					continue;
 				} else {
 					// this is it
-					nextFreeBlock = ioUnit.Ftell();// the read position at the end of the block that is used, the new block
 					break;
 				}
+			}
+			if( endBl == ioUnit.Fsize()) {
+				nextFreeBlock = -1L;
+			} else {
+				nextFreeBlock = GlobalDBIO.makeVblock(tablespace, endBl);
 			}
 		}
 		// wait at the barrier until all other tablespaces arrive at their result
@@ -103,7 +107,7 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 		this.tablespace = tablespace;
 	}
 	public String toString() {
-		return "GetNextFreeBlocksRequest for tablespace "+tablespace+" "+barrierSynch+" "+barrierCount;
+		return "GetNextFreeBlocksRequest for tablespace "+tablespace+" "+barrierSynch+" "+barrierCount+" next free block "+GlobalDBIO.valueOf(nextFreeBlock);
 	}
 
 }

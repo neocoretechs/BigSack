@@ -10,6 +10,7 @@ import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /**
@@ -51,7 +52,13 @@ public final class UndoableBlock implements Undoable, Serializable {
 			System.out.println("UndoableBlock.applyChange: instance:"+instance+" raw store"+blkV2.getBlockNum()+","+blkV2.getBlk());
 		}
 		blkV2.getBlk().setPageLSN(instance.getValueAsLong());
-		xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
+		//xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
+		int tblsp = GlobalDBIO.getTablespace(blkV2.getBlockNum());
+		long blkn = GlobalDBIO.getBlock(blkV2.getBlockNum());
+		synchronized(xact.getIOManager().getDirectIO(tblsp)) {
+			xact.getIOManager().getDirectIO(tblsp).Fseek(blkn);
+			blkV2.getBlk().write(xact.getIOManager().getDirectIO(tblsp));
+		}
 		// deallocate
 		blkV2.decrementAccesses();
 	}

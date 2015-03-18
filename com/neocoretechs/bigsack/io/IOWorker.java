@@ -26,7 +26,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	private static final boolean DEBUG = false;
 	private static final int QUEUEMAX = 1024;
 	private IoInterface ioUnit;
-	private long nextFreeBlock = 0L;
+	private long nextFreeBlock = -1L;
 	private BlockingQueue<IoRequestInterface> requestQueue;
 	public boolean shouldRun = true;
 	private int tablespace; // 0-7

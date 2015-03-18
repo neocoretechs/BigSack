@@ -139,6 +139,8 @@ public interface IoManagerInterface {
 
 	public IOWorkerInterface getIOWorker(int tblsp);
 	
+	public IoInterface getDirectIO(int tblsp);
+	
 	public RecoveryLogManager getUlog(int tblsp);
 	
 	public ObjectDBIO getIO();

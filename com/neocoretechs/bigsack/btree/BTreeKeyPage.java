@@ -40,7 +40,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff
 */
 public final class BTreeKeyPage implements Serializable {
-	static final boolean DEBUG = true;
+	static final boolean DEBUG = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	static int MAXKEYS = 4;
 	int numKeys = 0;
@@ -264,22 +264,26 @@ public final class BTreeKeyPage implements Serializable {
 	 */
 	public synchronized void putPage(ObjectDBIO sdbio) throws IOException {
 		if (!isUpdated()) {
-			if( DEBUG ) System.out.println("page not updated, returning from putPage");
+			if( DEBUG ) 
+				System.out.println("page not updated, returning from putPage");
 			return;
 		}
 		byte[] pb = GlobalDBIO.getObjectAsBytes(this);
-		if( DEBUG ) System.out.println("BTreeKeyPage putPage Got "+pb.length+" bytes");
+		if( DEBUG ) 
+			System.out.println("BTreeKeyPage putPage id:"+GlobalDBIO.valueOf(pageId)+" Got "+pb.length+" bytes");
 		if (pageId == -1L) {
 			BlockAccessIndex lbai = sdbio.stealblk();
 			pageId = lbai.getBlockNum();
 			// extract tablespace since we steal blocks from any
 			int tablespace = GlobalDBIO.getTablespace(pageId);
-			if( DEBUG ) System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
-			sdbio.add_object(tablespace, pb, pb.length);
+			if( DEBUG ) 
+				System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
+			sdbio.add_object(tablespace, lbai, pb, pb.length);
 		} else {
 			sdbio.add_object(Optr.valueOf(pageId), pb, pb.length);
 		}
-		if( DEBUG ) System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length+" page:"+this);
+		if( DEBUG ) 
+			System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length+" page:"+this);
 		setUpdated(false);
 	}
 	/**

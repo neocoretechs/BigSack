@@ -8,16 +8,17 @@ import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 /**
- * Deal with virtual blocks and extract block
+ * Deal with virtual blocks and extract block. Pass the previous free block from each
+ * respective tablespace in the request constructor
  * @author jg
  *
  */
 public final class GetNextFreeBlockRequest implements IoRequestInterface {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private IoInterface ioUnit;
 	Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private int tablespace;
-	private long nextFreeBlock = 0L;
+	private long nextFreeBlock = -1L;
 	private CountDownLatch barrierCount;
 	public GetNextFreeBlockRequest(CountDownLatch barrierCount, long prevFreeBlk) {
 		this.barrierCount = barrierCount;
@@ -30,7 +31,8 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 		barrierCount.countDown();
 	}
 	/**
-	* Return the first available block that can be acquired for write
+	* Return the first available block that can be acquired for write. Use the previous free block as guide unless
+	* its not initialized, ie, not -1. Take the next physical block after the previous one, if that one is eligible
 	* @param tblsp The tablespace
 	* @return The block available as a real, not virtual, block in this tablespace
 	* @exception IOException if IO problem
@@ -39,7 +41,7 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 		synchronized(ioUnit) {
 		if( DEBUG )
 			System.out.println("GetNextFreeBlockRequest CURRENT block:"+this);
-		if( nextFreeBlock != -1) {
+		if( nextFreeBlock != -1L) {
 			long tblock = GlobalDBIO.getBlock(nextFreeBlock) + (long) DBPhysicalConstants.DBLOCKSIZ;
 			nextFreeBlock = GlobalDBIO.makeVblock(tablespace, tblock);
 			long tsize = ioUnit.Fsize();
@@ -98,7 +100,7 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 		this.tablespace = tablespace;
 	}
 	public String toString() {
-		return "GetNextFreeBlockRequest for "+ioUnit.Fname()+" tablespace "+tablespace+" next free block "+GlobalDBIO.valueOf(nextFreeBlock);
+		return "GetNextFreeBlockRequest for "+ioUnit.Fname()+" tablespace "+tablespace+" next free block "+(nextFreeBlock == -1 ? "Empty" : GlobalDBIO.valueOf(nextFreeBlock));
 	}
 
 }

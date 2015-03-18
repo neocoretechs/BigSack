@@ -31,9 +31,9 @@ public final class FSeekAndWriteRequest implements IoRequestInterface {
 		barrierCount.countDown();
 	}
 	private void FseekAndWrite() throws IOException {
-		assert( (dblk.getBytesused() == 0 || dblk.getBytesinuse() == 0) && 
+		if( dblk.getBytesinuse() == 0 && 
 				(dblk.getData()[0] == 0xAC && dblk.getData()[1] == 0xED && dblk.getData()[2] == 0x00 && dblk.getData()[3] == 0x05) )
-			: "Block has zero in use values but object stream header for "+ioUnit.Fname()+" tablespace "+tablespace+" pos:"+GlobalDBIO.valueOf(offset)+" Data:"+dblk.blockdump();
+			throw new IOException("Block has zero in use values but object stream header for "+ioUnit.Fname()+" tablespace "+tablespace+" pos:"+GlobalDBIO.valueOf(offset)+" Data:"+dblk.blockdump());
 		synchronized(ioUnit) {
 			ioUnit.Fseek(offset);
 			dblk.writeUsed(ioUnit);

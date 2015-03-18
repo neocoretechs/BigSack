@@ -22,7 +22,7 @@ import com.neocoretechs.bigsack.session.SessionManager;
 * @exception IOException If problems setting up IO
 */
 public final class ObjectDBIO extends GlobalDBIO {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	public ObjectDBIO(String objname, String remoteObjName, boolean create, long transId) throws IOException {
 		super(objname, remoteObjName, create, transId);
 	}
@@ -58,11 +58,11 @@ public final class ObjectDBIO extends GlobalDBIO {
 	 */
 	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
 		int tblsp = ioManager.objseek(loc);
-		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
+		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
 		ioManager.writen(tblsp, o, osize);
-		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
-			   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
-			"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
+		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
+		//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
+		//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
 	}
 	/**
 	 * Add an object, which in this case is a load of bytes.
@@ -71,13 +71,9 @@ public final class ObjectDBIO extends GlobalDBIO {
 	 * @param osize  The size of the payload to add from array
 	 * @exception IOException If the adding did not happen
 	 */
-	public synchronized void add_object(int tblsp, byte[] o, int osize) throws IOException {
-		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : 
-			"Writing unlatched "+ioManager.getBlockStream(tblsp).getLbai()+" with payload:"+osize;
+	public synchronized void add_object(int tblsp, BlockAccessIndex lbai, byte[] o, int osize) throws IOException {
+		ioManager.getBlockStream(tblsp).setLbai(lbai);
 		ioManager.writen(tblsp, o, osize);
-		assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
-			   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
-				   "Block "+ioManager.getBlockStream(tblsp).getLbai()+" unlatched after write";
 	}
 	/**
 	* Read Object in pool: deserialize the byte array.

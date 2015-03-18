@@ -105,7 +105,12 @@ public final class RecoveryLogManager  {
 			System.out.println("RecoveryLogManager.writeLog "+blk.toString());
 		}
 		tblk.setBlockNumber(blk.getBlockNum());
-		blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
+		assert( tablespace == GlobalDBIO.getTablespace(blk.getBlockNum()));
+		//blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
+		synchronized(blockIO.getIOManager().getDirectIO(tablespace)) {
+			blockIO.getIOManager().getDirectIO(tablespace).Fseek(GlobalDBIO.getBlock(blk.getBlockNum()));
+			tblk.getBlk().read(blockIO.getIOManager().getDirectIO(tablespace));
+		}
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		if( firstTrans == null )
 			firstTrans = fl.logAndDo(blockIO, undoBlk);

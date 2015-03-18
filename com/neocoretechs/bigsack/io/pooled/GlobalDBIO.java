@@ -46,7 +46,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private String dbName;
 	private String remoteDBName;
@@ -443,8 +443,7 @@ public class GlobalDBIO {
 	
 	public BlockAccessIndex stealblk() throws IOException {
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
-		ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getLbai());
-		return ioManager.getBlockStream(tbsp).getLbai();
+		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getLbai());
 	}
 	
 	public void deallocOutstandingRollback() throws IOException {

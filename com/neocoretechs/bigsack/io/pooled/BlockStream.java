@@ -35,9 +35,13 @@ public final class BlockStream {
 	public synchronized BlockAccessIndex getLbai() {
 		return lbai;
 	}
+	/**
+	 * Delegate addAcces to setBlockNumber of BlockAccessIndex
+	 * @param lbai
+	 */
 	public synchronized void setLbai(BlockAccessIndex lbai) {
 		this.lbai = lbai;
-		this.lbai.addAccess();
+		//this.lbai.addAccess();
 		this.lbai.byteindex = 0;
 	}
 	public synchronized DataInputStream getDBInput() {

@@ -2,8 +2,7 @@ package com.neocoretechs.bigsack.io;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.Random;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
@@ -29,7 +28,6 @@ import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
-//import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 
 /**
@@ -46,7 +44,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
  *
  */
 public class MultithreadedIOManager implements IoManagerInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	public ObjectDBIO globalIO;
 	// barrier synch for specific functions, cyclic (reusable)
 	final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
@@ -59,7 +57,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	private RecoveryLogManager[] ulog;
 	protected BlockStream[] lbai = new BlockStream[DBPhysicalConstants.DTABLESPACES];
-	private long newNodePosBlk = -1L;
 	/*
 	protected Datablock getBlk(int i) { return lbai[i].getLbai().getBlk(); }
 	public short getByteindex(int i) { return lbai[i].getLbai().getByteindex(); }
@@ -79,6 +76,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		ulog = new RecoveryLogManager[DBPhysicalConstants.DTABLESPACES];
 		// Initialize the thread pool group NAMES to spin new threads in controllable batches
 		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"});
+		setNextFreeBlocks();
 	}
 	/**
 	 * Return the MappedBlockBuffer for the tablespace
@@ -159,7 +157,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		return blockBuffer[tblsp].getNewNodePosition(lbai[tblsp].getLbai());
 	}
 	public synchronized void setNewNodePosition(long newPos) {
-		newNodePosBlk = newPos;
 	}
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#getNextFreeBlock(int)
@@ -329,6 +326,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			// attempt recovery if needed
 			ulog[i].getLogToFile().recover();
 		}
+		// fill in the next free block indicators and set the smallest tablespace
+		findSmallestTablespace();
 		return true;
 	}
 	
@@ -361,6 +360,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			// attempt recovery if needed
 			ulog[i].getLogToFile().recover();
 		}
+		// fill in the next free block indicators and set the smallest tablespace
+		findSmallestTablespace();
 		return true;
 	}
 	/**
@@ -635,6 +636,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public void writen(int tblsp, byte[] o, int osize) throws IOException {
 		blockBuffer[tblsp].writen(lbai[tblsp].getLbai(), o, osize);
+	}
+	@Override
+	public IoInterface getDirectIO(int tblsp) {
+		return (IoInterface)ioWorker[tblsp];
 	}
 
 }

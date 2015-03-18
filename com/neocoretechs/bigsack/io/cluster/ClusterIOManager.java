@@ -575,6 +575,12 @@ public final class ClusterIOManager implements IoManagerInterface {
 		// TODO Auto-generated method stub
 		
 	}
+
+	@Override
+	public IoInterface getDirectIO(int tblsp) {
+		// TODO Auto-generated method stub
+		return null;
+	}
 	
 	
 }

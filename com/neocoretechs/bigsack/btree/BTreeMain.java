@@ -34,6 +34,8 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff
 */
 public final class BTreeMain {
+	private static boolean DEBUG = false;
+	private static boolean TEST = false;
 	static int BOF = 1;
 	static int EOF = 2;
 	static int NOTFOUND = 3;
@@ -53,8 +55,6 @@ public final class BTreeMain {
 	int[] indexStack;
 	int stackDepth;
 	boolean atKey;
-	private static boolean DEBUG = true;
-	private static boolean TEST = false;
 	private ObjectDBIO sdbio;
 
 	public BTreeMain(ObjectDBIO sdbio) throws IOException {

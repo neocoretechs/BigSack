@@ -29,8 +29,8 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 /**
 * Holds the page block buffer for one block.  Also contains current
 * read/write position for block.  Controls access and enforces
-* overwrite rules.  Used as entries in TreeMap that have the virtual
-* block number blockNum as key
+* overwrite rules.  Used as entries in buffer pool that have the virtual block number blockNum as key.
+* We intentionally do not attach a tablespace because these entries can move around at will.
 * @author Groff
 */
 @SuppressWarnings("rawtypes")
