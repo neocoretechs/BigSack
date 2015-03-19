@@ -395,12 +395,20 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	public void deallocOutstanding() throws IOException {
 		synchronized(lbai) {
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-				lbai[i].getLbai().decrementAccesses();
-		//}	
+			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				if( lbai[i] != null )
+					lbai[i].getLbai().decrementAccesses();
+			}	
 		}
 	}
 	
+	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex lbai) throws IOException {
+		if( lbai.getAccesses() == 1 &&  lbai.getBlk().isIncore() &&  !lbai.getBlk().isInlog()) {
+				// will set incore, inlog, and push to raw store via applyChange of Loggable
+				ulog[tablespace].writeLog(lbai); 
+		}
+	}
+		
 	private String translateDb(String dbname, int tablespace) {
 		String db;
         // replace any marker of $ with tablespace number
@@ -640,6 +648,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public IoInterface getDirectIO(int tblsp) {
 		return (IoInterface)ioWorker[tblsp];
+	}
+	@Override
+	public void deallocOutstandingWriteLog(int tblsp) throws IOException {
+		deallocOutstandingWriteLog(tblsp, lbai[tblsp].getLbai());
+		
 	}
 
 }

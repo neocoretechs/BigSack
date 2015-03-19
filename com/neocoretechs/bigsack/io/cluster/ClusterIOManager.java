@@ -581,6 +581,18 @@ public final class ClusterIOManager implements IoManagerInterface {
 		// TODO Auto-generated method stub
 		return null;
 	}
+
+	@Override
+	public void deallocOutstandingWriteLog(int tblsp) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) {
+		// TODO Auto-generated method stub
+		
+	}
 	
 	
 }

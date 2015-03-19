@@ -364,9 +364,10 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 				if( ebaii.getAccesses() > 1 )
 					System.out.println("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
 				assert(!(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())) : "****COMMIT BUFFER block in core and log simultaneously! "+ebaii;
-				if (Lbn != ebaii.getBlockNum() && ebaii.getAccesses() == 0) {
-					if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
-						ioManager.getUlog(tablespace).writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
+				if (Lbn != ebaii.getBlockNum() && ebaii.getAccesses() <= 1) {
+					if(ebaii.getBlk().isIncore()) {
+						continue; // cant throw out this one
+						//ioManager.getUlog(tablespace).writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 						//throw new IOException("Accesses 0 but incore true " + ebaii);
 					}
 					// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
@@ -377,6 +378,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 						break;
 					}
 				} else {
+					if( ebaii.getAccesses() > 1 ) System.out.println("FLUSH:"+ebaii);
 					++latched;
 				}
 			}
@@ -392,12 +394,13 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 					if( DEBUG )
 						System.out.println("MappedBlockBuffer.checkBufferFlush PHASE II Block buffer "+ebaii+" "+this);
 					if(Lbn != ebaii.getBlockNum() && ebaii.getAccesses() == 1) {
-						if(ebaii.getBlk().isIncore() && !ebaii.getBlk().isInlog()) {
+						if(ebaii.getBlk().isIncore() ) continue;/*&& !ebaii.getBlk().isInlog()) {
 							if( DEBUG )
 								System.out.println("MappedBlockBuffer.checkBufferFlush set to write pool entry to log "+ebaii);
 							ioManager.getUlog(tablespace).writeLog(ebaii); // will set incore, inlog, and push to raw store via applyChange of Loggable
 							//throw new IOException("Accesses 0 but incore true " + ebaii);
 						}
+						*/
 						// Dont toss block at 0,0. its our BTree root and we will most likely need it soon
 						if( ebaii.getBlockNum() == 0L )
 							continue;

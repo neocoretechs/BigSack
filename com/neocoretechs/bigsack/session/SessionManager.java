@@ -39,7 +39,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff
 */
 public final class SessionManager {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private static Hashtable<String, BigSackSession> SessionTable = new Hashtable<String, BigSackSession>();
 	@SuppressWarnings("rawtypes")
 	private static Hashtable<?, ?> AdminSessionTable = new Hashtable();

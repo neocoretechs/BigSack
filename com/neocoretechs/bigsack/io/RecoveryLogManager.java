@@ -117,6 +117,7 @@ public final class RecoveryLogManager  {
 		else
 			fl.logAndDo(blockIO, undoBlk);
 		blk.getBlk().setInlog(true);
+		blk.getBlk().setIncore(false);
 		tblk.resetBlock();
 		if( DEBUG ) {
 			System.out.println("RecoveryLogManager.writeLog EXIT with "+blk.toString());

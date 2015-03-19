@@ -63,6 +63,7 @@ public final class ObjectDBIO extends GlobalDBIO {
 		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
 		//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
 		//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
+		ioManager.deallocOutstandingWriteLog(tblsp);
 	}
 	/**
 	 * Add an object, which in this case is a load of bytes.
@@ -74,6 +75,7 @@ public final class ObjectDBIO extends GlobalDBIO {
 	public synchronized void add_object(int tblsp, BlockAccessIndex lbai, byte[] o, int osize) throws IOException {
 		ioManager.getBlockStream(tblsp).setLbai(lbai);
 		ioManager.writen(tblsp, o, osize);
+		ioManager.deallocOutstandingWriteLog(tblsp, lbai);
 	}
 	/**
 	* Read Object in pool: deserialize the byte array.

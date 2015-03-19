@@ -62,10 +62,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		blk.resetBlock();
 	}
 	
-	synchronized int getAccesses() {
+	public synchronized int getAccesses() {
 		return accesses;
 	}
-	public synchronized void addAccess() {
+	private synchronized void addAccess() {
 		++accesses;
 	}
 	public synchronized int decrementAccesses() throws IOException {

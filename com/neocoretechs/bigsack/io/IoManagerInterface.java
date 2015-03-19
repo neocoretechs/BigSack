@@ -162,5 +162,7 @@ public interface IoManagerInterface {
 	public void deallocOutstandingRollback() throws IOException;
 	public void deallocOutstandingCommit() throws IOException;
 	public void deallocOutstanding() throws IOException;
+	public void deallocOutstandingWriteLog(int tblsp) throws IOException;
+	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) throws IOException;
 
 }
