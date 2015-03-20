@@ -1,5 +1,6 @@
 package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
+import java.util.Random;
 
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
@@ -69,13 +70,8 @@ public final class BTreeMain {
 		// Consistency check, also needed to get number of keys
 		// If no keys, give it check to make sure log was not compromised
 		if( TEST ) {
-			rewind();
-			int i;
 			long tim = System.currentTimeMillis();
-			while ((i = gotoNextKey()) == 0) {
-				if( DEBUG ) System.out.println("gotoNextKey returned: "+i);
-				++numKeys;
-			}
+			count();
 			System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 			// deallocate outstanding blocks in all tablespaces
 			sdbio.deallocOutstanding();
@@ -84,7 +80,29 @@ public final class BTreeMain {
 		}
 		//if( Props.DEBUG ) System.out.println("Records: " + numKeys);
 	}
-
+	/**
+	 * Returns number of table scanned keys, sets numKeys field
+	 * @throws IOException
+	 */
+	public synchronized long count() throws IOException {
+		rewind();
+		int i;
+		numKeys = 0;
+		long tim = System.currentTimeMillis();
+		while ((i = gotoNextKey()) == 0) {
+			if( DEBUG ) System.out.println("gotoNextKey returned: "+i);
+			++numKeys;
+		}
+		if( DEBUG )
+		System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
+		// deallocate outstanding blocks in all tablespaces
+		sdbio.deallocOutstanding();
+		return numKeys;
+	}
+	
+	public synchronized boolean isEmpty() {
+		return (getRoot().numKeys == 0);
+	}
 	/**
 	* currentPage and currentIndex set.
 	* @param targetKey The Comparable key to seek
@@ -118,13 +136,13 @@ public final class BTreeMain {
 
 		atKey = true;
 		// If tree is empty, make a root
-		if (getNumKeys() == 0) {
-			currentPage = getRoot();
-			currentIndex = 0;
-			currentPage.insert(newKey, newObject, currentIndex);
-			++numKeys;
-			return 0;
-		}
+		//if (getNumKeys() == 0) {
+		//	currentPage = getRoot();
+		//	currentIndex = 0;
+		//	currentPage.insert(newKey, newObject, currentIndex);
+		//	++numKeys;
+		//	return 0;
+		//}
 		// Determine whether we need to overwrite existing data
 		// we need a search call regardless to set up our target insertion point for later
 		if( search(newKey) && atKey ) {
@@ -227,13 +245,13 @@ public final class BTreeMain {
 
 		atKey = true;
 		// If tree is empty, make a root
-		if (getNumKeys() == 0) {
-			currentPage = getRoot();
-			currentIndex = 0;
-			currentPage.insert(newKey, null, currentIndex);
-			++numKeys;
-			return 0;
-		}
+		//if (getNumKeys() == 0) {
+		//	currentPage = getRoot();
+		//	currentIndex = 0;
+		//	currentPage.insert(newKey, null, currentIndex);
+		//	++numKeys;
+		//	return 0;
+		//}
 		// Determine whether data is present
 		// we need a search call regardless to set up our target insertion point for later should we decide to do so
 		if( search(newKey) && atKey ) {
@@ -246,6 +264,8 @@ public final class BTreeMain {
 			// About to insert key. See if the page is going to overflow
 			// If the current index is at end, dont insert, proceed to split
 			if ((i = currentPage.numKeys) == BTreeKeyPage.MAXKEYS) {
+				if( DEBUG )
+					System.out.println("MAX KEYS REACHED for:"+currentPage);
 				// Save rightmost key/data/pointer
 				--i;
 				if (currentIndex == BTreeKeyPage.MAXKEYS) {
@@ -424,7 +444,8 @@ public final class BTreeMain {
 				if( DEBUG ) System.out.println("Delete tindex "+tindex+" tpage.numKeys "+tpage.numKeys+" right page "+rightPage);
 				// Decide which sibling
 				if( DEBUG ) System.out.println("Delete find sibling from "+leftPage+" -- " + rightPage);
-				if (numKeys % 2 == 0)
+				//if (numKeys % 2 == 0)
+				if( new Random().nextInt(2) == 0 )
 					if (leftPage == null)
 						leftPage = currentPage;
 					else
@@ -577,7 +598,7 @@ public final class BTreeMain {
 	 */
 	public synchronized void toEnd() throws IOException {
 		currentPage = getRoot();
-		if (getNumKeys() != 0) {
+		if (currentPage.numKeys != 0) {
 			clearStack();
 			currentIndex = currentPage.numKeys;
 			if (currentPage.getPage(getIO(), currentIndex) != null) {
@@ -646,8 +667,8 @@ public final class BTreeMain {
 	* @exception IOException If read fails
 	*/
 	public synchronized int gotoPrevKey() throws IOException {
-		if (getNumKeys() == 0)
-			return (BOF);
+		//if (getNumKeys() == 0)
+		//	return (BOF);
 
 		// If we are at a key, then simply back up the index
 
@@ -699,14 +720,14 @@ public final class BTreeMain {
 	*/
 	@SuppressWarnings("rawtypes")
 	public synchronized boolean search(Comparable targetKey) throws IOException {
-		// File empty?
-		if (getNumKeys() == 0) {
-			if( DEBUG ) System.out.println("*** NO KEYS! ***");
-			return false;
-		}
 		// Search - start at root
 		clearStack();
 		currentPage = getRoot();
+		// File empty?
+		if (currentPage.numKeys == 0) {
+			if( DEBUG ) System.out.println("*** NO KEYS! ***");
+			return false;
+		}
 		do {
 			currentIndex = currentPage.search(targetKey);
 			if (currentIndex >= 0) // Key found
@@ -811,14 +832,6 @@ public final class BTreeMain {
 
 	public void setIO(ObjectDBIO sdbio) {
 		this.sdbio = sdbio;
-	}
-
-	public long getNumKeys() {
-		return numKeys;
-	}
-
-	public void setNumKeys(long s) {
-		this.numKeys = s;
 	}
 
 	public BTreeKeyPage getRoot() {

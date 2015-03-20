@@ -100,7 +100,7 @@ public final class BTreeKeyPage implements Serializable {
 		}
 		do {
 			mid = (lo + hi) / 2;
-			assert(mid < MAXKEYS && hi >= 0) : "BTreeKeyPage.search numKeys:"+numKeys+" lo:"+lo+" mid:"+mid+" hi:"+hi+" target:"+targetKey;
+			assert(mid < MAXKEYS && hi >= 0) : "BTreeKeyPage.search :"+this+" lo:"+lo+" mid:"+mid+" hi:"+hi+" target:"+targetKey;
 			if (keyArray[mid].compareTo(targetKey) == 0) {
 				return (mid);
 			}
@@ -122,6 +122,7 @@ public final class BTreeKeyPage implements Serializable {
 	*/
 	@SuppressWarnings("rawtypes")
 	synchronized int insert(Comparable newKey, Object newData, int index) {
+		assert(numKeys <= MAXKEYS) : "BTreeKeyPage.insert suspect number of keys in :"+this;
 		// If adding to right, no moving to do
 		if (index < numKeys)
 			// move elements down

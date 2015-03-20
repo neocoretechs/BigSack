@@ -251,11 +251,11 @@ public final class BigSackSession {
 	}
 	
 	public long size() throws IOException {
-		return bTree.getNumKeys();
+		return bTree.count();
 	}
 
 	public boolean isEmpty() throws IOException {
-		return (size() == 0L);
+		return bTree.isEmpty();
 	}
 
 	/**
