@@ -47,15 +47,15 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	private static final boolean DEBUG = false;
 	public ObjectDBIO globalIO;
 	// barrier synch for specific functions, cyclic (reusable)
-	final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	final CyclicBarrier nextBlocksBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	protected final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	protected final CyclicBarrier nextBlocksBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	protected final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
+	protected final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected IOWorkerInterface ioWorker[];
 	protected int L3cache = 0;
 	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
-	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
-	private RecoveryLogManager[] ulog;
+	protected MappedBlockBuffer[] blockBuffer; // block number to Datablock
+	protected RecoveryLogManager[] ulog;
 	protected BlockStream[] lbai = new BlockStream[DBPhysicalConstants.DTABLESPACES];
 	/*
 	protected Datablock getBlk(int i) { return lbai[i].getLbai().getBlk(); }

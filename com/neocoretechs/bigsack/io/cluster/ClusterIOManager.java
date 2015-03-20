@@ -2,13 +2,9 @@ package com.neocoretechs.bigsack.io.cluster;
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.btree.BTreeMain;
-import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.IoManagerInterface;
-import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
@@ -34,10 +30,8 @@ import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
-//import com.neocoretechs.bigsack.io.request.iomanager.FreeupBlockRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
-
 
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
@@ -50,36 +44,18 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  * @author jg
  *
  */
-public final class ClusterIOManager implements IoManagerInterface {
+public final class ClusterIOManager extends MultithreadedIOManager {
 	private static final boolean DEBUG = false;
-	private ObjectDBIO globalIO;
-	protected DistributedIOWorker ioWorker[];
 	protected int L3cache = 0;
-	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
-	protected long[] nextFreed = new long[DBPhysicalConstants.DTABLESPACES];
 	private static int currentPort = 10000; // starting UDP port, increments as assigned
 	private static int messageSeq = 0; // monotonically increasing request id
-	// barrier synch for specific functions, cyclic (reusable)
-	final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	final CyclicBarrier nextBlocksBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
+
 	/**
 	 * Instantiate our master node array per database that communicate with our worker nodes
 	 * @throws IOException 
 	 */
 	public ClusterIOManager(ObjectDBIO globalIO) throws IOException {
-		this.globalIO = globalIO;
-		//ioWorker = new UDPMaster[DBPhysicalConstants.DTABLESPACES];
-		ioWorker = new DistributedIOWorker[DBPhysicalConstants.DTABLESPACES];
-		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
-		// create master buffers for each tablespace
-		ThreadPoolManager.init(new String[]{"BLOCKPOOL"});
-		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			blockBuffer[i] = new MappedBlockBuffer(this, i);
-			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
-		}
+		super(globalIO);
 	}
 	
 	/**
@@ -99,7 +75,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
 		// remove old request
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 		nextFree[tblsp] = iori.getLongReturn();
 		return nextFree[tblsp];
 	}
@@ -126,7 +102,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			nextFree[i] = iori[i].getLongReturn();
 			// remove old requests
-			ioWorker[i].removeRequest((AbstractClusterWork) iori[i]);
+			((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
 		}
 	}
 	/**
@@ -144,7 +120,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 	}
 	/**
 	 * Send the request to write the entire contents of the given block at the location specified
@@ -161,7 +137,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 	}
 	/**
 	 * Queue a request to read int the passed block buffer 
@@ -184,7 +160,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		Datablock rblock = (Datablock) iori.getObjectReturn();
 		rblock.doClone(tblk);
 		// remove old requests
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 	}
 	/**
 	 * Queue a request to read int the passed block buffer 
@@ -207,27 +183,9 @@ public final class ClusterIOManager implements IoManagerInterface {
 		Datablock rblock = (Datablock) iori.getObjectReturn();
 		rblock.doClone(tblk);
 		// remove old requests, this signals we are done
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
-	}
-	/**
-	* Set the initial free blocks after buckets created or bucket initial state
-	* Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
-	*/
-	public void setNextFreeBlocks() {
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			if (i == 0)
-				nextFree[i] = ((long) DBPhysicalConstants.DBLOCKSIZ);
-			else
-				nextFree[i] = 0L;
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 	}
 
-	/**
-	* Get first tablespace
-	* @return the position of the first byte of first tablespace
-	*/
-	public long firstTableSpace() throws IOException {
-		return 0L;
-	}
 
 	/**
 	* Find the smallest tablespace for storage balance, we will always favor creating one
@@ -265,53 +223,77 @@ public final class ClusterIOManager implements IoManagerInterface {
 		} catch (InterruptedException e) {}
 		long retVal = iori.getLongReturn();
 		// remove old requests
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 		return retVal;
 	}
 	/**
-	* If create is true, create only primary tablespace
-	* else try to open all existing. For cluster operations we are spinning UDPMaster
-	* instances instead of IOWorkers, although UDPMaster subclasses IOWorker to add the cluster transport.
-	* Every time we open a new DB, we spin workers for each tablespace which can be partitioned as necessary.
-	* @param fname String file name
-	* @param create true to create if not existing
-	* @exception IOException if problems opening/creating
-	* @return true if successful
-	* @see IoInterface
-	*/
-	public boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
-		if( DEBUG )
-			System.out.println("ClusterIOManager.Fopen with "+fname);
+	 * Invoke each tablespace open request by creating buffers and spinning workers.
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen(java.lang.String, int, boolean)
+	 */
+	@Override
+	public synchronized boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
-		for (int i = 0; i < ioWorker.length; i++) {
-			if (ioWorker[i] == null) {
-				ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
-				ThreadPoolManager.getInstance().spin(ioWorker[i]);
-			}
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			ioWorker[i] = //new IOWorker(translateDb(fname,i), i, L3cache);
+					new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
+			blockBuffer[i] = new MappedBlockBuffer(this, i);
+			lbai[i] = new BlockStream(i, blockBuffer[i]);
+			ulog[i] = new RecoveryLogManager(globalIO,i);
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i],"IOWORKER");
+			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
+			// allow the workers to come up
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e) {}
+			// attempt recovery if needed
+			ulog[i].getLogToFile().recover();
 		}
-		// allow the workers to come up
-		try {
-			Thread.sleep(500);
-		} catch (InterruptedException e) {}
+		// fill in the next free block indicators and set the smallest tablespace
+		findSmallestTablespace();
 		return true;
 	}
 	
-	public boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
-		if( DEBUG )
-			System.out.println("ClusterIOManager.Fopen with "+fname+" having remote "+remote);
+	/** (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen(java.lang.String, int, boolean)
+	 * 
+	 * This is where the recovery logs are initialized because the logs operate at the block (database page) level.
+	 * When this module is instantiated the RecoveryLogManager is assigned to 'ulog' and a roll forward recovery
+	 * is started. If there are any records in the log file they will scanned for low water marks and
+	 * checkpoints etc and the determination is made based on the type of log record encountered.
+	 * Our log granularity is the page level. We store DB blocks and their original mirrors to use in
+	 * recovery. At the end of recovery we restore the logs to their initial state, as we do on a commit. 
+	 * There is a simple paradigm at work here, we carry a single block access index in another class and use it
+	 * to cursor through the blocks as we access them. The BlockStream class has the BlockAccessIndex and DBStream
+	 * for each tablespace. The cursor window block and read and written from seep store and buffer pool.
+	 */
+	@Override
+	public synchronized boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
-		for (int i = 0; i < ioWorker.length; i++) {
-			if (ioWorker[i] == null) {
-				ioWorker[i] = new DistributedIOWorker(fname, remote, i, ++currentPort, ++currentPort);
-				ThreadPoolManager.getInstance().spin(ioWorker[i]);
-			}
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			if( remote == null )
+					ioWorker[i] = //new IOWorker(translateDb(fname,i), i, L3cache);
+						new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
+			else
+					ioWorker[i] = //new IOWorker(translateDb(fname,i), translateDb(remote,i), i, L3cache);
+							new DistributedIOWorker(fname, remote, i, ++currentPort, ++currentPort);
+			blockBuffer[i] = new MappedBlockBuffer(this, i);
+			lbai[i] = new BlockStream(i, blockBuffer[i]);
+			ulog[i] = new RecoveryLogManager(globalIO,i);
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i], "IOWORKER");
+			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
+			// allow the workers to come up
+			try {
+				Thread.sleep(500);
+			} catch (InterruptedException e) {}
+			// attempt recovery if needed
+			ulog[i].getLogToFile().recover();
 		}
-		// allow the workers to come up
-		try {
-			Thread.sleep(500);
-		} catch (InterruptedException e) {}
+		// fill in the next free block indicators and set the smallest tablespace
+		findSmallestTablespace();
 		return true;
 	}
+
+
  	public void Fopen() throws IOException {
 	}
 	
@@ -342,7 +324,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		} catch (InterruptedException e) {}
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				// remove old requests
-				ioWorker[i].removeRequest((AbstractClusterWork) iori[i]);
+			((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
 		}
 	}
 	
@@ -365,7 +347,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		} catch (InterruptedException e) {}
 		boolean retVal = (Boolean) iori.getObjectReturn();
 		// remove old requests
-		ioWorker[tblsp].removeRequest((AbstractClusterWork) iori);
+		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 		return retVal;
 	}
 	
@@ -483,7 +465,7 @@ public final class ClusterIOManager implements IoManagerInterface {
 		} catch (InterruptedException e) {}
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			// remove old requests
-			ioWorker[i].removeRequest((AbstractClusterWork) iori[i]);
+			((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
 		}
 		if( DEBUG ) {
 			System.out.println("ClusterIOManager.commitBufferFlush exiting.");
@@ -504,95 +486,5 @@ public final class ClusterIOManager implements IoManagerInterface {
 			return;
 		}
 	}
-
-	@Override
-	public ObjectDBIO getIO() {
-		return globalIO;
-	}
-
-	@Override
-	public RecoveryLogManager getUlog(int tblsp) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public Optr getNewNodePosition(int tablespace) throws IOException {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public MappedBlockBuffer getBlockBuffer(int tablespace) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public int objseek(Optr loc) throws IOException {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-	@Override
-	public int deleten(Optr loc, int size) throws IOException {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-	@Override
-	public BlockStream getBlockStream(int tblsp) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void writen(int tblsp, byte[] o, int osize) throws IOException {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public int objseek(long iloc) throws IOException {
-		return -1;
-		
-	}
-
-	@Override
-	public void deallocOutstandingRollback() throws IOException {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void deallocOutstandingCommit() throws IOException {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void deallocOutstanding() throws IOException {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public IoInterface getDirectIO(int tblsp) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void deallocOutstandingWriteLog(int tblsp) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) {
-		// TODO Auto-generated method stub
-		
-	}
-	
 	
 }
