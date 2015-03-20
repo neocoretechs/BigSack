@@ -153,7 +153,7 @@ public final class BTreeMain {
 					saveKey = currentPage.keyArray[i];
 					saveObject = currentPage.getDataFromArray(getIO(), i);
 					savePagePointer = currentPage.getPage(getIO(), i + 1);
-					currentPage.insert(newKey, newObject, currentIndex);
+					currentIndex = currentPage.insert(newKey, newObject, currentIndex);
 					currentPage.putPageToArray(leftPagePtr, currentIndex);
 					currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
 				}
@@ -191,7 +191,7 @@ public final class BTreeMain {
 				rightPagePtr.numKeys = BTreeKeyPage.MAXKEYS - i;
 			} else {
 				// Insert key/object at current location
-				currentPage.insert(newKey, newObject, currentIndex);
+				currentIndex = currentPage.insert(newKey, newObject, currentIndex);
 				currentPage.putPageToArray(leftPagePtr, currentIndex);
 				currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
 				++numKeys;
@@ -256,7 +256,7 @@ public final class BTreeMain {
 					saveKey = currentPage.keyArray[i];
 					//saveObject = currentPage.getDataFromArray(getIO(), i);
 					savePagePointer = currentPage.getPage(getIO(), i + 1);
-					currentPage.insert(newKey, null, currentIndex);
+					currentIndex = currentPage.insert(newKey, null, currentIndex);
 					currentPage.putPageToArray(leftPagePtr, currentIndex);
 					currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
 				}
@@ -294,7 +294,7 @@ public final class BTreeMain {
 				rightPagePtr.numKeys = BTreeKeyPage.MAXKEYS - i;
 			} else {
 				// Insert key/object at current location
-				currentPage.insert(newKey, null, currentIndex);
+				currentIndex = currentPage.insert(newKey, null, currentIndex);
 				currentPage.putPageToArray(leftPagePtr, currentIndex);
 				currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
 				++numKeys;

@@ -93,12 +93,14 @@ public final class BTreeKeyPage implements Serializable {
 		int mid = 0;
 		//if( targetKey == null ) if( Props.DEBUG ) System.out.println("search:Target is null");
 		//if( keyArray == null ) if( Props.DEBUG ) System.out.println("search:Keyarray is null");
-		//if( keyArray[lo] == null ) if( Props.DEBUG ) System.out.println("search:Key array lo is null");
+		//if( keyAr		assert()
+		assert(keyArray.length > 0) : "BTreeKeyPage.search key array length zero";
 		if (keyArray[lo].compareTo(targetKey) > 0) {
 			return (-1);
 		}
 		do {
 			mid = (lo + hi) / 2;
+			assert(mid < MAXKEYS && hi >= 0) : "BTreeKeyPage.search numKeys:"+numKeys+" lo:"+lo+" mid:"+mid+" hi:"+hi+" target:"+targetKey;
 			if (keyArray[mid].compareTo(targetKey) == 0) {
 				return (mid);
 			}
@@ -119,7 +121,7 @@ public final class BTreeKeyPage implements Serializable {
 	* @param index The index of key array to begin offset
 	*/
 	@SuppressWarnings("rawtypes")
-	synchronized void insert(Comparable newKey, Object newData, int index) {
+	synchronized int insert(Comparable newKey, Object newData, int index) {
 		// If adding to right, no moving to do
 		if (index < numKeys)
 			// move elements down
@@ -143,6 +145,7 @@ public final class BTreeKeyPage implements Serializable {
 		dataIdArray[index] = Optr.emptyPointer;
 		dataUpdatedArray[index] = true;
 		setUpdated(true);
+		return index;
 	}
 
 	/**

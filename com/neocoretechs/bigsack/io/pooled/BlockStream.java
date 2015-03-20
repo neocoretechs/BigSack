@@ -13,7 +13,7 @@ import com.neocoretechs.bigsack.io.stream.DBOutputStream;
  * DB Streams to access them.
  * There is a simple paradigm at work here, we carry a single block access index in another class and use it
  * to cursor through the blocks as we access them. The BlockStream class has the BlockAccessIndex and DBStream
- * for each tablespace. The cursor window block is read and written from seep store and buffer pool.
+ * for each tablespace. The cursor window block is read and written from deep store and buffer pool.
  * These blocks occupy the shadow world between the buffer pool and deep store. We create them by taking from the
  * freechain and those blocks taken are backed by an actual page brought into the buffer pool. 
  * The pool page is blank though and the contents of these buffers are used to fill them.
