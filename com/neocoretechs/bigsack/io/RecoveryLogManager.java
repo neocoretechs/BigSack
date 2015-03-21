@@ -106,11 +106,12 @@ public final class RecoveryLogManager  {
 		}
 		tblk.setBlockNumber(blk.getBlockNum());
 		assert( tablespace == GlobalDBIO.getTablespace(blk.getBlockNum()));
-		//blockIO.getIOManager().FseekAndRead(tblk.getBlockNum(), tblk.getBlk());
-		synchronized(blockIO.getIOManager().getDirectIO(tablespace)) {
-			blockIO.getIOManager().getDirectIO(tablespace).Fseek(GlobalDBIO.getBlock(blk.getBlockNum()));
-			tblk.getBlk().read(blockIO.getIOManager().getDirectIO(tablespace));
-		}
+		// Write directly to deep store at this point.
+		//synchronized(blockIO.getIOManager().getDirectIO(tablespace)) {
+		//	blockIO.getIOManager().getDirectIO(tablespace).Fseek(GlobalDBIO.getBlock(blk.getBlockNum()));
+		//	tblk.getBlk().read(blockIO.getIOManager().getDirectIO(tablespace));
+		//}
+		blockIO.getIOManager().readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		if( firstTrans == null )
 			firstTrans = fl.logAndDo(blockIO, undoBlk);

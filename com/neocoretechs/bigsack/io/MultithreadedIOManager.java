@@ -71,12 +71,16 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	*/
 	public MultithreadedIOManager(ObjectDBIO globalIO) throws IOException {
 		this.globalIO = globalIO;
-		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
+		assignIoWorker();
 		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
 		ulog = new RecoveryLogManager[DBPhysicalConstants.DTABLESPACES];
 		// Initialize the thread pool group NAMES to spin new threads in controllable batches
 		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"});
 		setNextFreeBlocks();
+	}
+	
+	protected void assignIoWorker() {
+		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
 	}
 	/**
 	 * Return the MappedBlockBuffer for the tablespace
@@ -645,14 +649,23 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void writen(int tblsp, byte[] o, int osize) throws IOException {
 		blockBuffer[tblsp].writen(lbai[tblsp].getLbai(), o, osize);
 	}
-	@Override
-	public IoInterface getDirectIO(int tblsp) {
-		return (IoInterface)ioWorker[tblsp];
-	}
+
 	@Override
 	public void deallocOutstandingWriteLog(int tblsp) throws IOException {
 		deallocOutstandingWriteLog(tblsp, lbai[tblsp].getLbai());
 		
 	}
-
+	
+	public void writeDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
+		synchronized(ioWorker[tblsp]) {
+			((IOWorker) ioWorker[tblsp]).Fseek(blkn);
+			blkV2.write((IoInterface) ioWorker[tblsp]);
+		}
+	}
+	public void readDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
+		synchronized(ioWorker[tblsp]) {
+			((IOWorker) ioWorker[tblsp]).Fseek(blkn);
+			blkV2.read((IoInterface) ioWorker[tblsp]);
+		}
+	}
 }

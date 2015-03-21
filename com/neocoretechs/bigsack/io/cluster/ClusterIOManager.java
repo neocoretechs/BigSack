@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.io.IOWorker;
+import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
@@ -58,6 +60,9 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		super(globalIO);
 	}
 	
+	protected void assignIoWorker() {
+		ioWorker = new DistributedIOWorker[DBPhysicalConstants.DTABLESPACES];
+	}
 	/**
 	* Return the first available block that can be acquired for write
 	* queue the request to the proper ioworker
@@ -351,15 +356,12 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		return retVal;
 	}
 	
-	public IOWorkerInterface getIOWorker(int tblsp) {
-		return ioWorker[tblsp];
-	}
-	
 	public static int getNextUUID() { return ++messageSeq; }
 
 	@Override
 	public void forceBufferClear() {
 		CountDownLatch cdl = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
+		synchronized(blockBuffer) {
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				ForceBufferClearRequest fbcr = new ForceBufferClearRequest(blockBuffer[i], cdl, forceBarrierSynch);
 				blockBuffer[i].queueRequest(fbcr);
@@ -370,6 +372,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		} catch (InterruptedException e) {
 				// executor requested thread shutdown
 				return;
+		}
 		}
 	}
 	/**
@@ -402,6 +405,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		blockBuffer[tblsp].queueRequest(abanrr);
 		try {
 			cdl.await();
+			lbai[tblsp].setLbai(((BlockAccessIndex) abanrr.getObjectReturn()));
 			return (BlockAccessIndex) abanrr.getObjectReturn();
 		} catch (InterruptedException e) {
 			// shutdown waiting for return
@@ -475,6 +479,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	@Override
 	public void directBufferWrite() throws IOException {
 		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
+		synchronized(blockBuffer) {
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			//blockBuffer[i].directBufferWrite();
 			DirectBufferWriteRequest dbwr = new DirectBufferWriteRequest(blockBuffer[i], cdl, directWriteBarrierSynch);
@@ -484,6 +489,37 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			cdl.await();
 		} catch (InterruptedException e) {
 			return;
+		}
+		}
+	}
+	
+	@Override
+	public void writeDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
+		synchronized(ioWorker[tblsp]) {
+			CountDownLatch barrierCount = new CountDownLatch(1);
+			IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, blkn, blkV2);
+			ioWorker[tblsp].queueRequest(iori);
+			try {
+				barrierCount.await();
+			} catch (InterruptedException e) {}
+			((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
+		}
+	}
+	
+	@Override
+	public void readDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
+		synchronized(ioWorker[tblsp]) {
+			CountDownLatch barrierCount = new CountDownLatch(1);
+			IoRequestInterface iori = new FSeekAndReadRequest(barrierCount, blkn, blkV2);
+			ioWorker[tblsp].queueRequest(iori);
+			try {
+				barrierCount.await();
+			} catch (InterruptedException e) {}
+			// original request should contain object from response from remote worker
+			Datablock rblock = (Datablock) iori.getObjectReturn();
+			rblock.doClone(blkV2);
+			// remove old requests
+			((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 		}
 	}
 	

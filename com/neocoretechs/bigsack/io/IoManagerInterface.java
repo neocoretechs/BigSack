@@ -139,7 +139,6 @@ public interface IoManagerInterface {
 
 	public IOWorkerInterface getIOWorker(int tblsp);
 	
-	public IoInterface getDirectIO(int tblsp);
 	
 	public RecoveryLogManager getUlog(int tblsp);
 	
@@ -164,5 +163,9 @@ public interface IoManagerInterface {
 	public void deallocOutstanding() throws IOException;
 	public void deallocOutstandingWriteLog(int tblsp) throws IOException;
 	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) throws IOException;
+
+	public void writeDirect(int tablespace, long block, Datablock blk) throws IOException;
+
+	public void readDirect(int tablespace, long block, Datablock blk) throws IOException;
 
 }

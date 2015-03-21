@@ -55,10 +55,11 @@ public final class UndoableBlock implements Undoable, Serializable {
 		//xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
 		int tblsp = GlobalDBIO.getTablespace(blkV2.getBlockNum());
 		long blkn = GlobalDBIO.getBlock(blkV2.getBlockNum());
-		synchronized(xact.getIOManager().getDirectIO(tblsp)) {
-			xact.getIOManager().getDirectIO(tblsp).Fseek(blkn);
-			blkV2.getBlk().write(xact.getIOManager().getDirectIO(tblsp));
-		}
+		//synchronized(xact.getIOManager().getDirectIO(tblsp)) {
+		//	xact.getIOManager().getDirectIO(tblsp).Fseek(blkn);
+		//	blkV2.getBlk().write(xact.getIOManager().getDirectIO(tblsp));
+		//}
+		xact.getIOManager().writeDirect(tblsp, blkn, blkV2.getBlk());
 		// deallocate
 		blkV2.decrementAccesses();
 	}

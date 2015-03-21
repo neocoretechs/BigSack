@@ -52,7 +52,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  */
 public class TCPMaster implements Runnable, MasterInterface {
 	private static final boolean DEBUG = false;
-	public static final boolean TEST = true; // true to run in local cluster test mode
+	public static final boolean TEST = false; // true to run in local cluster test mode
 	
 	private int MASTERPORT = 9876;
 	private int SLAVEPORT = 9876;
