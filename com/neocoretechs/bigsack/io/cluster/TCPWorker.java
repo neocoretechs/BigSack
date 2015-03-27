@@ -49,12 +49,12 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
-	public static String remoteMaster = "AMIMASTER";
-    private byte[] sendData;
+	private String remoteMaster = "AMIMASTER";
+    //private byte[] sendData;
 	private InetAddress IPAddress = null;
-	private ServerSocketChannel workerSocketChannel;
+	//private ServerSocketChannel workerSocketChannel;
 	private SocketAddress workerSocketAddress;
-	private SocketChannel masterSocketChannel;
+	//private SocketChannel masterSocketChannel;
 	private SocketAddress masterSocketAddress;
 	
 	private ServerSocket workerSocket;
@@ -66,8 +66,10 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	
 	private NodeBlockBuffer blockBuffer;
 	
-    public TCPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
+    public TCPWorker(String dbname, int tablespace, String remoteMaster, int masterPort, int slavePort, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
+    	if( remoteMaster != null )
+    		this.remoteMaster = remoteMaster;
     	MASTERPORT= masterPort;
     	SLAVEPORT = slavePort;
 		try {
@@ -152,10 +154,16 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
      */
 	public static void main(String args[]) throws Exception {
 		if( args.length < 4 ) {
-			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.TCPWorker [database] [tablespace] [master port] [slave port]");
+			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.TCPWorker [database] [tablespace] [remote master] [master port] [slave port]");
 		}
 		// Use mmap mode 0
-		ThreadPoolManager.getInstance().spin(new TCPWorker(args[0], Integer.valueOf(args[1]), Integer.valueOf(args[2]), Integer.valueOf(args[3]), 0));
+		ThreadPoolManager.getInstance().spin(new TCPWorker(
+				args[0], // database
+				Integer.valueOf(args[1]), // tablespace
+				args[2], // remote master node
+				Integer.valueOf(args[4]) , // master port
+				Integer.valueOf(args[5]), //worker port
+				0)); // L3 cache, mmap hardwired for now
 	}
 	
 	@Override
@@ -224,13 +232,13 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 	}
 
 	@Override
-	public int getMasterPort() {
-		return MASTERPORT;
+	public String getMasterPort() {
+		return String.valueOf(MASTERPORT);
 	}
 
 	@Override
-	public int getSlavePort() {
-		return SLAVEPORT;
+	public String getSlavePort() {
+		return String.valueOf(SLAVEPORT);
 	}
 
 	public void stopWorker() {

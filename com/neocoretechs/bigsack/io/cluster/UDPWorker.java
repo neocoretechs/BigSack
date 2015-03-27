@@ -42,10 +42,10 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 	
 	private NodeBlockBuffer blockBuffer;
 	
-    public UDPWorker(String dbname, int tablespace, int masterPort, int slavePort, int L3Cache) throws IOException {
+    public UDPWorker(String dbname, int tablespace, String masterport, String slaveport, int L3Cache) throws IOException {
     	super(dbname, tablespace, L3Cache);
-    	MASTERPORT= masterPort;
-    	SLAVEPORT = slavePort;
+    	MASTERPORT= Integer.valueOf(masterport);
+    	SLAVEPORT = Integer.valueOf(slaveport);
 		try {
 			if(UDPMaster.TEST) {
 				IPAddress = InetAddress.getLocalHost();
@@ -116,7 +116,7 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 			System.out.println("Usage: java com.neocoretechs.bigsack.io.cluster.UDPWorker [database] [tablespace] [master port] [slave port]");
 		}
 		// Use mmap mode 0
-		ThreadPoolManager.getInstance().spin(new UDPWorker(args[0], Integer.valueOf(args[1]), Integer.valueOf(args[2]), Integer.valueOf(args[3]), 0));
+		ThreadPoolManager.getInstance().spin(new UDPWorker(args[0], Integer.valueOf(args[1]), args[2], args[3], 0));
 	}
 	
 	@Override
@@ -161,13 +161,13 @@ public class UDPWorker extends IOWorker implements DistributedWorkerResponseInte
 	}
 
 	@Override
-	public int getMasterPort() {
-		return MASTERPORT;
+	public String getMasterPort() {
+		return String.valueOf(MASTERPORT);
 	}
 
 	@Override
-	public int getSlavePort() {
-		return SLAVEPORT;
+	public String getSlavePort() {
+		return String.valueOf(SLAVEPORT);
 	}
 
 	

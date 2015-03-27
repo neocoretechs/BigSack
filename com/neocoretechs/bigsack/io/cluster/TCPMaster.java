@@ -91,7 +91,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * @param requestContext
 	 * @throws IOException
 	 */
-	public TCPMaster(String dbName, int tablespace, int masterPort, int slavePort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
+	public TCPMaster(String dbName, int tablespace, int masterPort, int slavePort, String bootNode, int bootPort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
 		this.DBName = dbName;
 		this.tablespace = tablespace;
 		this.MASTERPORT = masterPort;
@@ -100,10 +100,16 @@ public class TCPMaster implements Runnable, MasterInterface {
 		if( TEST ) {
 			IPAddress = InetAddress.getLocalHost();
 		} else {
-			IPAddress = InetAddress.getByName(remoteWorker+String.valueOf(tablespace));
+			if( bootNode != null ) {
+				IPAddress = InetAddress.getByName(bootNode);
+				WORKBOOTPORT = bootPort;
+			} else {
+				IPAddress = InetAddress.getByName(remoteWorker+String.valueOf(tablespace));
+			}
 		}
 		if( DEBUG ) {
-			System.out.println("TCPMaster constructed with "+DBName+" "+tablespace+" master port:"+masterPort+" slave:"+slavePort);
+			System.out.println("TCPMaster constructed with "+DBName+" for tablspace "+tablespace+
+								" master port:"+masterPort+" slave:"+slavePort+" to contact WorkBoot "+IPAddress);
 		}
 		masterSocketAddress = new InetSocketAddress(MASTERPORT);
 		//masterSocketChannel = ServerSocketChannel.open();
@@ -123,21 +129,13 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 * @param requestContext
 	 * @throws IOException
 	 */
-	public TCPMaster(String dbName, String remoteDBName, int tablespace, int masterPort, int slavePort, ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
-		this(dbName, tablespace, masterPort, slavePort, requestContext);
+	public TCPMaster(String dbName, String remoteDBName, int tablespace, int masterPort, int slavePort, String bootNode, int bootPort,  ConcurrentHashMap<Integer, IoRequestInterface> requestContext)  throws IOException {
+		this(dbName, tablespace, masterPort, slavePort, bootNode, bootPort, requestContext);
 		this.remoteDBName = remoteDBName;
 		if( DEBUG )
 			System.out.println("TCPMaster constructed with "+dbName+" using remote DB:"+remoteDBName+" tablespace:"+tablespace+" master:"+masterPort+" slave:"+slavePort);
 	}
-	
-	public void setMasterPort(int port) {
-		MASTERPORT = port;
-	}
-	public void setSlavePort(int port) {
-		SLAVEPORT = port;
-	}
-	
-	
+		
 	/**
 	 * Set the prefix name of the remote worker node that this master communicates with
 	 * This name plus the tablespace identifies each individual worker node
@@ -146,6 +144,12 @@ public class TCPMaster implements Runnable, MasterInterface {
 	 */
 	public void setRemoteWorkerName(String rname) {
 		remoteWorker = rname;
+	}
+	public void setMasterPort(int port) {
+		MASTERPORT = port;
+	}
+	public void setSlavePort(int port) {
+		SLAVEPORT = port;
 	}
 	
 	/**
@@ -353,14 +357,24 @@ public class TCPMaster implements Runnable, MasterInterface {
 		else
 			cpi.setDatabase(DBName);
 		cpi.setTablespace(tablespace);
-		cpi.setMasterPort(MASTERPORT);
-		cpi.setSlavePort(SLAVEPORT);
+		cpi.setMasterPort(String.valueOf(MASTERPORT));
+		cpi.setSlavePort(String.valueOf(SLAVEPORT));
+		cpi.setRemoteMaster(InetAddress.getLocalHost().getHostAddress());
 		cpi.setTransport("TCP");
 		os.write(GlobalDBIO.getObjectAsBytes(cpi));
 		os.flush();
 		os.close();
 		s.close();
 		return true;
+	}
+	@Override
+	public void setSlavePort(String port) {
+		SLAVEPORT = Integer.valueOf(port);
+	}
+	@Override
+	public void setMasterPort(String port) {
+		MASTERPORT = Integer.valueOf(port);
+		
 	}
 	
 }

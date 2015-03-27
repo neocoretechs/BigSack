@@ -353,3 +353,9 @@
 /ObjectDBIO.class
 /OffsetDBIO.class
 /OffsetDBIOInterface.class
+/BlockAccessIndex.class
+/BlockStream.class
+/Datablock.class
+/GlobalDBIO.class
+/MappedBlockBuffer.class
+/ObjectDBIO.class

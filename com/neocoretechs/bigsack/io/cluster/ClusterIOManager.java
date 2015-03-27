@@ -239,8 +239,11 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	public synchronized boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			ioWorker[i] = //new IOWorker(translateDb(fname,i), i, L3cache);
-					new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
+			if( globalIO.getWorkerNodes() != null )
+				ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort, 
+						globalIO.getWorkerNodes()[i][0], Integer.valueOf(globalIO.getWorkerNodes()[i][1]) );
+			else
+				ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort, null, 0);
 			blockBuffer[i] = new MappedBlockBuffer(this, i);
 			lbai[i] = new BlockStream(i, blockBuffer[i]);
 			ulog[i] = new RecoveryLogManager(globalIO,i);
@@ -274,13 +277,20 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	@Override
 	public synchronized boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
+		String bootNode;
+		int bootPort;
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			if( globalIO.getWorkerNodes() != null ) {
+				bootNode = globalIO.getWorkerNodes()[i][0]; 
+				bootPort = Integer.valueOf(globalIO.getWorkerNodes()[i][1]);
+			} else {
+				bootNode = null;
+				bootPort = 0;
+			}
 			if( remote == null )
-					ioWorker[i] = //new IOWorker(translateDb(fname,i), i, L3cache);
-						new DistributedIOWorker(fname, i, ++currentPort, ++currentPort);
+					ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort, bootNode, bootPort);
 			else
-					ioWorker[i] = //new IOWorker(translateDb(fname,i), translateDb(remote,i), i, L3cache);
-							new DistributedIOWorker(fname, remote, i, ++currentPort, ++currentPort);
+					ioWorker[i] = new DistributedIOWorker(fname, remote, i, ++currentPort, ++currentPort, bootNode, bootPort);
 			blockBuffer[i] = new MappedBlockBuffer(this, i);
 			lbai[i] = new BlockStream(i, blockBuffer[i]);
 			ulog[i] = new RecoveryLogManager(globalIO,i);

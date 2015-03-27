@@ -13,10 +13,12 @@ public interface CommandPacketInterface extends Serializable {
 	public void setDatabase(String database);
 	public int getTablespace();
 	public void setTablespace(int tablespace);
-	public int getMasterPort();
-	public int getSlavePort();
-	public void setMasterPort(int port);
-	public void setSlavePort(int port);
+	public String getMasterPort();
+	public String getSlavePort();
+	public void setMasterPort(String port);
+	public void setSlavePort(String port);
 	public String getTransport();
 	public void setTransport(String transport);
+	public String getRemoteMaster();
+	public void setRemoteMaster(String remoteMaster);
 }

@@ -11,10 +11,9 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  */
 public interface MasterInterface {
 
-	public void setMasterPort(int port);
 
-	public void setSlavePort(int port);
-
+	public void setSlavePort(String port);
+	public void setMasterPort(String port);
 	/**
 	 * Set the prefix name of the remote worker node that this master communicates with
 	 * This name plus the tablespace identifies each individual worker node
@@ -38,5 +37,6 @@ public interface MasterInterface {
 	 * @throws IOException
 	 */
 	public boolean Fopen(String fname, boolean create) throws IOException;
+
 
 }

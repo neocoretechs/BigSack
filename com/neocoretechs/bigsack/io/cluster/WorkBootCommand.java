@@ -13,9 +13,10 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 	private static final long serialVersionUID = 893462083293613273L;
 	private String database;
 	private int tablespace;
-	private int masterPort;
-	private int slavePort;
+	private String masterPort;
+	private String slavePort;
 	private String transport;
+	private String remoteMaster;
 	
 	public WorkBootCommand(){}
 	
@@ -36,11 +37,11 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 		this.tablespace = tablespace;
 	}
 	@Override
-	public int getMasterPort() {
+	public String getMasterPort() {
 		return masterPort;
 	}
 	@Override
-	public void setMasterPort(int port) {
+	public void setMasterPort(String port) {
 		this.masterPort = port;	
 	}
 	@Override
@@ -48,11 +49,11 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 		return database+" tablespace:"+tablespace+" master port:"+masterPort+" slave:"+slavePort+" transport "+transport;
 	}
 	@Override
-	public int getSlavePort() {
+	public String getSlavePort() {
 		return slavePort;
 	}
 	@Override
-	public void setSlavePort(int port) {
+	public void setSlavePort(String port) {
 			this.slavePort = port;	
 	}
 
@@ -64,6 +65,16 @@ public final class WorkBootCommand implements CommandPacketInterface, Serializab
 	@Override
 	public void setTransport(String transport) {
 		this.transport = transport;	
+	}
+
+	@Override
+	public String getRemoteMaster() {
+		return remoteMaster;
+	}
+
+	@Override
+	public void setRemoteMaster(String remoteMaster) {
+		this.remoteMaster = remoteMaster;	
 	}
 	
 }

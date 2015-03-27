@@ -91,15 +91,15 @@ public class UDPMaster implements Runnable, MasterInterface {
 	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#setMasterPort(int)
 	 */
 	@Override
-	public void setMasterPort(int port) {
-		MASTERPORT = port;
+	public void setMasterPort(String port) {
+		MASTERPORT = Integer.valueOf(port);
 	}
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#setSlavePort(int)
 	 */
 	@Override
-	public void setSlavePort(int port) {
-		SLAVEPORT = port;
+	public void setSlavePort(String port) {
+		SLAVEPORT = Integer.valueOf(port);
 	}
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.cluster.MasterInterface#setRemoteWorkerName(java.lang.String)
@@ -194,8 +194,8 @@ public class UDPMaster implements Runnable, MasterInterface {
 		else
 			cpi.setDatabase(DBName);
 		cpi.setTablespace(tablespace);
-		cpi.setMasterPort(MASTERPORT);
-		cpi.setSlavePort(SLAVEPORT);
+		cpi.setMasterPort(String.valueOf(MASTERPORT));
+		cpi.setSlavePort(String.valueOf(SLAVEPORT));
 		cpi.setTransport("UDP");
 		os.write(GlobalDBIO.getObjectAsBytes(cpi));
 		os.flush();

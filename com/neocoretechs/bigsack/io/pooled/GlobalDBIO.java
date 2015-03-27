@@ -53,7 +53,7 @@ public class GlobalDBIO {
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
 	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
-
+	private String[][] nodePorts = null;
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 
 	public IoManagerInterface getIOManager() {
@@ -130,6 +130,17 @@ public class GlobalDBIO {
 		if (Props.toString("Model").startsWith("Cluster")) {
 			if( DEBUG )
 				System.out.println("Cluster Node IO Manager coming up...");
+			// see if we assign the array of target worker nodes in cluster
+			if( Props.toString("Nodes") != null ) {
+				String[] nodes = Props.toString("Nodes").split(",");
+				nodePorts = new String[nodes.length][];
+				for(int i = 0; i < nodes.length; i++) {
+					nodePorts[i] = nodes[i].split(":");
+				}
+				if( DEBUG )
+					for(int i = 0; i < nodePorts.length; i++)
+						System.out.println("Node "+nodePorts[i][0]+" port "+nodePorts[i][1]);
+			}
 			ioManager = new ClusterIOManager((ObjectDBIO) this);
 		} else {
 			if( DEBUG )
@@ -147,10 +158,6 @@ public class GlobalDBIO {
 		} 
 
 	}
-	
-	private boolean isNew() {
-		return ioManager.isNew();
-	}
 
 	/**
 	* Constructor creates DB if not existing, otherwise open
@@ -160,6 +167,10 @@ public class GlobalDBIO {
 	*/
 	public GlobalDBIO(String dbname, String remoteDbName, long transId) throws IOException {
 		this(dbname, remoteDbName, true, transId);
+	}
+	
+	private boolean isNew() {
+		return ioManager.isNew();
 	}
 
 	/**
@@ -224,6 +235,12 @@ public class GlobalDBIO {
 	public String getDBPath() {
 		return (new File(dbName)).toPath().getParent().toString();
 	}
+	/**
+	 * Return the properties file entries for the remote worker nodes in cluster mode, if they were present
+	 * @return the nodes otherwise null if no entry in the properties file
+	 */
+	public String[][] getWorkerNodes() { return nodePorts; }
+	
 	/**
 	* Static method for object to serialized byte conversion.
 	* Uses DirectByteArrayOutputStream, which allows underlying buffer to be retrieved without
