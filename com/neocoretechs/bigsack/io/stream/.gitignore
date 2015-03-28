@@ -171,3 +171,8 @@
 /DBInputStream.class
 /DBOutputStream.class
 /DirectByteArrayOutputStream.class
+/CObjectInputStream.class
+/DBBufferedInputStream.class
+/DBInputStream.class
+/DBOutputStream.class
+/DirectByteArrayOutputStream.class

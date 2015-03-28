@@ -42,6 +42,7 @@ public class TailSetIterator extends AbstractIterator {
 			bTree.setCurrent();
 			nextKey = bTree.getCurrentKey();
 			bTree.getIO().deallocOutstanding();
+			System.out.println("TailSetIterator.Nextkey:"+nextKey);
 		}
 	}
 	public boolean hasNext() {
@@ -54,7 +55,7 @@ public class TailSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in TailSetIterator");
 				retKey = nextKey;
-				if (bTree.seek(nextKey) == null)
+				if(!bTree.search(nextKey))
 					throw new ConcurrentModificationException("Next TailSetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

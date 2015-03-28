@@ -59,7 +59,7 @@ public class HeadSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in HeadSetIterator");
 				retKey = nextKey;
-				if (bTree.seek(nextKey) == null)
+				if ( !bTree.search(nextKey) )
 					throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

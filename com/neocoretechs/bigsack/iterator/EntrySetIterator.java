@@ -58,7 +58,7 @@ public class EntrySetIterator extends AbstractIterator {
 				// save for return
 				retKey = nextKey;
 				retElem = nextElem;
-				if (bTree.seek(nextKey) == null)
+				if ( !bTree.search(nextKey) )
 					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
