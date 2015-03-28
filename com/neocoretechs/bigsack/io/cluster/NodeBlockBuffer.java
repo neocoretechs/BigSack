@@ -38,7 +38,8 @@ public final class NodeBlockBuffer  {
 						break;
 				}
 			}
-			assert( rec != -1L ) : "NodeBlockBuffer unable to clear buffer slot for new block, buffer full.";
+			if( rec == -1L ) 
+				throw new RuntimeException("NodeBlockBuffer unable to clear buffer slot for new block, buffer full.");
 			blockBuffer.remove(rec);
 		}
 		blockBuffer.put(ptr, dblk);

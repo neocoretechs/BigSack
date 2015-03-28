@@ -383,27 +383,31 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException
 	 */
 	public void deallocOutstandingRollback() throws IOException {
-		synchronized( lbai ) {
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				lbai[i].getLbai().decrementAccesses();
-				forceBufferClear();
-				ulog[i].rollBack();
-				ulog[i].stop();
-				((IoInterface)ioWorker[i]).Fclose();
+			synchronized( lbai ) {
+				for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+					if( lbai[i] != null & lbai[i].getLbai() != null ) {
+						lbai[i].getLbai().decrementAccesses();
+						forceBufferClear();
+						ulog[i].rollBack();
+						ulog[i].stop();
+						((IoInterface)ioWorker[i]).Fclose();
+					}
+				}
 			}
-		}
 	}
 	/**
 	 * dealloc outstanding blocks. if not null, do a dealloc and set null
 	 * @throws IOException
 	 */
 	public void deallocOutstanding() throws IOException {
-		synchronized(lbai) {
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				if( lbai[i] != null )
-					lbai[i].getLbai().decrementAccesses();
-			}	
-		}
+			synchronized(lbai) {
+				for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+					if( lbai[i] != null ) {
+						if( lbai[i].getLbai() != null )
+							lbai[i].getLbai().decrementAccesses();
+					}
+				}	
+			}
 	}
 	
 	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex lbai) throws IOException {
