@@ -162,9 +162,17 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 		while(shouldRun) {
 			try {
 				IoRequestInterface iori = requestQueue.take();
-				ioUnit.send(iori);
+				// Determine if local or remote processing is to take place
+				if( ((AbstractClusterWork)iori).doPropagate() ) {
+					ioUnit.send(iori);
+				} else {
+					iori.process();
+				}
 			} catch (InterruptedException e) {
 				return; // requested shutdown from executor, leave thread
+			} catch (IOException e) {
+				System.out.println("Distributed IO Worker fault :"+e);
+				return;
 			}
 		}
 

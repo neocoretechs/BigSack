@@ -52,7 +52,9 @@ public final class CommitBufferFlushRequest implements CompletionLatchInterface 
 		}
 		// all buffers flushed, call commit
 		recoveryManager.commit();
-		ioManager.Fclose();
+		// if we have local io manager that has file ops, call the close
+		if( ioManager != null )
+			ioManager.Fclose();
 		barrierCount.countDown();
 		if( DEBUG  )
 			System.out.println("CommitBufferFlushRequest.process "+blockBuffer);

@@ -11,15 +11,21 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
 /**
  * A special case of request the does not propagate outward to workers but instead is
- * used to serialize commit/rollback etc. on the request queue. In lieu of waiting for a synchronization
- * or waiting for the queue to empty, queue this type of special request to assure completion.
+ * used to serialize commit/rollback etc. on the request queue. The overridden method
+ * of AbstractClusterWork 'doPropagate' is set false to prevent this request from
+ * traveling outward to nodes. The commit is two stage, with the first local 
+ * operation happening which pushes out blocks from resident buffer polls to nodes.
+ * In the second stage a request si sent to the nodes, causing the buffers to be persisted.
+ * In lieu of waiting for a synchronization or waiting for the queue to empty, queue this 
+ * type of special request to assure completion. We use countdown latches to control synchronization.
+ * These latches are not serializable so we maintain them separately at the nodes.
  * This is an intent parallel computation component of a tablespace wide request.
  * We are using a CyclicBarrier set up with the number of tablespaces and after each thread
  * does a commit it will await the barrier synch. 
- * Once released from barrier synch a countdown latch is decreased which activates the multi
- * threading IO manager countdown latch waiter when count reaches 0, thereby releasing the thread
+ * Once released from barrier synch a countdown latch is decreased which activates the
+ * IO manager countdown latch waiter when count reaches 0, thereby releasing the thread
  * to proceed. The commit request is a proxy to send the commit request to the block pools. Rather than
- * wait for a semaphore or something we are queuing a request to run when appropriate to achieve 
+ * wait for a semaphore or other synchronization, we are queuing a request to run when appropriate to achieve 
  * serial computation
  * Copyright (C) NeoCoreTechs 2014
  * @author jg
@@ -27,12 +33,12 @@ import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
  */
 public final class CommitRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
 	private static final long serialVersionUID = 1L;
-	private MappedBlockBuffer blockManager;
-	private CyclicBarrier barrierSynch;
+	private transient MappedBlockBuffer blockManager;
+	private transient CyclicBarrier barrierSynch;
 	private int tablespace;
-	private CountDownLatch barrierCount;
-	private RecoveryLogManager recoveryLog;
-	private IoInterface ioManager;
+	private transient CountDownLatch barrierCount;
+	private transient RecoveryLogManager recoveryLog;
+	private transient IoInterface ioManager;
 	/**
 	 * We re use the barriers, they are cyclic, so they are stored as fields
 	 * in the blockManager and passed here
@@ -100,5 +106,6 @@ public final class CommitRequest extends AbstractClusterWork implements Completi
 		barrierSynch = cb;
 		
 	}
-
+	@Override
+	public boolean doPropagate() { return false; }
 }

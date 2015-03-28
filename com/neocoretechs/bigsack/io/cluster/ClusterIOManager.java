@@ -471,7 +471,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
 		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			iori[i] = new RemoteCommitRequest(commitBarrierSynch, cdl);
+			iori[i] = new RemoteCommitRequest(cdl);
 			ioWorker[i].queueRequest(iori[i]);
 		}
 		try {

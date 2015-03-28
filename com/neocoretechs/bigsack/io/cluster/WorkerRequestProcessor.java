@@ -13,7 +13,14 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  * Once requests from master are queued we extract them here and process them
  * This class functions as a generic threaded request processor for entries on a BlockingQueue of 
  * CompletionLatchInterface implementors managed by a DistributeWorkerResponseInterface implementation.
- * Before this thread shuts down in normal operation, the outstanding writes are allowed to complete. 
+ * This request processor is spun up in conjunction with IO workers such as TCPMaster and UDPMaster. 
+ * The intent is to separate the processing of requests, the maintenance of latches, etc from the communication
+ * processing. In addition, increased parallelism can be achieved by separation of these tasks.
+ * The WorkerRequestProcessors are responsible for setting the fields for the ioUnit and countdownlatch.
+ * Essentially, the transient fields of outbound cluster requests, and the template fields in standalone
+ * requests are filled in by methods invoked by this processor before 'process' is called on the request.
+ * @see IoRequestInterface
+ * Copyright (C) NeoCoreTechs 2014,2015
  * @author jg
  *
  */
@@ -82,12 +89,11 @@ public final class WorkerRequestProcessor implements Runnable {
 			IoResponse ioresp = new IoResponse(iori);
 			// And finally, send the package back up the line
 			worker.queueResponse(ioresp);
-			if( DEBUG ) {
+			//if( DEBUG ) {
 				System.out.println("***FAULT Response queued:"+ioresp);
-			}
+			//}
 		}
 	  } //shouldRun
-	  // Check the block pool for any outstanding writes, there should not be any
 	  
 	}
 
