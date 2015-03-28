@@ -8,7 +8,7 @@ Durability is attained through the use of checkpointing and roll forward recover
 See java.util.TreeMap and java.util.TreeSet for further details.
 See the documentation for the ARIES protocol standard for further information on that subsystem.
 
-<code>
+```
 To specify the properties file at runtime the -DBigSack.properties=/[path]/[to]/properties JVM parameter may be passed
 #
 # Properties for the BigSack Java Deep K/V Store
@@ -59,5 +59,5 @@ BlockSize: 2048
 #
 Buckets: 1024
 # End
-</code>
+```
 
