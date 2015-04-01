@@ -32,7 +32,7 @@ import com.neocoretechs.bigsack.btree.BTreeMain;
 * @author Groff
 */
 public class SubSetIterator extends AbstractIterator {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -43,18 +43,11 @@ public class SubSetIterator extends AbstractIterator {
 		if( DEBUG )
 			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
 		synchronized (bTree) {
-			boolean found = bTree.search(fromKey);
-			if( DEBUG )
-				System.out.println("SubSetIterator2 fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree+" init find:"+found);
-			bTree.setCurrent();
+			bTree.seekKey(fromKey);
 			nextKey = bTree.getCurrentKey();
-			if( DEBUG )
-				System.out.println("SubSetIterator3 fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextKey = null; //exclusive
 			}
-			if( DEBUG )
-				System.out.println("SubSetIterator4 fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
 			bTree.getIO().deallocOutstanding();
 		}
 	}
@@ -69,7 +62,7 @@ public class SubSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetIterator");
 				retKey = nextKey;
-				if (!bTree.search(nextKey))
+				if (!bTree.seekKey(nextKey))
 					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

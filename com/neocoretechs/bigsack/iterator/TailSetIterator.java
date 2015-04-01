@@ -33,15 +33,15 @@ import com.neocoretechs.bigsack.btree.BTreeMain;
 public class TailSetIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, nextKey, retKey;
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	public TailSetIterator(@SuppressWarnings("rawtypes") Comparable fromKey, BTreeMain bTree)
 		throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
+			bTree.rewind();
 			bTree.search(fromKey);
-			bTree.setCurrent();
-			nextKey = bTree.getCurrentKey();
+			nextKey = bTree.setCurrentKey();
 			bTree.getIO().deallocOutstanding();
 			if( DEBUG )
 				System.out.println("Relatrix TailSetIterator.Nextkey:"+nextKey);

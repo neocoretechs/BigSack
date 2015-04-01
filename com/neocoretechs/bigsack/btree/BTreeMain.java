@@ -36,6 +36,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public final class BTreeMain {
 	private static boolean DEBUG = false;
+	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of BTreeKeyPage
 	private static boolean TEST = false;
 	static int BOF = 1;
 	static int EOF = 2;
@@ -110,12 +111,47 @@ public final class BTreeMain {
 	* @exception IOException if read failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public synchronized Object seek(Comparable targetKey) throws IOException {
+	public synchronized Object seekObject(Comparable targetKey) throws IOException {
 		if (search(targetKey)) {
 			setCurrent();
 			return getCurrentObject();
-		} else
-			return (null);
+		} else {
+			// See if the page is on overflow
+			if ((currentPage.numKeys) == BTreeKeyPage.MAXKEYS) {
+				do {
+					if (currentIndex < BTreeKeyPage.MAXKEYS) {
+						setCurrent();
+						return getCurrentObject();
+					}
+				} while(pop());
+			}
+			return null;
+		}
+	}
+	/**
+	* Seek the key, if we dont find it return false and leave the tree at it position
+	* If we do find it return true and leave at found key
+	* @param targetKey The Comparable key to seek
+	* @return data Object if found. Null otherwise.
+	* @exception IOException if read failure
+	*/
+	@SuppressWarnings("rawtypes")
+	public synchronized boolean seekKey(Comparable targetKey) throws IOException {
+		if (search(targetKey)) {
+			setCurrentKey();
+			return true;
+		} else {
+			// See if the page is on overflow
+			if ((currentPage.numKeys) == BTreeKeyPage.MAXKEYS) {
+				do {
+					if (currentIndex < BTreeKeyPage.MAXKEYS) {
+						setCurrentKey();
+						return true;
+					}
+				} while(pop());
+			}
+			return false;
+		}
 	}
 
 	/**
@@ -706,12 +742,23 @@ public final class BTreeMain {
 	* and currentIndex
 	*/
 	public synchronized void setCurrent() throws IOException {
-		System.out.println("BTreeMain.setCurrent page:"+currentPage+" index:"+currentIndex);
+		if( DEBUG || DEBUGCURRENT)
+			System.out.println("BTreeMain.setCurrent page:"+currentPage+" index:"+currentIndex);
 		atKey = true;
 		setCurrentKey(currentPage.keyArray[currentIndex]);
 		setCurrentObject(currentPage.getDataFromArray(getIO(), currentIndex));
 	}
-
+	/**
+	* Set the current object and key based on value of currentPage
+	* and currentIndex
+	*/
+	public synchronized Comparable setCurrentKey() throws IOException {
+		if( DEBUG || DEBUGCURRENT)
+			System.out.println("BTreeMain.setCurrentKey page:"+currentPage+" index:"+currentIndex);
+		atKey = true;
+		setCurrentKey(currentPage.keyArray[currentIndex]);
+		return currentPage.keyArray[currentIndex];
+	}
 	/**
 	* 
 	* search method used by seek, insert, and delete etc.
@@ -781,7 +828,12 @@ public final class BTreeMain {
 		return (false);
 	}
 
-	/** Internal routine to push stack */
+	/** 
+	 * Internal routine to push stack.
+	 * set keyPageStack[stackDepth] to currentPage
+	 * set indexStack[stackDepth] to currentIndex
+	 * @return true if stackDepth not at MAXSTACK, false otherwise
+	 */
 	private boolean push() {
 		if (stackDepth == MAXSTACK)
 			return (false);
@@ -790,7 +842,14 @@ public final class BTreeMain {
 		return (true);
 	}
 
-	/** Internal routine to pop stack */
+	/** 
+	 * Internal routine to pop stack. 
+	 * sets stackDepth - 1, 
+	 * currentPage to keyPageStack[stackDepth] and 
+	 * currentIndex to indexStack[stackDepth]
+	 * @return false if stackDepth reaches 0, true otherwise
+	 * 
+	 */
 	private boolean pop() {
 		if (stackDepth == 0)
 			return (false);

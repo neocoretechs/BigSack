@@ -42,8 +42,7 @@ public class SubSetKVIterator extends AbstractIterator {
 		this.fromKey = fromKey;
 		this.toKey = toKey;
 		synchronized (bTree) {
-			bTree.search(fromKey);
-			bTree.setCurrent();
+			bTree.seekKey(fromKey);
 			nextKey = bTree.getCurrentKey();
 			nextElem = bTree.getCurrentObject();
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
@@ -64,7 +63,7 @@ public class SubSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in SubSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if ( !bTree.search(nextKey) )
+				if ( !bTree.seekKey(nextKey) )
 					throw new ConcurrentModificationException("Next SubSetKVIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

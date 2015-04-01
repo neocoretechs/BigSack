@@ -101,7 +101,7 @@ public final class BigSackSession {
 
 	@SuppressWarnings("rawtypes")
 	public Object get(Comparable o) throws IOException {
-		return bTree.seek(o);
+		return bTree.seekObject(o);
 	}
 	/**
 	* Not a real subset, returns iterator vs set.
@@ -194,7 +194,7 @@ public final class BigSackSession {
 	 */
 	@SuppressWarnings("rawtypes")
 	public boolean contains(Comparable o) throws IOException {
-		Object obj = bTree.seek(o);
+		Object obj = bTree.seekObject(o);
 		if( obj != null ) {
 			bTree.getIO().deallocOutstanding();
 			return obj.equals(o);

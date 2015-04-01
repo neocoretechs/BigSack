@@ -40,7 +40,7 @@ public class HeadSetIterator extends AbstractIterator {
 		this.toKey = toKey;
 		synchronized (bTree) {
 			bTree.rewind();
-			bTree.setCurrent();
+			bTree.setCurrentKey();
 			nextKey = bTree.getCurrentKey();
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
 				nextKey = null;
@@ -59,7 +59,7 @@ public class HeadSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in HeadSetIterator");
 				retKey = nextKey;
-				if ( !bTree.search(nextKey) )
+				if ( !bTree.seekKey(nextKey) )
 					throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

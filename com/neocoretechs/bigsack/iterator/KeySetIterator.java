@@ -38,7 +38,7 @@ public class KeySetIterator extends AbstractIterator  {
 		super(bTree);
 		synchronized (bTree) {
 			bTree.rewind();
-			bTree.setCurrent();
+			bTree.setCurrentKey();
 			nextKey = bTree.getCurrentKey();
 			bTree.getIO().deallocOutstanding();
 		}
@@ -54,7 +54,7 @@ public class KeySetIterator extends AbstractIterator  {
 					throw new NoSuchElementException("No next element in EntrySetIterator");
 				// save for return
 				retKey = nextKey;
-				if ( !bTree.search(nextKey) )
+				if ( !bTree.seekKey(nextKey) )
 					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

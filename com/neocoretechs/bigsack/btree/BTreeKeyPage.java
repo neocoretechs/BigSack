@@ -93,7 +93,6 @@ public final class BTreeKeyPage implements Serializable {
 		int mid = 0;
 		//if( targetKey == null ) if( Props.DEBUG ) System.out.println("search:Target is null");
 		//if( keyArray == null ) if( Props.DEBUG ) System.out.println("search:Keyarray is null");
-		//if( keyAr		assert()
 		assert(keyArray.length > 0) : "BTreeKeyPage.search key array length zero";
 		if (keyArray[lo].compareTo(targetKey) > 0) {
 			return (-1);

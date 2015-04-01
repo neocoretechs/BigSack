@@ -39,6 +39,7 @@ public class TailSetKVIterator extends AbstractIterator {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
+			bTree.rewind();
 			bTree.search(fromKey);
 			bTree.setCurrent();
 			nextKey = bTree.getCurrentKey();
