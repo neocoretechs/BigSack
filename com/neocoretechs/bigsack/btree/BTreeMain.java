@@ -706,6 +706,7 @@ public final class BTreeMain {
 	* and currentIndex
 	*/
 	public synchronized void setCurrent() throws IOException {
+		System.out.println("BTreeMain.setCurrent page:"+currentPage+" index:"+currentIndex);
 		atKey = true;
 		setCurrentKey(currentPage.keyArray[currentIndex]);
 		setCurrentObject(currentPage.getDataFromArray(getIO(), currentIndex));

@@ -32,21 +32,29 @@ import com.neocoretechs.bigsack.btree.BTreeMain;
 * @author Groff
 */
 public class SubSetIterator extends AbstractIterator {
+	private static boolean DEBUG = true;
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public SubSetIterator(Comparable fromKey, Comparable toKey, BTreeMain bTree)
-		throws IOException {
+	public SubSetIterator(Comparable fromKey, Comparable toKey, BTreeMain bTree) throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		this.toKey = toKey;
+		if( DEBUG )
+			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
 		synchronized (bTree) {
-			bTree.search(fromKey);
+			boolean found = bTree.search(fromKey);
+			if( DEBUG )
+				System.out.println("SubSetIterator2 fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree+" init find:"+found);
 			bTree.setCurrent();
 			nextKey = bTree.getCurrentKey();
-			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
+			if( DEBUG )
+				System.out.println("SubSetIterator3 fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
+			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextKey = null; //exclusive
 			}
+			if( DEBUG )
+				System.out.println("SubSetIterator4 fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
 			bTree.getIO().deallocOutstanding();
 		}
 	}
@@ -61,7 +69,7 @@ public class SubSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetIterator");
 				retKey = nextKey;
-				if (bTree.search(nextKey))
+				if (!bTree.search(nextKey))
 					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
