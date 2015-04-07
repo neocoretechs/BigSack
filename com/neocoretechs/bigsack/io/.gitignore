@@ -567,3 +567,15 @@
 /ThreadPoolManager$LocalThreadFactory.class
 /ThreadPoolManager.class
 /UndoableBlock.class
+/FileIO.class
+/IOWorker.class
+/IoInterface.class
+/IoManagerInterface.class
+/LinkedMappedByteBuffer.class
+/MmapIO.class
+/MultithreadedIOManager.class
+/Optr.class
+/RecoveryLogManager.class
+/ThreadPoolManager$LocalThreadFactory.class
+/ThreadPoolManager.class
+/UndoableBlock.class

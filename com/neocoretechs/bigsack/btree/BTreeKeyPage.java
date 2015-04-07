@@ -36,46 +36,85 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * MAXKEYS is an attempt to keep keys from spanning page boundaries at the expense of some storage
 * a key overflow will cause a page split, at times unavoidable.
 * Important to note that the data is stored as arrays serialized out in this class. Related to that
-* is the concept of element 0 of those arrays being 'this', hence the special treatment in CRUD 
-* @author Groff
+* is the concept of element 0 of those arrays being 'this', hence the special treatment in CRUD.
+* Unlike a binary search tree, each node of a B-tree may have a variable number of keys and children.
+* The keys are stored in non-decreasing order. Each node either is a leaf node or
+* it has some associated children that are the root nodes of subtrees.
+* The left child node of a node's element contains all nodes (elements) with keys less than or equal to the node element's key
+* but greater than the preceding node element's key.
+* If a node becomes full, a split operation is performed during the insert operation.
+* The split operation transforms a full node with 2*T-1 elements into two nodes with T-1 elements each
+* and moves the median key of the two nodes into its parent node.
+* The elements left of the median (middle) element of the splitted node remain in the original node.
+* The new node becomes the child node immediately to the right of the median element that was moved to the parent node.
+* 
+* Example (T = 4):
+* 1.  R = | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+* 
+* 2.  Add key 8
+*   
+* 3.  R =         | 4 |
+*                 /   \
+*     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
+*
+* @author Groff Copyright (C) NeoCoreTechs 2014,2015
 */
 public final class BTreeKeyPage implements Serializable {
-	static final boolean DEBUG = false;
+	static final boolean DEBUG = true;
 	static final long serialVersionUID = -2441425588886011772L;
-	static int MAXKEYS = 4;
+	static int MAXKEYS = 4; // number of keys per page; number of instances of the non transient fields of 'this' per DB block
+	// non transient number of keys in order, we pack when deleting or adding
 	int numKeys = 0;
-
+	// transient. The 'id' is really the location this was retrieved, so no need to store a potentially inconsistent one
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")
+	// The array of keys, non transient.
 	Comparable[] keyArray;
+	// The array of pages corresponding to the pageIds for the child nodes. Transient since we lazily retrieve pages via pageIds
 	transient BTreeKeyPage[] pageArray;
+	// The array of page ids from which the page array is filled
 	long[] pageIdArray;
 	transient Object[] dataArray;
 	Optr[] dataIdArray;
 	transient boolean[] dataUpdatedArray;
-
-	private transient boolean updated = false;
-
-	BTreeKeyPage() {
-		// Pre-allocate the arrays
-		keyArray = new Comparable[MAXKEYS];
+	public boolean mIsLeafNode = true; // We treat as leaf since the logic is geared to proving it not
+	private transient boolean updated = false; // has the node been updated for purposes of write
+	/**
+	 * No - arg cons to initialize pageArray to MAXKEYS + 1, this is called on deserialization
+	 */
+	public BTreeKeyPage() {
+		if( DEBUG ) {
+			System.out.println("BTreeKeyPage DEFAULT ctor");
+		}
+		initTransients();
+	}
+	public void initTransients() {
 		pageArray = new BTreeKeyPage[MAXKEYS + 1];
-		pageIdArray = new long[MAXKEYS + 1];
 		dataArray = new Object[MAXKEYS];
-		dataIdArray = new Optr[MAXKEYS];
 		dataUpdatedArray = new boolean[MAXKEYS];
-
+	}
+	/**
+	 * Construct the page from scratch in a non deserialization context.
+	 * We provide the intended virtual page number, all fields are initialized and
+	 * we can either retrieve or store it from there.
+	 * @param ppos The virtual page id
+	 */
+	public BTreeKeyPage(long ppos) {
+		if( DEBUG ) {
+			System.out.println("BTreeKeyPage ctor loc:"+GlobalDBIO.valueOf(ppos));
+		}
+		initTransients();
+		// Pre-allocate the arrays that hold persistent data
+		pageIdArray = new long[MAXKEYS + 1];
+		dataIdArray = new Optr[MAXKEYS];
 		for (int i = 0; i <= MAXKEYS; i++) {
 			pageIdArray[i] = -1L;
 			if( i != MAXKEYS ) {
 				dataIdArray[i] = Optr.emptyPointer;
 			}
 		}
-	}
-
-	public BTreeKeyPage(long ppos) {
-		this();
-		pageId = ppos;
+		keyArray = new Comparable[MAXKEYS];
+		pageId = ppos; 
 	}
 	/**
 	* Given a Comparable object, search for that object on this page.
@@ -88,27 +127,27 @@ public final class BTreeKeyPage implements Serializable {
 	*/
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	synchronized int search(Comparable targetKey) {
-		int lo = 0;
-		int hi = this.numKeys - 1;
-		int mid = 0;
-		//if( targetKey == null ) if( Props.DEBUG ) System.out.println("search:Target is null");
-		//if( keyArray == null ) if( Props.DEBUG ) System.out.println("search:Keyarray is null");
 		assert(keyArray.length > 0) : "BTreeKeyPage.search key array length zero";
-		if (keyArray[lo].compareTo(targetKey) > 0) {
-			return (-1);
-		}
-		do {
-			mid = (lo + hi) / 2;
-			assert(mid < MAXKEYS && hi >= 0) : "BTreeKeyPage.search :"+this+" lo:"+lo+" mid:"+mid+" hi:"+hi+" target:"+targetKey;
-			if (keyArray[mid].compareTo(targetKey) == 0) {
-				return (mid);
-			}
-			if (keyArray[mid].compareTo(targetKey) > 0)
-				hi = mid - 1;
-			else
-				lo = mid + 1;
-		} while (lo <= hi);
-		return (-lo - 1);
+		int middleIndex = 1; 
+        int leftIndex = 0;
+        int rightIndex = numKeys - 1;        
+        if( rightIndex == -1)
+        	return -1;
+        while (leftIndex <= rightIndex) {
+        	middleIndex = leftIndex + ((rightIndex - leftIndex) / 2);
+        	int cmpRes = keyArray[middleIndex].compareTo(targetKey);
+        	if (cmpRes < 0 ) {
+        		leftIndex = middleIndex + 1;
+        	} else 
+        		if (cmpRes > 0 ) {
+        			rightIndex = middleIndex - 1;
+        		} else {
+        			return middleIndex;
+        		}
+        }
+        if( DEBUG )
+        System.out.println("BtreeKeyPage.search falling thru "+middleIndex+" "+leftIndex+" "+rightIndex+" "+this+" target:"+targetKey);
+        return -middleIndex;
 	}
 
 	/**
@@ -120,25 +159,39 @@ public final class BTreeKeyPage implements Serializable {
 	* @param index The index of key array to begin offset
 	*/
 	@SuppressWarnings("rawtypes")
-	synchronized int insert(Comparable newKey, Object newData, int index) {
-		assert(numKeys <= MAXKEYS) : "BTreeKeyPage.insert suspect number of keys in :"+this;
+	synchronized int insert(Comparable newKey, Object newData, int index, boolean misLeaf) {
+		if(numKeys >= MAXKEYS) 
+			throw new RuntimeException("BTreeKeyPage.insert error, node full :"+this);
 		// If adding to right, no moving to do
-		if (index < numKeys)
-			// move elements down
-			for (int i = (numKeys == MAXKEYS ? MAXKEYS - 2 : numKeys - 1); i >= index; i--) {
-				keyArray[i + 1] = keyArray[i];
-				pageArray[i + 2] = pageArray[i + 1];
-				pageIdArray[i + 2] = pageIdArray[i + 1];
-				dataArray[i + 1] = dataArray[i];
-				dataIdArray[i + 1] = dataIdArray[i];
-				dataUpdatedArray[i + 1] = dataUpdatedArray[i];
+		if (index <= numKeys) {
+			// move elements down	
+			if( numKeys < 2 ) {
+				if( !misLeaf ) {
+					pageArray[1] = pageArray[0];
+					pageIdArray[1] = pageIdArray[0];
+				}
+				keyArray[1] = keyArray[0];
+				dataArray[1] = dataArray[0];
+				dataIdArray[1] = dataIdArray[0];
+				dataUpdatedArray[1] = dataUpdatedArray[0];
 			}
-		// If we're going to overflow, decrement target, otherwise 
-		// we insert key here and increment number
-		if (index == MAXKEYS)
-			--index;
-		else
-			++numKeys;
+			if( !misLeaf ) {
+				for (int i = numKeys - 1; i >= index; i--) {
+					pageArray[i + 1] = pageArray[i];
+					pageIdArray[i + 1] = pageIdArray[i];
+				}
+			}
+			if(keyArray[index] != null) {
+				for(int i = numKeys - 1; i >= index; i--) {
+					keyArray[i + 1] = keyArray[i];
+					dataArray[i + 1] = dataArray[i];
+					dataIdArray[i + 1] = dataIdArray[i];
+					dataUpdatedArray[i + 1] = dataUpdatedArray[i];
+				}
+			}
+		}
+		// if index >= numKeys just insert it
+		++numKeys;
 
 		keyArray[index] = newKey;
 		dataArray[index] = newData;
@@ -220,14 +273,12 @@ public final class BTreeKeyPage implements Serializable {
 			pageArray[index] =
 				(BTreeKeyPage) (sdbio.deserializeObject(pageIdArray[index]));
 			// set up all the transient fields
+			pageArray[index].initTransients();
 			pageArray[index].pageId = pageIdArray[index];
 			if( DEBUG ) {
 				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" target page ID:"+GlobalDBIO.valueOf(pageArray[index].pageId));
 				for(int i = 0; i < pageIdArray.length; i++)System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
 			}
-			pageArray[index].pageArray = new BTreeKeyPage[MAXKEYS + 1];
-			pageArray[index].dataArray = new Object[MAXKEYS];
-			pageArray[index].dataUpdatedArray = new boolean[MAXKEYS];
 		}
 		return pageArray[index];
 	}
@@ -249,12 +300,32 @@ public final class BTreeKeyPage implements Serializable {
 		sdbio.findOrAddBlock(pos);
 		BTreeKeyPage btk =
 			(BTreeKeyPage) (sdbio.deserializeObject(pos));
-		if( DEBUG ) System.out.println("BTreeKeyPage.getPageFromPool "+pos);//+" "+btk);
 		// initialize transients
+		btk.initTransients();
 		btk.pageId = pos;
-		btk.pageArray = new BTreeKeyPage[MAXKEYS + 1];
-		btk.dataArray = new Object[MAXKEYS];
-		btk.dataUpdatedArray = new boolean[MAXKEYS];
+		if( DEBUG ) System.out.println("BTreeKeyPage.getPageFromPool "+pos);//+" "+btk);
+		//for(int i = 0; i <= MAXKEYS; i++) {
+		//	btk.pageArray[i] = btk.getPage(sdbio,i);
+		//}
+		return btk;
+	}
+	/**
+	 * Get a new page from the pool from a random tablespace. used for general inserts.
+	 * Call stealblk, create BTreeKeyPage with the page Id of stolen block, set the pageArray
+	 * to MAXKEYS+1, the dataArray to MAXKEYS, and the dataUpdatedArray to MAXKEYS
+	 * set updated to true, and return the newly formed  
+	 * @param sdbio
+	 * @return
+	 * @throws IOException
+	 */
+	static BTreeKeyPage getPageFromPool(ObjectDBIO sdbio) throws IOException {
+		BlockAccessIndex lbai = sdbio.stealblk();
+		long pageId = lbai.getBlockNum();
+		// extract tablespace since we steal blocks from any
+		//int tablespace = GlobalDBIO.getTablespace(pageId);
+		// initialize transients
+		BTreeKeyPage btk = new BTreeKeyPage(pageId);
+		btk.setUpdated(true);
 		//for(int i = 0; i <= MAXKEYS; i++) {
 		//	btk.pageArray[i] = btk.getPage(sdbio,i);
 		//}
@@ -268,7 +339,7 @@ public final class BTreeKeyPage implements Serializable {
 	public synchronized void putPage(ObjectDBIO sdbio) throws IOException {
 		if (!isUpdated()) {
 			if( DEBUG ) 
-				System.out.println("page not updated, returning from putPage");
+				System.out.println("BTreeKeyPage.putPage page not updated:"+this);
 			return;
 		}
 		byte[] pb = GlobalDBIO.getObjectAsBytes(this);
@@ -319,7 +390,14 @@ public final class BTreeKeyPage implements Serializable {
 		}
 		putPage(sdbio);
 	}
-
+	/**
+	 * Using fromPage, populate pageArray[index] = fromPage. 
+	 * If fromPage is NOT null, pageIdArray[index] = fromPage.pageId
+	 * if fromPage IS null, pageIdArray[index] = -1L
+	 * set the updated flag to true
+	 * @param fromPage
+	 * @param index
+	 */
 	synchronized void putPageToArray(BTreeKeyPage fromPage, int index) {
 		pageArray[index] = fromPage;
 		if (fromPage != null)
@@ -330,11 +408,30 @@ public final class BTreeKeyPage implements Serializable {
 	}
 
 	@SuppressWarnings("rawtypes")
+	/**
+	 * Using key, put keyArray[index] = key
+	 * set updated true
+	 * @param key
+	 * @param index
+	 */
 	synchronized void putKeyToArray(Comparable key, int index) {
 		keyArray[index] = key;
 		setUpdated(true);
 	}
 
+	/**
+	 * Lazy initialization for off-index-page 'value' objects attached to our BTree keys.
+	 * Essentially guarantees that if a virtual pointer Id is present in dataIdArray at index, 
+	 * you get a valid instance back.
+	 * If dataArray[index] is null and dataIdArray[index] is NOT an empty pointer,
+	 * set the dataArray[index] to the deserialized object retrieved from deep store via dataIdArray[index].
+	 * Set dataUpdatedArray[index] to false since we just retrieved an instance.
+	 * return the dataArray[index].
+	 * @param sdbio The IO manager
+	 * @param index The index to populate if its possible to do so
+	 * @return dataArray[index] filled with deep store object
+	 * @throws IOException
+	 */
 	synchronized Object getDataFromArray(ObjectDBIO sdbio, int index) throws IOException {
 		if (dataArray[index] == null && !dataIdArray[index].isEmptyPointer() ) {
 			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
@@ -343,13 +440,23 @@ public final class BTreeKeyPage implements Serializable {
 		return dataArray[index];
 	}
 
+	/**
+	 * Set the dataArray[index] to 'data'. Set the dataidArray[index] to empty pointer,
+	 * set the dataUpdatedArray[index] to true, set data updated true;
+	 * @param data
+	 * @param index
+	 */
 	synchronized void putDataToArray(Object data, int index) {
 		dataArray[index] = data;
 		dataIdArray[index] = Optr.emptyPointer;
 		dataUpdatedArray[index] = true;
 		setUpdated(true);
 	}
-
+	/**
+	 * Set the pageArray[index] and pageIdArray[index] to default null values.
+	 * Set updated to true.
+	 * @param index The array index to annul
+	 */
 	synchronized void nullPageArray(int index) {
 		pageArray[index] = null;
 		pageIdArray[index] = -1L;
@@ -364,6 +471,8 @@ public final class BTreeKeyPage implements Serializable {
 		sb.append(GlobalDBIO.valueOf(pageId));
 		sb.append(" Numkeys:");
 		sb.append(String.valueOf(numKeys));
+		sb.append(" Leaf:");
+		sb.append(mIsLeafNode);
 		sb.append(" Updated:");
 		sb.append(String.valueOf(updated)+"\r\n");
 		
@@ -438,4 +547,28 @@ public final class BTreeKeyPage implements Serializable {
 	public void setUpdated(boolean updated) {
 		this.updated = updated;
 	}
+	
+
+	/**
+	 * Determine if this key is in the list of array elements for this page
+	 * @param key
+	 * @return
+	 */
+    boolean contains(int key) {
+        return search(key) >= 0;
+    }               
+
+    /**
+     * Find the place in the key array where the target key is less than the key value in the array element.
+     * @param key The target key
+     * @return The index where target is < array index value, if end, return numKeys
+     */
+    int subtreeRootNodeIndex(Comparable key) {
+        for (int i = 0; i < numKeys; i++) {                            
+                if (key.compareTo(keyArray[i]) < 0) {
+                        return i;
+                }                               
+        }
+        return numKeys;
+    }
 }

@@ -427,3 +427,17 @@
 /IoResponse.class
 /IsNewRequest.class
 /RemoteCommitRequest.class
+/AbstractClusterWork.class
+/CommitRequest.class
+/CompletionLatchInterface.class
+/FSeekAndReadFullyRequest.class
+/FSeekAndReadRequest.class
+/FSeekAndWriteFullyRequest.class
+/FSeekAndWriteRequest.class
+/FSizeRequest.class
+/FSyncRequest.class
+/GetNextFreeBlockRequest.class
+/GetNextFreeBlocksRequest.class
+/IoResponse.class
+/IsNewRequest.class
+/RemoteCommitRequest.class

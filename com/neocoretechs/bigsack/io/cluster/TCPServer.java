@@ -15,7 +15,7 @@ public abstract class TCPServer implements Cloneable, Runnable {
 			server = new ServerSocket(port);
 			//runner = new Thread(this);
 			//runner.start();
-			ThreadPoolManager.init(new String[]{"TCPSERVER"});
+			ThreadPoolManager.init(new String[]{"TCPSERVER"}, false);
 			ThreadPoolManager.getInstance().spin(this,"TCPSERVER");
 		}
 	}

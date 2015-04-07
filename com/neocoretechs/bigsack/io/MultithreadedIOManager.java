@@ -75,7 +75,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
 		ulog = new RecoveryLogManager[DBPhysicalConstants.DTABLESPACES];
 		// Initialize the thread pool group NAMES to spin new threads in controllable batches
-		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"});
+		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"}, false);
 		setNextFreeBlocks();
 	}
 	

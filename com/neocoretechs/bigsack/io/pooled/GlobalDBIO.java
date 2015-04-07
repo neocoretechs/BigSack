@@ -457,7 +457,13 @@ public class GlobalDBIO {
 	public void deallocOutstanding() throws IOException {
 		ioManager.deallocOutstanding();	
 	}
-	
+	/**
+	 * Selects a random tablespace to call the ioManager blockbuffer for that tablespace
+	 * to steal a block from the freechain or acquire it into the BlockAccessIndex buffer for that tablespace.
+	 * At that point the buffers are set for cursor based retrieval from the tablespace buffer.
+	 * @return The BlockAccessIndex from the random tablespace
+	 * @throws IOException
+	 */
 	public BlockAccessIndex stealblk() throws IOException {
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
 		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getLbai());
