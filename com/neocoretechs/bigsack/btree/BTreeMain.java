@@ -238,7 +238,7 @@ public final class BTreeMain {
 	 */
     private TreeSearchResult update(Comparable key, Object object) throws IOException {
     	int i = 0;
-        while (currentPage != null) {
+        while (true) {
                 i = 0;
                 while (i < currentPage.numKeys && key.compareTo(currentPage.keyArray[i]) > 0) {
                         i++;
@@ -253,7 +253,10 @@ public final class BTreeMain {
                 		System.out.println("BTreeMain.update set to insert at :"+i+" for "+currentPage);
                         return new TreeSearchResult(i, false);
                 } else {
-                        currentPage = currentPage.getPage(getIO(), i);//node.mChildNodes[i];
+                	BTreeKeyPage targetPage  = currentPage.getPage(sdbio, i);//node.mChildNodes[i];
+                	if( targetPage == null )
+                		break;
+                	currentPage = targetPage;
                 }
         }
         return new TreeSearchResult(i, false);
@@ -274,7 +277,7 @@ public final class BTreeMain {
      */
     void splitChildNode(BTreeKeyPage parentNode, int i, Comparable key, Object object) throws IOException { 
         if( DEBUG )
-        	System.out.println("BTreeMain.splitChildNode  parent:"+parentNode+" node:"+i+" key"+key+" object:"+object);
+        	System.out.println("BTreeMain.splitChildNode  parent:"+parentNode+" node insert:"+i+" key:"+key+" object:"+object);
         LeftNodeSplitRequest lnsr = new LeftNodeSplitRequest(sdbio, parentNode, key, object, i);
         RightNodeSplitRequest rnsr = new RightNodeSplitRequest(sdbio, parentNode, key, object, i);
         try {
@@ -285,21 +288,61 @@ public final class BTreeMain {
 			// once we synch, we have 2 nodes, one each in the requests
         	// if neither one has our insert, we need to put it in the old root.
 			synchronized(parentNode) {
-				if( !lnsr.wasNodeInserted() && !rnsr.wasNodeInserted() ) {
-					// No insertion during split, must need insertion here
-					parentNode.insert(key, object, i, false);
-				}
 				int nullKeys = 0;
-				// find the blanks in indexes
+				int goodKeys = 0;
+				// find the blanks in indexes, we only remove beginning blanks where keys were removed
 				for(int j = 0; j < BTreeKeyPage.MAXKEYS; j++) {
 					if(parentNode.keyArray[j] == null ) 
 						++nullKeys;
 					else
 						break;
 				}
-				moveKeyData(parentNode, nullKeys, parentNode, 0, true);
-				moveChildData(parentNode, nullKeys, parentNode, 0, true);
+				if( DEBUG ) {
+					System.out.println("BTreeMain.splitChildNode nullKeys:"+nullKeys);
+				}
+				// find the number of good keys from the nulls forward
+				for(int j = nullKeys; j < BTreeKeyPage.MAXKEYS; j++) {
+					if(parentNode.keyArray[j] != null )
+						++goodKeys;
+					else
+						break;
+				}
+				// set as non leaf so proper insertion and compaction occurs
+				parentNode.mIsLeafNode = false;
+				
+				if( DEBUG ) {
+					System.out.println("BTreeMain.splitChildNode goodKeys:"+goodKeys+" parent:"+parentNode);
+				}
+				if( nullKeys > 0 ) {
+					for(int j = nullKeys; j < goodKeys+nullKeys; j++) {
+						if( DEBUG ) {
+							System.out.println("BTreeMain.splitChildNode moveKeyData:"+j+" nulls:"+nullKeys);
+						}
+						moveKeyData(parentNode, j, parentNode, j-nullKeys, true);
+						if( DEBUG ) {
+							System.out.println("BTreeMain.splitChildNode moveChildData:"+j+" nulls:"+nullKeys);
+						}
+						moveChildData(parentNode, j, parentNode, j-nullKeys, true);
+					}
+					if( DEBUG ) {
+						System.out.println("BTreeMain.splitChildNode moveKeyData parent source:"+String.valueOf(nullKeys+goodKeys+1)+" to:"+goodKeys);
+					}
+					// get the node at position+1, the rightmost key pointer
+					moveChildData(parentNode, nullKeys+goodKeys, parentNode, goodKeys, true);
+				}
+				parentNode.numKeys = goodKeys;
+				if( !lnsr.wasNodeInserted() && !rnsr.wasNodeInserted() ) {
+					// No insertion during split, must need insertion here
+					if( DEBUG )
+						System.out.println("BTreeMain.splitChildNode moving to insert key "+key+" TO PARENT:"+parentNode+" At insert position:"+i);
+					parentNode.insert(key, object, i-nullKeys, false);
+					if( DEBUG )
+						System.out.println("BTreeMain.splitChildNode KEY INSERTED: "+key+" TO PARENT:"+parentNode+" At insert position:"+i);
+				}
 				parentNode.setUpdated(true);
+				if( DEBUG ) {
+					System.out.println("BTreeMain.splitChildNode moving to putPage:"+currentPage);
+				}
 				parentNode.putPage(sdbio);
 			}
 		} catch (InterruptedException | BrokenBarrierException e) {

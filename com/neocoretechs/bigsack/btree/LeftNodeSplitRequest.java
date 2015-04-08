@@ -72,6 +72,7 @@ public final class LeftNodeSplitRequest extends AbstractNodeSplitRequest {
 			for( int i = 0; i < newLeft.numKeys; i++) {
 				if( newLeft.pageIdArray[i] != -1L ) {
 					newLeft.mIsLeafNode = false;
+					break;
 				}
 			}
 			newLeft.setUpdated(true);
