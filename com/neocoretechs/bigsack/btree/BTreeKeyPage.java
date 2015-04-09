@@ -336,7 +336,9 @@ public final class BTreeKeyPage implements Serializable {
 	/**
 	 * Serialize this page to deep store on a page boundary.
 	 * For data, we reset the new node position. For pages, we don't use
-	 * it because they are always on page boundaries (not packed)
+	 * it because they are always on page boundaries (not packed). The data is written
+	 * the the blockbuffer, the push to deep store takes place at commit time or
+	 * when the buffer fills and it becomes necessary to open a spot.
 	 * @param sdbio The ObjectDBIO instance
 	 * @exception IOException If write fails
 	 */
@@ -370,6 +372,7 @@ public final class BTreeKeyPage implements Serializable {
 					// pack the page into this tablespace and within blocks at the last known good position
 					dataIdArray[i] = sdbio.getIOManager().getNewNodePosition(GlobalDBIO.getTablespace(pageIdArray[i]));
 					pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
+					//System.out.println("ADDING DATA TO INSTANCE:"+dataArray[i]);
 					sdbio.add_object(dataIdArray[i], pb, pb.length);
 					// set new node position to the current block to pack pages
 					//sdbio.setNewNodePosition();
@@ -437,7 +440,7 @@ public final class BTreeKeyPage implements Serializable {
 	 * @throws IOException
 	 */
 	synchronized Object getDataFromArray(ObjectDBIO sdbio, int index) throws IOException {
-		if (dataArray[index] == null && !dataIdArray[index].isEmptyPointer() ) {
+		if (dataArray[index] == null && dataIdArray[index] != null && !dataIdArray[index].isEmptyPointer() ) {
 			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
 			dataUpdatedArray[index] = false;
 		}

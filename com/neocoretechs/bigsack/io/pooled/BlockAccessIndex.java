@@ -68,15 +68,23 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	
 	synchronized void addAccess() {
 		++accesses;
-		if( accesses > 1 ) {
-			System.out.println("BlockAccessIndex.addAccess access > 1 "+this);
-			new Throwable().printStackTrace();
-		}
+		//if( accesses > 1 ) {
+		//	System.out.println("BlockAccessIndex.addAccess access > 1 "+this);
+		//	new Throwable().printStackTrace();
+		//}
 	}
 	
 	public synchronized int decrementAccesses() throws IOException {
-		if (accesses > 0)
+		if( accesses == 1 && blk.isIncore() )
+			return accesses;
+		if (accesses > 0 )
 			--accesses;
+		//else {
+			//if( blk.isIncore() ) {
+				//System.out.println("Accesses to 0 with incore latched:"+this);
+				//new Throwable().printStackTrace();
+			//}
+		//}
 		return accesses;
 	}
 	

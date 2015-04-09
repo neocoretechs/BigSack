@@ -224,7 +224,7 @@ public final class BTreeMain {
                  }
          }
      	 // deallocate the old buffers before we get another page
-     	 sdbio.deallocOutstanding(currentPage.pageId);
+     	 //sdbio.deallocOutstanding(currentPage.pageId);
          return tsr.insertPoint;
 	}
 	/**
@@ -356,8 +356,8 @@ public final class BTreeMain {
 				((BTreeKeyPage)lnsr.getObjectReturn()).putPage(sdbio);
 				((BTreeKeyPage)rnsr.getObjectReturn()).putPage(sdbio);
 				//sdbio.deallocOutstanding(parentNode.pageId);
-				sdbio.deallocOutstanding(((BTreeKeyPage)lnsr.getObjectReturn()).pageId);
-				sdbio.deallocOutstanding(((BTreeKeyPage)rnsr.getObjectReturn()).pageId);
+				//sdbio.deallocOutstanding(((BTreeKeyPage)lnsr.getObjectReturn()).pageId);
+				//sdbio.deallocOutstanding(((BTreeKeyPage)rnsr.getObjectReturn()).pageId);
 			}
 		} catch (InterruptedException | BrokenBarrierException e) {
 			return; // executor shutdown

@@ -364,8 +364,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public synchronized void deallocOutstandingCommit() throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.deallocOutstandingCommit invoked.");
-		deallocOutstanding();
 		commitBufferFlush(); // calls iomanager
+		deallocOutstanding();
 	}
 	/**
 	 * Deallocate the outstanding block and call rollback on the recovery log
@@ -408,18 +408,18 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void deallocOutstanding(long pos) throws IOException {
 		int tablespace = GlobalDBIO.getTablespace(pos);
 		if( lbai[tablespace].getLbai().getBlockNum() == pos ) {
-			if( lbai[tablespace].getLbai().getBlk().isIncore() )
-				deallocOutstandingWriteLog(tablespace, lbai[tablespace].getLbai());
-			else
+			if( lbai[tablespace].getLbai().getBlk().isIncore() ) {
+				//deallocOutstandingWriteLog(tablespace, lbai[tablespace].getLbai());
+			} else
 				lbai[tablespace].getLbai().decrementAccesses();
 			if( DEBUG )
 				System.out.println("MultithreadedIOManager.deallocOutstanding current "+GlobalDBIO.valueOf(pos));
 		} else {
 			BlockAccessIndex bai = blockBuffer[tablespace].get(pos);
 			if( bai != null) {
-				if( bai.getBlk().isIncore() ) 
-					deallocOutstandingWriteLog(tablespace, bai);
-				else
+				if( bai.getBlk().isIncore() ) {
+					//deallocOutstandingWriteLog(tablespace, bai);
+				} else
 					bai.decrementAccesses(); 
 			} else {
 				//System.out.println("MultithreadedIOManager WARNING!! FAILED TO DEALLOCATE "+GlobalDBIO.valueOf(pos));

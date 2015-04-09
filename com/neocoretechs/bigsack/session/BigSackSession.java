@@ -307,7 +307,7 @@ public final class BigSackSession {
 			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 				bTree.getIO().getIOManager().getUlog(i).getLogToFile().deleteOnlineArchivedLogFiles();
 		} else {
-			bTree.getRoot().putPages(bTree.getIO());
+			// calls commitbufferflush
 			bTree.getIO().deallocOutstandingCommit();
 		}
 	}

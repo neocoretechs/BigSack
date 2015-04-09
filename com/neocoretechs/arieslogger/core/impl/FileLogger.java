@@ -507,8 +507,6 @@ public final class FileLogger implements Logger {
 							// the log operation is not complete, the operation to
 							// undo is stashed away at the undoInstance.
 							// Reconstitute that first.
-							if (DEBUG)
-								assert(op instanceof Compensation);
 							// cast to CompensationLogRecord so we can get undo instance
 							LogInstance undoInst = ((CompensationLogRecord)record).getUndoInstance();
 							// undoScan now positioned at the beginning of the log
@@ -524,8 +522,6 @@ public final class FileLogger implements Logger {
 							if (DEBUG) {
 								System.out.println("FileLogger.redo Redoing CLR: undoInstance = " + undoInst +
                                 " CLR instance = " +  LogCounter.toDebugString(instance));
-								//assert(undoRecord.getTransactionId() == tranId);
-								assert(undoOp != null);
 							}
 
 							((Compensation)op).setUndoOp(undoOp);
@@ -575,15 +571,6 @@ public final class FileLogger implements Logger {
 			}
 		}
 
-		//if (DEBUG)
-        //{
-			assert(
-                    LogCounter.getLogFileNumber(instance) <
-                         LogCounter.getLogFileNumber(logEnd) ||
-                    (LogCounter.getLogFileNumber(instance) ==
-                         LogCounter.getLogFileNumber(logEnd) &&
-                     LogCounter.getLogFilePosition(instance) <=
-                         LogCounter.getLogFilePosition(logEnd)));
 			System.out.println(
                     "----------------------------------------------------\n" +
                     "End of recovery redo for "+blockio.getDBName()+"\n" + 
