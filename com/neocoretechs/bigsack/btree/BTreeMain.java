@@ -34,33 +34,36 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /**
 * Main bTree class.  Manipulates retrieval stack of bTreeKeyPages and provides access
 * to seek/add/delete functions.
-* Important to note that the data is stores as arrays serialized out in key pages. Related to that
+* Important to note that the data is stored as arrays serialized out in key pages. Related to that
 * is the concept of element 0 of those arrays being 'this', hence the special treatment in CRUD.
 * Unlike a binary search tree, each node of a B-tree may have a variable number of keys and children.
-* The keys are stored in non-decreasing order. Each node either is a leaf node or
+* The keys are stored in ascending order. Each node either is a leaf node or
 * it has some associated children that are the root nodes of subtrees.
 * The left child node of a node's element contains all nodes (elements) with keys less than or equal to the node element's key
 * but greater than the preceding node element's key.
 * If a node becomes full, a split operation is performed during the insert operation.
-* The split operation transforms a full node with 2*T-1 elements into two nodes with T-1 elements each
-* and moves the median key of the two nodes into its parent node.
-* The elements left of the median (middle) element of the split node remain in the original node.
-* The new node becomes the child node immediately to the right of the median element that was moved to the parent node.
+* The split operation transforms a full node with MAXKEYS elements into 3 nodes with MAXKEYS/3 elements each
+* and inserts the new node in the proper spot in a leaf. In this way the number of elements remains somewhat constant per node.
+* The elements comprising the middle of the split node remain in the original node.
 * 
-* Example (T = 4):
-* 1.  R = | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+* Example (MAXKEYS = 4):
+* 1.  K =   | 1 | 2 | 3 | 4 |
+*             / 
+*          | 0 |
 * 
-* 2.  Add key 8
+* 2.  Add key 5
 *   
-* 3.  R =         | 4 |
+* 3.  k =       | 2 | 3 |
 *                 /   \
-*     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
+*           | 1 |       | 4 | 5 |
+*             /
+*          | 0 |
 * @author Groff
 */
 public final class BTreeMain {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false; // General debug
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of BTreeKeyPage
-	private static boolean TEST = false;
+	private static boolean TEST = true; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = false; // flag to determine whether value data is overwritten for a key or its ignored
 	static int BOF = 1;
@@ -82,7 +85,6 @@ public final class BTreeMain {
 	int[] indexStack;
 	int stackDepth;
 	boolean atKey;
-	private int T = BTreeKeyPage.MAXKEYS/2; // median point of keys
 	private CyclicBarrier nodeSplitSynch = new CyclicBarrier(3);
 	private NodeSplitThread leftNodeSplitThread, rightNodeSplitThread;
 	private ObjectDBIO sdbio;
@@ -220,9 +222,9 @@ public final class BTreeMain {
                  } else {
                         insertIntoNonFullNode(currentPage, tsr.insertPoint, key, object); // Insert the key into the B-Tree with root rootNode.
                  }
-                 if(currentPage.pageId == 0L)
-                	 setRoot(currentPage);
          }
+     	 // deallocate the old buffers before we get another page
+     	 sdbio.deallocOutstanding(currentPage.pageId);
          return tsr.insertPoint;
 	}
 	/**
@@ -244,8 +246,10 @@ public final class BTreeMain {
                         i++;
                 }
                 if (i < currentPage.numKeys && key.compareTo(currentPage.keyArray[i]) == 0) {
-                	if( object != null && OVERWRITE)
+                	if( object != null && OVERWRITE) {
+            			currentPage.deleteData(sdbio, i);
                         currentPage.putDataToArray(object,i);
+                	}
                 	return new TreeSearchResult(i, true);
                 }
                 if (currentPage.mIsLeafNode) {
@@ -253,9 +257,10 @@ public final class BTreeMain {
                 		System.out.println("BTreeMain.update set to insert at :"+i+" for "+currentPage);
                         return new TreeSearchResult(i, false);
                 } else {
-                	BTreeKeyPage targetPage  = currentPage.getPage(sdbio, i);//node.mChildNodes[i];
+                	BTreeKeyPage targetPage  = currentPage.getPage(sdbio, i);// get the page at the index of the given page
                 	if( targetPage == null )
                 		break;
+                	sdbio.deallocOutstanding(currentPage.pageId);
                 	currentPage = targetPage;
                 }
         }
@@ -343,17 +348,34 @@ public final class BTreeMain {
 				if( DEBUG ) {
 					System.out.println("BTreeMain.splitChildNode moving to putPage:"+currentPage);
 				}
+				//
+				// Write the three new pages back to deep store and log them along the way
+				// Deallocate (unlatch) them after the write completes.
+				//
 				parentNode.putPage(sdbio);
+				((BTreeKeyPage)lnsr.getObjectReturn()).putPage(sdbio);
+				((BTreeKeyPage)rnsr.getObjectReturn()).putPage(sdbio);
+				//sdbio.deallocOutstanding(parentNode.pageId);
+				sdbio.deallocOutstanding(((BTreeKeyPage)lnsr.getObjectReturn()).pageId);
+				sdbio.deallocOutstanding(((BTreeKeyPage)rnsr.getObjectReturn()).pageId);
 			}
 		} catch (InterruptedException | BrokenBarrierException e) {
 			return; // executor shutdown
 		}
     }
  
-    // Insert an element into a B-Tree. (The element will ultimately be inserted into a leaf node). 
+    /**
+     * Insert an element into a B-Tree. (The element will ultimately be inserted into a leaf node).
+     * @param node
+     * @param insertionPoint
+     * @param key
+     * @param object
+     * @throws IOException
+     */
     void insertIntoNonFullNode(BTreeKeyPage node, int insertionPoint, Comparable key, Object object) throws IOException {
     	node.insert(key,  object,  insertionPoint, false);
     	node.putPage(sdbio);
+		//sdbio.deallocOutstanding(node.pageId);
     }
     /**
      * Move the data from source and source index to target and targetIndex for the two pages.
@@ -391,221 +413,10 @@ public final class BTreeMain {
         	source.nullPageArray(sourceIndex);
         }
     }
-	/**
-	* Add key/data object to tree.
-	* @param newKey The new key to add
-	* @param newObject The new data payload to add
-	* @return 0 if ok, <> 0 if error
-	* @exception IOException If write fails 
-	*/
-	@SuppressWarnings("rawtypes")
-	public synchronized int addx(Comparable newKey, Object newObject) throws IOException {
-		int i, j, k;
-		Comparable saveKey = null;
-		Object saveObject = null;
-		BTreeKeyPage savePagePointer = null;
-		BTreeKeyPage leftPagePtr = null;
-		BTreeKeyPage rightPagePtr = null;
-
-		atKey = true;
-		// If tree is empty, make a root
-		//if (getNumKeys() == 0) {
-		//	currentPage = getRoot();
-		//	currentIndex = 0;
-		//	currentPage.insert(newKey, newObject, currentIndex);
-		//	++numKeys;
-		//	return 0;
-		//}
-		// Determine whether we need to overwrite existing data
-		// we need a search call regardless to set up our target insertion point for later
-		if( search(newKey) && atKey ) {
-			// found it, delete old data
-			//if( Props.DEBUG ) System.out.println("--Add found key "+newKey+" in current page "+currentPage);
-			currentPage.deleteData(getIO(), currentIndex);
-			currentPage.putDataToArray(newObject, currentIndex);
-			// add location of new data to id array
-			//if( Props.DEBUG ) System.out.println("--Add ABOUT TO PUT PAGE "+currentPage);
-			currentPage.putPages(getIO());
-			//if( Props.DEBUG ) System.out.println("--Add finished putPage");
-			return 0;
-		}
-
-		do {
-			// About to insert key. See if the page is going to overflow
-			// If the current index is at end, dont insert, proceed to split
-			if ((i = currentPage.numKeys) == BTreeKeyPage.MAXKEYS) {
-				// Save rightmost key/data/pointer
-				--i;
-				if (currentIndex == BTreeKeyPage.MAXKEYS) {
-					saveKey = newKey;
-					saveObject = newObject;
-					savePagePointer = rightPagePtr;
-				} else {
-					saveKey = currentPage.keyArray[i];
-					saveObject = currentPage.getDataFromArray(getIO(), i);
-					savePagePointer = currentPage.getPage(getIO(), i + 1);
-					currentIndex = currentPage.insert(newKey, newObject, currentIndex, false);
-					currentPage.putPageToArray(leftPagePtr, currentIndex);
-					currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
-				}
-
-				// Split has occurred. Pull the middle key out
-				i = BTreeKeyPage.MAXKEYS / 2;
-				newKey = currentPage.keyArray[i];
-				currentPage.putKeyToArray(null, i);
-				newObject = currentPage.getDataFromArray(getIO(), i);
-				currentPage.putDataToArray(null, i);
-				leftPagePtr = currentPage;
-				// Create new page for the right half of the old page and move right half in
-				// (Note that since we are dealing with object references, we have
-				// to clear them from the old page, or we might leak objects.)
-				rightPagePtr = new BTreeKeyPage();
-				k = 0;
-				for (j = i + 1; j < BTreeKeyPage.MAXKEYS; j++) {
-					rightPagePtr.putPageToArray(currentPage.getPage(getIO(), j), k);
-					currentPage.nullPageArray(j);
-					rightPagePtr.keyArray[k] = currentPage.keyArray[j];
-					currentPage.keyArray[j] = null;
-					rightPagePtr.putDataToArray(currentPage.getDataFromArray(getIO(), j), k);
-					currentPage.putDataToArray(null, j);
-					++k;
-				}
-				rightPagePtr.putPageToArray(
-					currentPage.getPage(getIO(), BTreeKeyPage.MAXKEYS), k);
-				rightPagePtr.keyArray[k] = saveKey;
-				rightPagePtr.putDataToArray(saveObject, k);
-				rightPagePtr.putPageToArray(savePagePointer, k + 1);
-
-				leftPagePtr.numKeys = i;
-				leftPagePtr.setUpdated(true);
-				rightPagePtr.numKeys = BTreeKeyPage.MAXKEYS - i;
-			} else {
-				// Insert key/object at current location
-				currentIndex = currentPage.insert(newKey, newObject, currentIndex, false);
-				currentPage.putPageToArray(leftPagePtr, currentIndex);
-				currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
-				++numKeys;
-				return 0;
-			}
-			// Try to pop. If we can't pop, make a new root
-		} while (pop());
-		getRoot().pageId = -1L;
-		currentPage = new BTreeKeyPage(0L);
-		setRoot(currentPage);
-		currentIndex = 0;
-		root.insert(newKey, newObject, currentIndex, false);
-		root.putPageToArray(leftPagePtr, 0);
-		root.putPageToArray(rightPagePtr, 1);
-		++numKeys;
-		return 0;
-	}
+	
 
 	public synchronized int add(Comparable newKey) throws IOException {
 		return add(newKey, null);
-	}
-	/**
-	* Add key object to tree. If we locate it return that position, else write it
-	* @param newKey The new key to add
-	* @return 0 if ok, <> 0 if error
-	* @exception IOException If write fails 
-	*/
-	@SuppressWarnings("rawtypes")
-	public synchronized int addx(Comparable newKey) throws IOException {
-		int i, j, k;
-		Comparable saveKey = null;
-		//Object saveObject = null;
-		BTreeKeyPage savePagePointer = null;
-		BTreeKeyPage leftPagePtr = null;
-		BTreeKeyPage rightPagePtr = null;
-
-		atKey = true;
-		// If tree is empty, make a root
-		//if (getNumKeys() == 0) {
-		//	currentPage = getRoot();
-		//	currentIndex = 0;
-		//	currentPage.insert(newKey, null, currentIndex);
-		//	++numKeys;
-		//	return 0;
-		//}
-		// Determine whether data is present
-		// we need a search call regardless to set up our target insertion point for later should we decide to do so
-		if( search(newKey) && atKey ) {
-			// found it,
-			//if( Props.DEBUG ) System.out.println("--Add found key "+newKey+" in current page "+currentPage);
-			return 0;
-		}
-
-		do {
-			// About to insert key. See if the page is going to overflow
-			// If the current index is at end, dont insert, proceed to split
-			if ((i = currentPage.numKeys) == BTreeKeyPage.MAXKEYS) {
-				if( DEBUG )
-					System.out.println("MAX KEYS REACHED for:"+currentPage);
-				// Save rightmost key/data/pointer
-				--i;
-				if (currentIndex == BTreeKeyPage.MAXKEYS) {
-					saveKey = newKey;
-					//saveObject = null;
-					savePagePointer = rightPagePtr;
-				} else {
-					saveKey = currentPage.keyArray[i];
-					//saveObject = currentPage.getDataFromArray(getIO(), i);
-					savePagePointer = currentPage.getPage(getIO(), i + 1);
-					currentIndex = currentPage.insert(newKey, null, currentIndex, false);
-					currentPage.putPageToArray(leftPagePtr, currentIndex);
-					currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
-				}
-
-				// Split has occurred. Pull the middle key out
-				i = BTreeKeyPage.MAXKEYS / 2;
-				newKey = currentPage.keyArray[i];
-				currentPage.putKeyToArray(null, i);
-				//newObject = currentPage.getDataFromArray(getIO(), i);
-				currentPage.putDataToArray(null, i);
-				leftPagePtr = currentPage;
-				// Create new page for the right half of the old page and move right half in
-				// (Note that since we are dealing with object references, we have
-				// to clear them from the old page, or we might leak objects.)
-				rightPagePtr = new BTreeKeyPage();
-				k = 0;
-				for (j = i + 1; j < BTreeKeyPage.MAXKEYS; j++) {
-					rightPagePtr.putPageToArray(currentPage.getPage(getIO(), j), k);
-					currentPage.nullPageArray(j);
-					rightPagePtr.keyArray[k] = currentPage.keyArray[j];
-					currentPage.keyArray[j] = null;
-					rightPagePtr.putDataToArray(currentPage.getDataFromArray(getIO(), j), k);
-					currentPage.putDataToArray(null, j);
-					++k;
-				}
-				rightPagePtr.putPageToArray(
-					currentPage.getPage(getIO(), BTreeKeyPage.MAXKEYS),
-					k);
-				rightPagePtr.keyArray[k] = saveKey;
-				rightPagePtr.putDataToArray(null, k);
-				rightPagePtr.putPageToArray(savePagePointer, k + 1);
-
-				leftPagePtr.numKeys = i;
-				leftPagePtr.setUpdated(true);
-				rightPagePtr.numKeys = BTreeKeyPage.MAXKEYS - i;
-			} else {
-				// Insert key/object at current location
-				currentIndex = currentPage.insert(newKey, null, currentIndex, false);
-				currentPage.putPageToArray(leftPagePtr, currentIndex);
-				currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
-				++numKeys;
-				return 0;
-			}
-			// Try to pop. If we can't pop, make a new root
-		} while (pop());
-		getRoot().pageId = -1L;
-		currentPage = new BTreeKeyPage(0L);
-		setRoot(currentPage);
-		currentIndex = 0;
-		root.insert(newKey, null, currentIndex, false);
-		root.putPageToArray(leftPagePtr, 0);
-		root.putPageToArray(rightPagePtr, 1);
-		++numKeys;
-		return 0;
 	}
 
 	/**

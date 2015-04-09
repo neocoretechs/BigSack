@@ -65,9 +65,15 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public synchronized int getAccesses() {
 		return accesses;
 	}
-	private synchronized void addAccess() {
+	
+	synchronized void addAccess() {
 		++accesses;
+		if( accesses > 1 ) {
+			System.out.println("BlockAccessIndex.addAccess access > 1 "+this);
+			new Throwable().printStackTrace();
+		}
 	}
+	
 	public synchronized int decrementAccesses() throws IOException {
 		if (accesses > 0)
 			--accesses;

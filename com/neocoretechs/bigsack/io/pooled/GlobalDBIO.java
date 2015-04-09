@@ -418,15 +418,7 @@ public class GlobalDBIO {
 		return Od;
 	}
 
-	/**
-	* Latching block, increment access count
-	* @param bai The block access and index object
-	*/
-	/*
-	protected void alloc(BlockAccessIndex bai) throws IOException {
-		bai.addAccess();
-	}
-	*/
+
 	protected static void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
@@ -456,6 +448,10 @@ public class GlobalDBIO {
 	
 	public void deallocOutstanding() throws IOException {
 		ioManager.deallocOutstanding();	
+	}
+	
+	public void deallocOutstanding(long pos) throws IOException {
+		ioManager.deallocOutstanding(pos);	
 	}
 	/**
 	 * Selects a random tablespace to call the ioManager blockbuffer for that tablespace

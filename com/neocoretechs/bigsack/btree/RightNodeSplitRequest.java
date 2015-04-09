@@ -12,7 +12,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
  *
  */
 public final class RightNodeSplitRequest extends AbstractNodeSplitRequest {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	BTreeKeyPage newRight = null;
 	private int localInsert;
 	// from rootOffs to MAXKEYS is range of keys to extract
@@ -78,8 +78,6 @@ public final class RightNodeSplitRequest extends AbstractNodeSplitRequest {
 			oldRoot.pageArray[rootOffs] = newRight;
 			oldRoot.setUpdated(true);
 		}
-		// done with new right, leave synch, write it and leave oldRoot to its fate
-		newRight.putPage(globalIO);
 
 	}
 

@@ -17,7 +17,7 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  *
  */
 public class NodeSplitThread implements Runnable {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private boolean shouldRun = true;
 	private static int QUEUEMAX = 1024;
 	private CyclicBarrier synch;

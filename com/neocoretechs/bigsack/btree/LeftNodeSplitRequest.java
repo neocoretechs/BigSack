@@ -18,7 +18,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
  *
  */
 public final class LeftNodeSplitRequest extends AbstractNodeSplitRequest {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private BTreeKeyPage newLeft = null;
 
 	/**
@@ -80,8 +80,7 @@ public final class LeftNodeSplitRequest extends AbstractNodeSplitRequest {
 			oldRoot.pageArray[keysToMove] = newLeft;
 			oldRoot.setUpdated(true);
 		}
-		// done with new left, leave synch, write it and leave oldRoot to its fate
-		newLeft.putPage(globalIO);
+
 	}
 	/**
 	 * Send back the pageId of the newly formed left page

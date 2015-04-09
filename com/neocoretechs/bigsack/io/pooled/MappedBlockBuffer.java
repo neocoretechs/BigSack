@@ -272,6 +272,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			System.out.println("MappedBlockBuffer.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn)+" got block "+bai+" "+this);
 		}
 		if (bai != null) {
+			if( bai.getAccesses() == 0 )
+				bai.addAccess();
 			return bai;
 		}
 		// didn't find it, we must add
@@ -412,8 +414,12 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 						++latched2;
 					}
 				}
-				if( numGot == 0 )
+				if( numGot == 0 ) {
+					Enumeration elems = this.elements();
+					while(elems.hasMoreElements())
+						System.out.println(elems.nextElement());
 					throw new IOException("Unable to free up blocks in buffer pool with "+latched+" singley and "+latched2+" MULTIPLY latched.");
+				}
 			}
 			
 			for(int i = 0; i < numGot; i++) {

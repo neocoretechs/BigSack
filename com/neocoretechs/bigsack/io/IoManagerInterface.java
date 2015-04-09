@@ -163,6 +163,8 @@ public interface IoManagerInterface {
 	public void deallocOutstanding() throws IOException;
 	public void deallocOutstandingWriteLog(int tblsp) throws IOException;
 	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) throws IOException;
+	public void deallocOutstanding(long pos) throws IOException;
+
 
 	public void writeDirect(int tablespace, long block, Datablock blk) throws IOException;
 

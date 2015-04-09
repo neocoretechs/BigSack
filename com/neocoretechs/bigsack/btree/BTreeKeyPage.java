@@ -43,20 +43,22 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * The left child node of a node's element contains all nodes (elements) with keys less than or equal to the node element's key
 * but greater than the preceding node element's key.
 * If a node becomes full, a split operation is performed during the insert operation.
-* The split operation transforms a full node with 2*T-1 elements into two nodes with T-1 elements each
-* and moves the median key of the two nodes into its parent node.
-* The elements left of the median (middle) element of the splitted node remain in the original node.
-* The new node becomes the child node immediately to the right of the median element that was moved to the parent node.
+* The split operation transforms a full node with MAXKEYS elements into 3 nodes with MAXKEYS/3 elements each
+* and inserts the new node in the proper spot in a leaf. In this way the number of elements remains somewhat constant per node.
+* The elements comprising the middle of the split node remain in the original node.
 * 
-* Example (T = 4):
-* 1.  R = | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+* Example (MAXKEYS = 4):
+* 1.  K =   | 1 | 2 | 3 | 4 |
+*             / 
+*          | 0 |
 * 
-* 2.  Add key 8
+* 2.  Add key 5
 *   
-* 3.  R =         | 4 |
+* 3.  k =       | 2 | 3 |
 *                 /   \
-*     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
-*
+*           | 1 |       | 4 | 5 |
+*             /
+*          | 0 |
 * @author Groff Copyright (C) NeoCoreTechs 2014,2015
 */
 public final class BTreeKeyPage implements Serializable {
@@ -333,6 +335,8 @@ public final class BTreeKeyPage implements Serializable {
 	}
 	/**
 	 * Serialize this page to deep store on a page boundary.
+	 * For data, we reset the new node position. For pages, we don't use
+	 * it because they are always on page boundaries (not packed)
 	 * @param sdbio The ObjectDBIO instance
 	 * @exception IOException If write fails
 	 */
@@ -350,21 +354,34 @@ public final class BTreeKeyPage implements Serializable {
 			pageId = lbai.getBlockNum();
 			// extract tablespace since we steal blocks from any
 			int tablespace = GlobalDBIO.getTablespace(pageId);
-			if( DEBUG ) 
+			if( DEBUG )
 				System.out.println("BTreeKeyPage putPage Stole block "+GlobalDBIO.valueOf(pageId));
 			sdbio.add_object(tablespace, lbai, pb, pb.length);
 		} else {
 			sdbio.add_object(Optr.valueOf(pageId), pb, pb.length);
+		}
+		// Persist the data items associated with the keys
+		for (int i = 0; i < numKeys; i++) {
+			// put the data item
+			if (dataUpdatedArray[i]) {
+				dataUpdatedArray[i] = false;
+				// if it gets nulled, should probably delete
+				if (dataArray[i] != null) {
+					// pack the page into this tablespace and within blocks at the last known good position
+					dataIdArray[i] = sdbio.getIOManager().getNewNodePosition(GlobalDBIO.getTablespace(pageIdArray[i]));
+					pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
+					sdbio.add_object(dataIdArray[i], pb, pb.length);
+					// set new node position to the current block to pack pages
+					//sdbio.setNewNodePosition();
+				}
+			}
 		}
 		if( DEBUG ) 
 			System.out.println("BTreeKeyPage putPage Added object @"+GlobalDBIO.valueOf(pageId)+" bytes:"+pb.length+" page:"+this);
 		setUpdated(false);
 	}
 	/**
-	* Recursively put the pages to deep store.  If data items are updated
-	* persist them as well.
-	* For data, we reset the new node position. For pages, we don't use
-	* it because they are always on page boundaries (not packed)
+	* Recursively put the pages to deep store.  
 	* @param sdbio The BlockDBIO instance
 	* @exception IOException if write fails 
 	*/
@@ -373,19 +390,6 @@ public final class BTreeKeyPage implements Serializable {
 			if (pageArray[i] != null) {
 				pageArray[i].putPages(sdbio);
 				pageIdArray[i] = pageArray[i].pageId;
-			}
-			// put the data item
-			if (i < numKeys && dataUpdatedArray[i]) {
-				dataUpdatedArray[i] = false;
-				// if it gets nulled, should probably delete
-				if (dataArray[i] != null) {
-					// pack the page into this tablespace and within blocks at the last known good position
-					dataIdArray[i] = sdbio.getIOManager().getNewNodePosition(GlobalDBIO.getTablespace(pageIdArray[i]));
-					byte[] pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
-					sdbio.add_object(dataIdArray[i], pb, pb.length);
-					// set new node position to the current block to pack pages
-					//sdbio.setNewNodePosition();
-				}
 			}
 		}
 		putPage(sdbio);

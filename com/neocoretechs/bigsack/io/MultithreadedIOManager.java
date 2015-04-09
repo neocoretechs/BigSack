@@ -38,13 +38,13 @@ import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
  * When we need to cast a global operation which requires all tablespaces to coordinate a response we use
  * the CyclicBarrier class to set up the rendezvous with each IOworker and its particular request to the
  * set of all IO workers.
- * TODO: REFACTOR IoManagerInterface common methods between mutlithreaded and cluster to abstract class they inherit
- * Copyright (C) NeoCoreTechs 2014
+ * Copyright (C) NeoCoreTechs 2014,2015
  * @author jg
  *
  */
 public class MultithreadedIOManager implements IoManagerInterface {
 	private static final boolean DEBUG = false;
+	private static final boolean DEBUGWRITE = false; // view blocks written to log and store
 	public ObjectDBIO globalIO;
 	// barrier synch for specific functions, cyclic (reusable)
 	protected final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
@@ -57,18 +57,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	protected MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	protected RecoveryLogManager[] ulog;
 	protected BlockStream[] lbai = new BlockStream[DBPhysicalConstants.DTABLESPACES];
-	/*
-	protected Datablock getBlk(int i) { return lbai[i].getLbai().getBlk(); }
-	public short getByteindex(int i) { return lbai[i].getLbai().getByteindex(); }
-	protected void moveByteindex(int i, short runcount) { 
-		lbai[i].getLbai().setByteindex((short) (lbai[i].getLbai().getByteindex() + runcount)); 
-	}
-	protected void incrementByteindex(int i) { 
-		lbai[i].getLbai().setByteindex((short) (lbai[i].getLbai().getByteindex() + 1)); 
-	}
 	
-	protected BlockAccessIndex getBlockIndex(int i) { return lbai[i].getLbai();}
-	*/
 	public MultithreadedIOManager(ObjectDBIO globalIO) throws IOException {
 		this.globalIO = globalIO;
 		assignIoWorker();
@@ -409,11 +398,47 @@ public class MultithreadedIOManager implements IoManagerInterface {
 				}	
 			}
 	}
+	/**
+	 * Deallocate the outstanding BlockAccesIndex from the virtual block number. First
+	 * check the outstanding buffers per tablespace, then consult the block buffer failing that.
+	 * If we find nothing in the buffers, there is obviously nothing to unlatch.
+	 * @param pos The virtual block number to deallocate.
+	 * @throws IOException
+	 */
+	public void deallocOutstanding(long pos) throws IOException {
+		int tablespace = GlobalDBIO.getTablespace(pos);
+		if( lbai[tablespace].getLbai().getBlockNum() == pos ) {
+			if( lbai[tablespace].getLbai().getBlk().isIncore() )
+				deallocOutstandingWriteLog(tablespace, lbai[tablespace].getLbai());
+			else
+				lbai[tablespace].getLbai().decrementAccesses();
+			if( DEBUG )
+				System.out.println("MultithreadedIOManager.deallocOutstanding current "+GlobalDBIO.valueOf(pos));
+		} else {
+			BlockAccessIndex bai = blockBuffer[tablespace].get(pos);
+			if( bai != null) {
+				if( bai.getBlk().isIncore() ) 
+					deallocOutstandingWriteLog(tablespace, bai);
+				else
+					bai.decrementAccesses(); 
+			} else {
+				//System.out.println("MultithreadedIOManager WARNING!! FAILED TO DEALLOCATE "+GlobalDBIO.valueOf(pos));
+				//new Throwable().printStackTrace();
+			}
+		}
+	}
 	
+	/**
+	 * Deallocate the outstanding block and write it to the log. To be eligible for write it must be incore, have
+	 * accesses = 1 (latched) and and NOT yet in log.
+	 */
 	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex lbai) throws IOException {
 		if( lbai.getAccesses() == 1 &&  lbai.getBlk().isIncore() &&  !lbai.getBlk().isInlog()) {
 				// will set incore, inlog, and push to raw store via applyChange of Loggable
-				ulog[tablespace].writeLog(lbai); 
+				ulog[tablespace].writeLog(lbai);
+				lbai.decrementAccesses();
+		} else {
+			System.out.println("MultithreadedIOManager.deallocOutstandingWriteLog failed to dealloc intended target tablespace:"+tablespace+" "+lbai);
 		}
 	}
 		
@@ -657,7 +682,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public void deallocOutstandingWriteLog(int tblsp) throws IOException {
 		deallocOutstandingWriteLog(tblsp, lbai[tblsp].getLbai());
-		
+		if( DEBUGWRITE ) {
+			System.out.println("MultithreadedIOManager.deallocOutstandingWriteLog:"+lbai[tblsp].getLbai());
+		}
 	}
 	
 	public void writeDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
