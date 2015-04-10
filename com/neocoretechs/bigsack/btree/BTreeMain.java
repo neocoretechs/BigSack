@@ -62,7 +62,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public final class BTreeMain {
 	private static boolean DEBUG = false; // General debug
-	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of BTreeKeyPage
+	private static boolean DEBUGCURRENT = true; // alternate debug level to view current page assignment of BTreeKeyPage
 	private static boolean TEST = true; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = false; // flag to determine whether value data is overwritten for a key or its ignored
@@ -150,7 +150,7 @@ public final class BTreeMain {
 	*/
 	@SuppressWarnings("rawtypes")
 	public synchronized Object seekObject(Comparable targetKey) throws IOException {
-		if (search(targetKey)) {
+		if (search(targetKey).atKey) {
 			setCurrent();
 			return getCurrentObject();
 		} else {
@@ -176,7 +176,7 @@ public final class BTreeMain {
 	@SuppressWarnings("rawtypes")
 	public synchronized boolean seekKey(Comparable targetKey) throws IOException {
 		atKey = true;
-		if (search(targetKey) && atKey) {
+		if (search(targetKey).atKey) {
 			setCurrentKey();
 			System.out.println("SeekKey SUCCESS and state is currentIndex:"+currentIndex+" targKey:"+targetKey+" "+currentPage);
 			return true;
@@ -209,23 +209,23 @@ public final class BTreeMain {
 	 * @throws IOException
 	 */
 	public int add(Comparable key, Object object) throws IOException {
-         currentPage = getRoot();
-         TreeSearchResult tsr = update(key, object); 
-         if (!tsr.atKey) { // value false indicates insertion spot
+         TreeSearchResult tar = update(key, object);
+         //TreeSearchResult tsr = update(key, object); 
+         if (!tar.atKey) { // value false indicates insertion spot
                  if (currentPage.numKeys == BTreeKeyPage.MAXKEYS) {
                         // Split rootNode and move its two outer keys down to a left and right subnode.
                 	 	// perform the insertion on the new key/value at the insertion point translated to
                 	 	// whichever subnode is appropriate. The subnode inserted can be retrieved by obtaining the
                 	 	// two requests issued to the NodeSplitThreads and examining their wasNodeInserted() and 
                 	 	// getInsertionPoint() methods
-                        splitChildNode(currentPage, tsr.insertPoint, key, object);
+                        splitChildNode(currentPage, tar.insertPoint, key, object);
                  } else {
-                        insertIntoNonFullNode(currentPage, tsr.insertPoint, key, object); // Insert the key into the B-Tree with root rootNode.
+                        insertIntoNonFullNode(currentPage, tar.insertPoint, key, object); // Insert the key into the B-Tree with root rootNode.
                  }
          }
      	 // deallocate the old buffers before we get another page
      	 //sdbio.deallocOutstanding(currentPage.pageId);
-         return tsr.insertPoint;
+         return tar.insertPoint;
 	}
 	/**
 	 * Traverse the tree and insert object for key if we find the key.
@@ -433,7 +433,7 @@ public final class BTreeMain {
 		BTreeKeyPage rightPage;
 
 		// Is the key there?
-		if(!search(newKey))
+		if(!(search(newKey)).atKey)
 			return (NOTFOUND);
 		if( DEBUG ) System.out.println("--ENTERING DELETE LOOP FOR "+newKey+" with currentPage "+currentPage);
 		while (true) {
@@ -755,9 +755,7 @@ public final class BTreeMain {
 	public synchronized int gotoPrevKey() throws IOException {
 		//if (getNumKeys() == 0)
 		//	return (BOF);
-
 		// If we are at a key, then simply back up the index
-
 		// If we are not at a key, then see if
 		// the pointer is null.
 		if (currentPage.getPage(getIO(), currentIndex) == null)
@@ -817,24 +815,29 @@ public final class BTreeMain {
 	* @exception IOException If read fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public synchronized boolean search(Comparable targetKey) throws IOException {
+	public synchronized TreeSearchResult search(Comparable targetKey) throws IOException {
 		// Search - start at root
 		clearStack();
 		currentPage = getRoot();
 		// File empty?
 		if (currentPage.numKeys == 0) {
 			if( DEBUG ) System.out.println("*** NO KEYS! ***");
-			return false;
+			return new TreeSearchResult(0, false);
 		}
 		do {
 			currentIndex = currentPage.search(targetKey);
 			if (currentIndex >= 0) // Key found
 				break;
-			currentIndex = (-currentIndex) - 1;
+			currentIndex = (-currentIndex);
+			if( currentPage.mIsLeafNode ) {
+				atKey = false;
+				return new TreeSearchResult(currentIndex, false);
+			}
+				
 			BTreeKeyPage targetPage = currentPage.getPage(getIO(), currentIndex);
 			if ( targetPage == null) {
 				atKey = false;
-				return false;
+				return new TreeSearchResult(currentIndex, false);
 			}
 			/*
 			 * Internal routine to push stack. If we are at MAXSTACK just return
@@ -845,12 +848,13 @@ public final class BTreeMain {
 			 */
 			if (!push()) {
 				atKey = false;
-				return false;
+				return new TreeSearchResult(currentIndex, false);
 			}
+			sdbio.deallocOutstanding(currentPage.pageId);
 			currentPage = targetPage;
 		} while (true);
 		atKey = true;
-		return true;
+		return new TreeSearchResult(currentIndex, true);
 	}
 
 	/**

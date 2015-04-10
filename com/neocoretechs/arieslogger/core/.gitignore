@@ -282,3 +282,8 @@
 /LogScan.class
 /Logger.class
 /StreamLogScan.class
+/LogFactory.class
+/LogInstance.class
+/LogScan.class
+/Logger.class
+/StreamLogScan.class

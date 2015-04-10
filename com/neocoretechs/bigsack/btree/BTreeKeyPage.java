@@ -123,9 +123,10 @@ public final class BTreeKeyPage implements Serializable {
 	* If loc >= 0 then the key was found on this page and loc is index of
 	* located key. If loc < 0 then the key
 	* was not found on this page and abs(loc)-1 is index of where the
-	* key *should* be.
+	* key *should* be. The result is always to the right of the target key, therefore
+	* to nav left one accesses index-1 key.
 	* @param targetKey The target key to retrieve
-	* @return loc.
+	* @return loc. the insertion point from 0 to MAXKEYS
 	*/
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	synchronized int search(Comparable targetKey) {

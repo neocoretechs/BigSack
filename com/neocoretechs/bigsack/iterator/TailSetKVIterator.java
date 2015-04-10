@@ -58,7 +58,7 @@ public class TailSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in TailSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if (!bTree.search(nextKey))
+				if (!bTree.search(nextKey).atKey)
 					throw new ConcurrentModificationException("Next TailSetKVIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
