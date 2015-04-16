@@ -77,6 +77,10 @@ public final class BigSackSession {
 	public String getRemoteDBName() {
 		return bTree.getIO().getRemoteDBName();
 	}
+	@Override
+	public String toString() {
+		return "BigSackSession using DB:"+getDBname()+" path:"+getDBPath()+" remote:"+getRemoteDBName();
+	}
 	protected int getUid() {
 		return uid;
 	}
@@ -90,7 +94,6 @@ public final class BigSackSession {
 
 	@SuppressWarnings("rawtypes")
 	public void put(Comparable o) throws IOException {
-		//bTree.add(o, new String());
 		bTree.add(o);
 	}
 

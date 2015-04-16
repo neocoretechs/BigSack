@@ -48,13 +48,15 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 public class GlobalDBIO {
 	private static final boolean DEBUG = false;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
+	private int MAXKEYS = 5; // Number of keys per page max
+	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
+	private String[][] nodePorts = null; // remote worker nodes and their ports, if present
+	
 	private String dbName;
 	private String remoteDBName;
 	private long transId;
 	protected boolean isNew = false; // if we create and no data yet
-	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();
-	private String[][] nodePorts = null;
-	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
+	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();, ClusterIOManager, etc.
 
 	public IoManagerInterface getIOManager() {
 		return ioManager;
@@ -125,7 +127,13 @@ public class GlobalDBIO {
 		}
 		
 		// MAXBLOCKS may be set by PoolBlocks property
-		setMAXBLOCKS(Props.toInt("PoolBlocks"));
+		try {
+			setMAXBLOCKS(Props.toInt("PoolBlocks"));
+		} catch(IllegalArgumentException iae) {} // use default;
+		// MAXKEYS, maximum keys per page may also be set as it coincides with page size
+		try {
+			setMAXKEYS(Props.toInt("MaxKeysPerPage"));
+		} catch(IllegalArgumentException iae) {} // use default;
 		
 		if (Props.toString("Model").startsWith("Cluster")) {
 			if( DEBUG )
@@ -554,5 +562,13 @@ public class GlobalDBIO {
 	public synchronized void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
 	}
+	
+	public int getMAXKEYS() {
+		return MAXKEYS;
+	}
 
+	public synchronized void setMAXKEYS(int mAXKEYS) {
+		MAXKEYS = mAXKEYS;
+		BTreeKeyPage.MAXKEYS = MAXKEYS;
+	}
 }

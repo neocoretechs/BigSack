@@ -43,43 +43,53 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * The left child node of a node's element contains all nodes (elements) with keys less than or equal to the node element's key
 * but greater than the preceding node element's key.
 * If a node becomes full, a split operation is performed during the insert operation.
-* The split operation transforms a full node with MAXKEYS elements into 3 nodes with MAXKEYS/3 elements each
-* and inserts the new node in the proper spot in a leaf. In this way the number of elements remains somewhat constant per node.
-* The elements comprising the middle of the split node remain in the original node.
-* 
-* Example (MAXKEYS = 4):
-* 1.  K =   | 1 | 2 | 3 | 4 |
-*             / 
-*          | 0 |
-* 
-* 2.  Add key 5
-*   
-* 3.  k =       | 2 | 3 |
-*                 /   \
-*           | 1 |       | 4 | 5 |
-*             /
-*          | 0 |
+ * The split operation transforms a full node with 2*T-1 elements into two nodes with T-1 elements each
+ * and moves the median key of the two nodes into its parent node.
+ * The elements left of the median (middle) element of the splitted node remain in the original node.
+ * The new node becomes the child node immediately to the right of the median element that was moved to the parent node.
+ * 
+ * Example (T = 4):
+ * 1.  R = | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+ * 
+ * 2.  Add key 8
+ *   
+ * 3.  R =         | 4 |
+ *                 /   \
+ *     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
+ *
 * @author Groff Copyright (C) NeoCoreTechs 2014,2015
 */
 public final class BTreeKeyPage implements Serializable {
 	static final boolean DEBUG = false;
 	static final long serialVersionUID = -2441425588886011772L;
-	static int MAXKEYS = 4; // number of keys per page; number of instances of the non transient fields of 'this' per DB block
-	// non transient number of keys in order, we pack when deleting or adding
+	// number of keys per page; number of instances of the non transient fields of 'this' per DB block
+	// Can be overridden by properties element. the number of maximum children is MAXKEYS+1 per node
+	public static int MAXKEYS = 5; 
+	// Non transient number of keys on this page. Adjusted as necessary when inserting/deleting.
 	int numKeys = 0;
-	// transient. The 'id' is really the location this was retrieved, so no need to store a potentially inconsistent one
+	// Transient. The 'id' is really the location this page was retrieved from deep store.
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")
 	// The array of keys, non transient.
 	Comparable[] keyArray;
 	// The array of pages corresponding to the pageIds for the child nodes. Transient since we lazily retrieve pages via pageIds
 	transient BTreeKeyPage[] pageArray;
-	// The array of page ids from which the page array is filled
+	// The array of page ids from which the page array is filled. This data is persisted as virtual page pointers. Since
+	// we align indexes on page boundaries we dont need an offset as we do with value data associated with the indexes for maps.
 	long[] pageIdArray;
+	// These are the data items for values associated with keys, should this be a map vs set.
+	// These are lazily populated from the dataIdArray where an id exsists at that index.
 	transient Object[] dataArray;
+	// This array is present for maps where values are associated with keys. In sets it is absent or empty.
+	// It contains the page and offset of the data item associated with a key. We pack value data on pages, hence
+	// we need an additional 2 byte offset value to indicate that.
 	Optr[] dataIdArray;
+	// This transient array maintains boolean values indicating whether the data item at that index has been updated
+	// and needs written back to deep store.
 	transient boolean[] dataUpdatedArray;
+	// Global is this leaf node flag.
 	public boolean mIsLeafNode = true; // We treat as leaf since the logic is geared to proving it not
+	// Global page updated flag.
 	private transient boolean updated = false; // has the node been updated for purposes of write
 	/**
 	 * No - arg cons to initialize pageArray to MAXKEYS + 1, this is called on deserialization
@@ -120,22 +130,24 @@ public final class BTreeKeyPage implements Serializable {
 	}
 	/**
 	* Given a Comparable object, search for that object on this page.
-	* If loc >= 0 then the key was found on this page and loc is index of
-	* located key. If loc < 0 then the key
-	* was not found on this page and abs(loc)-1 is index of where the
+	* The key was found on this page and loc is index of
+	* located key if atKey is true. 
+	* If atKey was false then the key
+	* was not found on this page and index-1 is index of where the
 	* key *should* be. The result is always to the right of the target key, therefore
 	* to nav left one accesses index-1 key.
 	* @param targetKey The target key to retrieve
-	* @return loc. the insertion point from 0 to MAXKEYS
+	* @return TreeSearchResult the insertion point from 0 to MAXKEYS and flag of whether key was found
 	*/
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	synchronized int search(Comparable targetKey) {
+	synchronized TreeSearchResult search(Comparable targetKey) {
 		assert(keyArray.length > 0) : "BTreeKeyPage.search key array length zero";
 		int middleIndex = 1; 
         int leftIndex = 0;
-        int rightIndex = numKeys - 1;        
+        int rightIndex = numKeys - 1;
+        // no keys, call for insert at 0
         if( rightIndex == -1)
-        	return -1;
+        	return new TreeSearchResult(0, false);
         while (leftIndex <= rightIndex) {
         	middleIndex = leftIndex + ((rightIndex - leftIndex) / 2);
         	int cmpRes = keyArray[middleIndex].compareTo(targetKey);
@@ -145,64 +157,14 @@ public final class BTreeKeyPage implements Serializable {
         		if (cmpRes > 0 ) {
         			rightIndex = middleIndex - 1;
         		} else {
-        			return middleIndex;
+        			return new TreeSearchResult(middleIndex, true);
         		}
         }
         if( DEBUG )
-        System.out.println("BtreeKeyPage.search falling thru "+middleIndex+" "+leftIndex+" "+rightIndex+" "+this+" target:"+targetKey);
-        return -middleIndex;
+        	System.out.println("BtreeKeyPage.search falling thru "+middleIndex+" "+leftIndex+" "+rightIndex+" "+this+" target:"+targetKey);
+        return new TreeSearchResult(middleIndex, false);
 	}
 
-	/**
-	* Insert the Comparable object and data
-	* object at index. Everything on page is slid to the right to make space.
-	* numKeys is incremented
-	* @param newKey The Comparable key to insert
-	* @param newData The new data payload to insert
-	* @param index The index of key array to begin offset
-	*/
-	@SuppressWarnings("rawtypes")
-	synchronized int insert(Comparable newKey, Object newData, int index, boolean misLeaf) {
-		if(numKeys >= MAXKEYS) 
-			throw new RuntimeException("BTreeKeyPage.insert error, node full :"+this);
-		// If adding to right, no moving to do
-		if (index <= numKeys) {
-			// move elements down	
-			if( numKeys < 2 ) {
-				if( !misLeaf ) {
-					pageArray[1] = pageArray[0];
-					pageIdArray[1] = pageIdArray[0];
-				}
-				keyArray[1] = keyArray[0];
-				dataArray[1] = dataArray[0];
-				dataIdArray[1] = dataIdArray[0];
-				dataUpdatedArray[1] = dataUpdatedArray[0];
-			}
-			if( !misLeaf ) {
-				for (int i = numKeys - 1; i >= index; i--) {
-					pageArray[i + 1] = pageArray[i];
-					pageIdArray[i + 1] = pageIdArray[i];
-				}
-			}
-			if(keyArray[index] != null) {
-				for(int i = numKeys - 1; i >= index; i--) {
-					keyArray[i + 1] = keyArray[i];
-					dataArray[i + 1] = dataArray[i];
-					dataIdArray[i + 1] = dataIdArray[i];
-					dataUpdatedArray[i + 1] = dataUpdatedArray[i];
-				}
-			}
-		}
-		// if index >= numKeys just insert it
-		++numKeys;
-
-		keyArray[index] = newKey;
-		dataArray[index] = newData;
-		dataIdArray[index] = Optr.emptyPointer;
-		dataUpdatedArray[index] = true;
-		setUpdated(true);
-		return index;
-	}
 
 	/**
 	* Delete the key/data item on this page.
@@ -262,7 +224,7 @@ public final class BTreeKeyPage implements Serializable {
 	*/
 	public synchronized BTreeKeyPage getPage(ObjectDBIO sdbio, int index) throws IOException {
 		if(DEBUG) {
-			System.out.println("Entering BTreeKeyPage with target index "+index);
+			System.out.println("BTreeKeyPage.getPage Entering BTreeKeyPage to retrieve target index "+index);
 			for(int i = 0; i < pageIdArray.length; i++) {
 				System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
 				System.out.println(pageArray[i]);
@@ -563,7 +525,7 @@ public final class BTreeKeyPage implements Serializable {
 	 * @return
 	 */
     boolean contains(int key) {
-        return search(key) >= 0;
+        return search(key).atKey;
     }               
 
     /**

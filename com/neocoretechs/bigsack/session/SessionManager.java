@@ -145,9 +145,14 @@ public final class SessionManager {
 			BTreeMain bTree =  new BTreeMain(objIO);
 			hps = new BigSackSession(bTree, uid, gid);
 			SessionTable.put(dbname, hps);
-		} else
+			if( DEBUG )
+				System.out.println("New session for "+dbname+" "+hps+" "+bTree+" "+objIO);
+		} else {
 			// if closed, then open, else if open this does nothing
 			hps.Open();
+			if( DEBUG )
+				System.out.println("Existing session for "+dbname+" "+hps);
+		}
 		//
 		return hps;
 	}

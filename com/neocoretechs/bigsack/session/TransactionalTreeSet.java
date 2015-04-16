@@ -71,17 +71,15 @@ public class TransactionalTreeSet {
 	@SuppressWarnings("rawtypes")
 	public void add(Comparable tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
-				if (table.size() >= objectCacheSize) {
+				if (objectCacheSize > 0 && table.size() >= objectCacheSize) {
 					// throw one out
 					Iterator<Comparable<?>> et = table.iterator();
-					//Object remo = 
 					et.next();
 					et.remove();
+					table.add(tvalue);
 				}
 				// now put new
 				session.put(tvalue);
-				//session.Commit();
-				table.add(tvalue);
 		}
 	}
 	/**
@@ -93,12 +91,15 @@ public class TransactionalTreeSet {
 	@SuppressWarnings("rawtypes")
 	public boolean contains(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
+			if( objectCacheSize > 0 ) {
 				boolean isin = table.contains(tkey);
 				if (!isin) {
 					isin = session.contains(tkey);
 				}
-				//session.Commit();
 				return isin;
+			} else {
+				return session.contains(tkey);
+			}
 		}
 	}
 	/**
@@ -110,10 +111,11 @@ public class TransactionalTreeSet {
 	@SuppressWarnings("rawtypes")
 	public Object remove(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
+			if( objectCacheSize > 0) {
 				table.remove(tkey);
-				Object o = session.remove(tkey);
-				//session.Commit();
-				return o;
+			}
+			Object o = session.remove(tkey);	
+			return o;
 		}
 	}
 	/**
@@ -124,7 +126,6 @@ public class TransactionalTreeSet {
 	public long size() throws IOException {
 		synchronized (session.getMutexObject()) {
 				long siz = session.size();
-				//session.Commit();
 				return siz;
 		}
 	}
@@ -137,7 +138,6 @@ public class TransactionalTreeSet {
 	public Object last() throws IOException {
 		synchronized (session.getMutexObject()) {
 				Object o = session.lastKey();
-				//session.Commit();
 				return o;
 		}
 	}
@@ -150,7 +150,6 @@ public class TransactionalTreeSet {
 	public Object first() throws IOException {
 		synchronized (session.getMutexObject()) {
 				Object o = session.firstKey();
-				//session.Commit();
 				return o;
 		}
 	
@@ -201,7 +200,6 @@ public class TransactionalTreeSet {
 	public boolean isEmpty() throws IOException {
 		synchronized (session.getMutexObject()) {
 				boolean ret = session.isEmpty();
-				//session.Commit();
 				return ret;
 		}
 	}
