@@ -570,7 +570,7 @@ public final class FileLogger implements Logger {
 				undoScan = null;
 			}
 		}
-
+		if( LogToFile.ALERT )
 			System.out.println(
                     "----------------------------------------------------\n" +
                     "End of recovery redo for "+blockio.getDBName()+"\n" + 

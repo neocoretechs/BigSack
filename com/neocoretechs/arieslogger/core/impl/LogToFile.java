@@ -153,6 +153,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private static final boolean DEBUG = false;
 	private static final boolean DUMPLOG = false;
 	private static final boolean MEASURE = true; // take stats of log writes etc
+	static final boolean ALERT = false; // return status for recovery, also for FileLogger recover
 	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
 	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
 	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
@@ -542,11 +543,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				if (currentCheckpoint != null) {
 					redoLWM = currentCheckpoint.redoLWM();
 					undoLWM = currentCheckpoint.undoLWM();
-					//if (DEBUG)
-					//{
+					if (ALERT)
+					{
 						System.out.println("LogToFile.recover FOUND CHECKPOINT at " + LogCounter.toDebugString(checkpointInstance) + 
                           " " + currentCheckpoint.toString());
-					//}
+					}
 
 					setFirstLogFileNumber(LogCounter.getLogFileNumber(redoLWM));
 
@@ -568,9 +569,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 					// no checkpoint, start redo from the beginning of the 
                     // file - assume this is the first log file
 					setFirstLogFileNumber(bootTimeLogFileNumber);
-					//if( DEBUG ) {
+					if( ALERT ) {
 						System.out.println("LogToFile.recover NO CHECKPOINT, starting redo from "+bootTimeLogFileNumber+" @ "+LogCounter.toDebugString(start));
-					//}
+					}
 					redoScan = (StreamLogScan)openForwardScan(start, (LogInstance)null);
 				}
 
@@ -1878,7 +1879,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			headerLogInstance = verifyLogFormat(logFile, logFileNumber);
 						
 			// log file exist, need to run recovery
-			System.out.println("Recovery indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition);
+			if( ALERT )
+				System.out.println("Recovery indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition);
 			recoveryNeeded = true;
 		}
 
@@ -1913,9 +1915,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             }
 			setEndPosition(firstLog.getFilePointer());
 			setLastFlush(firstLog.getFilePointer());
-			if (DEBUG) {
-				assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
-			}
+			
+			assert(endPosition == LOG_FILE_HEADER_SIZE) : "empty log file has wrong size";
+			
 			setFirstLogFileNumber(logFileNumber);
 			if(corrupt == null && !logArchived() && !keepAllLogs )	{
 				deleteObsoleteLogfilesOnCommit();

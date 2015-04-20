@@ -2,12 +2,14 @@ package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.Stack;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -71,18 +73,21 @@ public final class BTreeMain {
 	static int ALREADYEXISTS = 4;
 	static int STACKERROR = 5;
 	static int TREEERROR = 6;
-	static int MAXSTACK = 64;
+	static int MAXSTACK = 1024;
 
 	private BTreeKeyPage root;
-	private long numKeys;
+	//private long numKeys;
+	
+	// the 'current' items reflect the current status of the tree
 	BTreeKeyPage currentPage;
 	int currentIndex;
+	int currentChild;
 	@SuppressWarnings("rawtypes")
 	private Comparable currentKey;
 	private Object currentObject;
-	BTreeKeyPage[] keyPageStack;
-	int[] indexStack;
-	int stackDepth;
+	
+	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
+	
 	private CyclicBarrier nodeSplitSynch = new CyclicBarrier(3);
 	private NodeSplitThread leftNodeSplitThread, rightNodeSplitThread;
 	private ObjectDBIO sdbio;
@@ -90,13 +95,10 @@ public final class BTreeMain {
 
 	public BTreeMain(ObjectDBIO sdbio) throws IOException {
 		this.sdbio = sdbio;
-		keyPageStack = new BTreeKeyPage[MAXSTACK];
-		indexStack = new int[MAXSTACK];
 		currentPage = setRoot(BTreeKeyPage.getPageFromPool(sdbio, 0L));
 		if( DEBUG ) System.out.println("Root BTreeKeyPage: "+currentPage);
 		currentIndex = 0;
-		// Attempt to retrieve last good key count
-		numKeys = 0;//sdbio.getKeycountfile().getKeysCount();
+		currentChild = 0;
 		// Append the worker name to thread pool identifiers, if there, dont overwrite existing thread group
 		ThreadPoolManager.init(new String[]{"NODESPLITWORKER"}, false);
 		leftNodeSplitThread = new NodeSplitThread(nodeSplitSynch);
@@ -107,9 +109,12 @@ public final class BTreeMain {
 		// Consistency check test, also needed to get number of keys
 		// Performs full tree/table scan, tallys record count
 		if( TEST ) {
+			// Attempt to retrieve last good key count
+			long numKeys = 0;
 			long tim = System.currentTimeMillis();
-			printBTree(getRoot());
-			count();
+			if( sdbio.getDBName().contains("MapDomainRange") || sdbio.getDBName().contains("MapRangeDomain"))
+				//printBTree(getRoot());
+			numKeys = count();
 			System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 			// deallocate outstanding blocks in all tablespaces
 			sdbio.deallocOutstanding();
@@ -126,14 +131,17 @@ public final class BTreeMain {
 	public synchronized long count() throws IOException {
 		rewind();
 		int i;
-		numKeys = 0;
+		long numKeys = 0;
 		long tim = System.currentTimeMillis();
-		while ((i = gotoNextKey()) == 0) {
-			//if( DEBUG )
-				System.out.println("gotoNextKey returned: "+i+" "+currentPage.keyArray[i]);
+		if( currentPage != null ) {
 			++numKeys;
+			while ((i = gotoNextKey()) == 0) {
+			//if( DEBUG )
+				System.out.println("gotoNextKey returned: "+currentPage.keyArray[currentIndex]);
+				++numKeys;
+			}
 		}
-		if( DEBUG )
+		//if( DEBUG )
 		System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		// deallocate outstanding blocks in all tablespaces
 		sdbio.deallocOutstanding();
@@ -151,7 +159,11 @@ public final class BTreeMain {
 	*/
 	@SuppressWarnings("rawtypes")
 	public synchronized Object seekObject(Comparable targetKey) throws IOException {
-		if (search(targetKey).atKey) {
+		TreeSearchResult tsr = search(targetKey);
+		if (tsr.atKey) {
+			currentPage = tsr.page;
+			currentIndex = tsr.insertPoint;
+			currentChild = tsr.insertPoint;
 			setCurrent();
 			return getCurrentObject();
 		} else {
@@ -176,7 +188,11 @@ public final class BTreeMain {
 	*/
 	@SuppressWarnings("rawtypes")
 	public synchronized boolean seekKey(Comparable targetKey) throws IOException {
-		if (search(targetKey).atKey) {
+		TreeSearchResult tsr = search(targetKey);
+		if (tsr.atKey) {
+			currentPage = tsr.page;
+			currentIndex = tsr.insertPoint;
+			currentChild = tsr.insertPoint;
 			setCurrentKey();
 			if( DEBUG )
 				System.out.println("SeekKey SUCCESS and state is currentIndex:"+currentIndex+" targKey:"+targetKey+" "+currentPage);
@@ -198,25 +214,6 @@ public final class BTreeMain {
 	 * @throws IOException
 	 */
 	public int add(Comparable key, Object object) throws IOException {
-		/*
-         TreeSearchResult tar = update(key, object);
-         //TreeSearchResult tsr = update(key, object); 
-         if (!tar.atKey) { // value false indicates insertion spot
-                 if (currentPage.numKeys == BTreeKeyPage.MAXKEYS) {
-                        // Split rootNode and move its two outer keys down to a left and right subnode.
-                	 	// perform the insertion on the new key/value at the insertion point translated to
-                	 	// whichever subnode is appropriate. The subnode inserted can be retrieved by obtaining the
-                	 	// two requests issued to the NodeSplitThreads and examining their wasNodeInserted() and 
-                	 	// getInsertionPoint() methods
-                        splitChildNode(currentPage, tar.insertPoint, key, object);
-                 } else {
-                        insertIntoNonFullNode(currentPage, tar.insertPoint, key, object); // Insert the key into the B-Tree with root rootNode.
-                 }
-         }
-     	 // deallocate the old buffers before we get another page
-     	 //sdbio.deallocOutstanding(currentPage.pageId);
-         return tar.insertPoint;
-         */
         BTreeKeyPage rootNode = getRoot();
         TreeSearchResult usr = update(rootNode, key, object);
         if (!usr.atKey) {
@@ -260,7 +257,8 @@ public final class BTreeMain {
                 	if( DEBUG && object != null && OVERWRITE)
                 		System.out.println("BTreeMain.update set to return index :"+i+" AFTER UPDATE for "+sourcePage);
                 	else
-                    	System.out.println("BTreeMain.update set to return index :"+i+" sans update for "+sourcePage);
+                		if( DEBUG && object != null)
+                			System.out.println("BTreeMain.update set to return index :"+i+" sans update for "+sourcePage);
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
                 if (sourcePage.mIsLeafNode) {
@@ -407,7 +405,6 @@ public final class BTreeMain {
 		}
     }
     
- 
     
     /**
      * Insert into BTree node . The node is checked for leaf status, and if so, the key is inserted in to that key.
@@ -495,20 +492,25 @@ public final class BTreeMain {
             }
     }
     
-    // Split the node, node, of a B-Tree into two nodes that both contain T-1 elements and 
-    // move node's median key up to the parentNode.
-    // This method will only be called if node is full; node is the i-th child of parentNode.
-    // Note that this is the only time we ever create a child. Doing a split doesn't increase the
-    // height of a tree, because we only add a sibling to existing keys at the same level. 
-    // Thus, the only time the height of the tree ever increases is when we split the root. 
-    // So we satisfy the part of the definition that says "each leaf must occur at the same depth."
-    // if index is negative insert to the left of 0, else to the right of index
-    // childIndex is the location in the parent where the new node pointer will og
+    /**
+     * Split the node, node, of a B-Tree into two nodes that both contain T-1 elements and 
+     * move node's median key up to the parentNode.
+     * This method will only be called if node is full; node is the i-th child of parentNode.
+     * Note that this is the only time we ever create a child. Doing a split doesn't increase the
+     * height of a tree, because we only add a sibling to existing keys at the same level. 
+     * Thus, the only time the height of the tree ever increases is when we split the root. 
+     * So we satisfy the part of the definition that says "each leaf must occur at the same depth."
+     * if index is negative insert to the left of 0, else to the right of index
+     * childIndex is the location in the parent where the new node pointer will go.
+     * @param parentNode
+     * @param keyIndex
+     * @param childIndex
+     * @param node
+     * @throws IOException
+     */
     void splitChildNode(BTreeKeyPage parentNode, int keyIndex, int childIndex,  BTreeKeyPage node) throws IOException {
     	if( DEBUG )
     		System.out.println("BTreeMain.splitChildNode index:"+keyIndex+" childIndex:"+childIndex+"parent:"+parentNode+" target:"+node);
-    	//if( i == -1 )
-    		//throw new IOException("Invalid index -1 for splitChildNode with parent:"+parentNode+" target:"+node);
             BTreeKeyPage newNode =  BTreeKeyPage.getPageFromPool(sdbio);
             newNode.mIsLeafNode = node.mIsLeafNode;
             newNode.numKeys = T - 1;
@@ -615,14 +617,6 @@ public final class BTreeMain {
         }
     }
 	
-    /*
-	public synchronized int add(Comparable newKey) throws IOException {
-		if( !search(newKey).atKey)
-			return addx(newKey);
-		return -1;
-	}
-	*/
-
 	/**
 	* Remove key/data object.
 	* @param newKey The key to delete
@@ -674,8 +668,8 @@ public final class BTreeMain {
 						// just deleted
 						if( DEBUG ) System.out.println("Delete popped "+currentPage+" nulling and decrementing key count");
 						currentPage.nullPageArray(currentIndex);
-						--numKeys;
-						if( DEBUG ) System.out.println("Key count now "+numKeys+" returning");
+						//--numKeys;
+						//if( DEBUG ) System.out.println("Key count now "+numKeys+" returning");
 						// Perform re-seek to re-establish location
 						//search(newKey);
 						return (0);
@@ -694,7 +688,7 @@ public final class BTreeMain {
 						setRoot(new BTreeKeyPage(0L));
 						getRoot().setUpdated(true);
 						currentPage = null;
-						numKeys = 0;
+						//numKeys = 0;
 					}
 					//atKey = false;
 					if( DEBUG ) System.out.println("Delete returning");
@@ -705,18 +699,18 @@ public final class BTreeMain {
 				// keycount is even, look at the sibling to the left first;
 				// if the keycount is odd, look at the sibling to the right first.
 				if( DEBUG ) System.out.println("Have not deleted last key");
-				if (stackDepth == 0) { // At root - no siblings
+				if (stack.size() == 0) { // At root - no siblings
 					if( DEBUG ) System.out.println("Delete @ root w/no siblings");
-					--numKeys;
+					//--numKeys;
 					//search(newKey);
-					if( DEBUG ) System.out.println("Delete returning after numKeys set to "+numKeys);
+					//if( DEBUG ) System.out.println("Delete returning after numKeys set to "+numKeys);
 					return (0);
 				}
 				// Get parent page and index
 				if( DEBUG ) System.out.println("Delete get parent page and index");
-				tpage = keyPageStack[stackDepth - 1];
-				tindex = indexStack[stackDepth - 1];
-				if( DEBUG ) System.out.println("Delete tpage now "+tpage+" and index now "+tindex+" with stack depth "+stackDepth);
+				tpage = (stack.get(stack.size() - 1)).keyPage;
+				tindex =(stack.get(stack.size() - 1)).index;
+				if( DEBUG ) System.out.println("Delete tpage now "+tpage+" and index now "+tindex+" with stack depth "+stack.size());
 				// Get sibling pages
 				if( DEBUG ) System.out.println("Delete Getting sibling pages");
 				if (tindex > 0) {
@@ -756,9 +750,9 @@ public final class BTreeMain {
 				// address coalesce later
 				//if (leftPage.numKeys + rightPage.numKeys + 1 > BTreeKeyPage.MAXKEYS) {
 					// Coalescing not possible, exit
-					--numKeys;
+					//--numKeys;
 					//search(newKey);
-					if( DEBUG ) System.out.println("Cant coalesce, returning with keys="+numKeys);
+					//if( DEBUG ) System.out.println("Cant coalesce, returning with keys="+numKeys);
 					return (0);
 				/*	
 				} else {
@@ -793,20 +787,16 @@ public final class BTreeMain {
 				if (currentPage.getPage(getIO(), currentIndex) != null) {
 					// Get predecessor if possible
 					if( DEBUG ) System.out.println("Delete Seeking right tree");
-					if (!seekRightTree()) {
-						if( DEBUG ) System.out.println("Delete cant seek right tree, returning");
-						return (STACKERROR);
-					}
+					seekRightTree();	
 				} else { // Get successor
 					if (currentPage.getPage(getIO(), currentIndex + 1) == null) {
 						if( DEBUG ) System.out.println("Delete cant get successor, returning");
 						return (TREEERROR);
 					}
 					currentIndex++;
-					if (!seekLeftTree()) {
-						if( DEBUG ) System.out.println("Delete cant seek left tree, returning");
-						return (STACKERROR);
-					}
+					seekLeftTree();
+					if( DEBUG ) System.out.println("Delete cant seek left tree, returning");
+					return (STACKERROR);	
 				}
 				// Replace key/data with successor/predecessor
 				tpage.putKeyToArray(currentPage.keyArray[currentIndex], tindex);
@@ -873,13 +863,9 @@ public final class BTreeMain {
 	public synchronized void rewind() throws IOException {
 		currentPage = getRoot();
 		currentIndex = 0;
+		currentChild = 0;
 		clearStack();
-		if (currentPage.getPage(getIO(), currentIndex) != null) {
-			if( DEBUG )
-				System.out.println("BTreeMain.rewind about to seek left tree using "+currentPage);
-			seekLeftTree();
-		}
-		//atKey = false;
+		seekLeftTree();
 	}
 
 	/**
@@ -888,65 +874,90 @@ public final class BTreeMain {
 	 */
 	public synchronized void toEnd() throws IOException {
 		currentPage = getRoot();
-		if (currentPage.numKeys != 0) {
-			clearStack();
-			currentIndex = currentPage.numKeys;
-			if (currentPage.getPage(getIO(), currentIndex) != null) {
-				seekRightTree();
-				currentIndex++;
-			}
-		} else
-			currentIndex = 0;
-		//atKey = false;
+		currentIndex = currentPage.numKeys-1;
+		currentChild = currentPage.numKeys;
+		clearStack();
+		seekRightTree();
 	}
 
 	/**
-	* Seek to location of next key in tree
+	* Seek to location of next key in tree.
+	* Attempt to advance the child index at the current node. If it advances beyond numKeys, a pop
+	* is necessary to get us to the previous level. We repeat the process a that level, advancing index
+	* and checking, and again repeating pop.
+	* If we get to a currentIndex advanced to the proper level, we know we are not at a leaf since we
+	* popped the node as a parent, so we descend the subtree of that key to the left until we reach a 
+	* terminal 'leaf' node.
+	* We are finished when we are at the root and can no longer traverse right.
+	* Note that we dont deal with keys at all here, just child pointers.
 	* @return 0 if ok, != 0 if error
 	* @exception IOException If read fails
 	*/
 	public synchronized int gotoNextKey() throws IOException {
-
-		//if (getNumKeys() == 0)
-		//	return (EOF);
-
-		// If we are at a key, then advance the index
-		if (currentPage.keyArray[currentIndex] != null)
-			currentIndex++;
-		
 		if( DEBUG ) {
 			System.out.println("BTreeMain.gotoNextKey "/*page:"+currentPage+*/+" index "+currentIndex);
 		}
-		// If we are not at a key, then see if the pointer is null.
-		if (currentPage.getPage(getIO(), currentIndex) == null) {
-			// Pointer is null, is it the last one on the page?
-			if( DEBUG ) {
-				System.out.println("BTreeMain.gotoNextKey index "+currentIndex+" pointer is null");
-			}
-			if (currentIndex == currentPage.numKeys) {
-				// Last pointer on page. We have to pop up
-				while (pop()) {
-					if( DEBUG ) {
-						System.out.println("BTreeMain.gotoNextKey POP index "+currentIndex+/*" "+currentPage+*/" working toward keys:"+currentPage.numKeys);
-					}
-					if (currentIndex != currentPage.numKeys) {
+		// If we are at a key, then advance the index
+		if (currentChild < currentPage.numKeys) {
+				currentChild++;
+				// If its a leaf and we just bumped we can return if its in range
+				if( currentPage.mIsLeafNode) {	
+					if(currentChild != currentPage.numKeys)  {
+						currentIndex = currentChild;
 						setCurrent();
-						return (0);
+						return 0;
 					}
 				}
-				return (EOF);
-			} else { // Not last pointer on page.
-				// Skip to next key
-				setCurrent();
-				return (0);
-			}
+				// Otherwise, we have to decide the return value, descend subtree
+				// Not a leaf node with valid index, so we have to either return the index or find a subtree to descend
+				// should be positioned at key to which we descend left subtree
+				// 
+				BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+				if (tPage  == null) {
+					// Pointer is null, we can return this index as we cant descend subtree
+					if( DEBUG ) {
+						System.out.println("BTreeMain.gotoNextKey index "+currentChild+" pointer is null, returning");
+					}
+					//
+					// No child pointer. If the current pointer is at end of key range we have to pop
+					// otherwise we can return this key
+					if(currentChild != currentPage.numKeys)  {
+							currentIndex = currentChild;
+							setCurrent();
+							return 0;
+					}	
+				} else {
+					// There is a child pointer
+					// seek to "leftmost" key in currentPage subtree,the one we just tested, using currentChild
+					seekLeftTree();
+					return (0);	
+				}
 		}
-		// Pointer not null, seek to "leftmost" key in current subtree
-		if (seekLeftTree()) {
-			setCurrent();
-			return (0);
+		// If we are here we are at the end of the key range
+		// cant move right, are we at root? If so, we must end
+		if( currentPage.pageId == 0L)
+			return EOF;
+		// we have reached the end of keys
+		// we must pop
+		// pop to parent and fall through when we hit root or are not out of keys
+		// go up 1 and right to the next key, if no right continue to pop until we have a right key
+		// if we hit the root, protocol right. in any case we have to reassert
+		// if there is a subtree follow it, else return the key
+		while( pop() ) {
+					// we know its not a leaf, we popped to it
+					//assert( !currentPage.mIsLeafNode ) : "Leaf node recovered from stack after pop! Index:"+currentIndex+" page:"+currentPage;
+					if (currentChild < currentPage.numKeys) {
+						break; // on a non-leaf, at an index, descend subtree left, break from pop
+					}
+					// cant move right, are we at root?
+					if( currentPage.pageId == 0L)
+						return EOF;
+					
 		}
-		return (EOF);
+		// should be at position where we return key from which we previously descended
+		setCurrent();
+		return 0;
+
 	}
 
 	/**
@@ -960,7 +971,7 @@ public final class BTreeMain {
 		// If we are at a key, then simply back up the index
 		// If we are not at a key, then see if
 		// the pointer is null.
-		if (currentPage.getPage(getIO(), currentIndex) == null)
+		if (currentPage.getPage(getIO(), currentIndex) == null) {
 			// Pointer is null, is it the first one on the page?
 			if (currentIndex == 0) {
 				// First pointer on page. We have to pop up
@@ -977,26 +988,26 @@ public final class BTreeMain {
 				setCurrent();
 				return (0);
 			}
-		// Pointer not null, seek to "rightmost" key in current subtree
-		if (seekRightTree()) {
-			setCurrent();
-			return (0);
 		}
+		// Pointer not null, seek to "rightmost" key in current subtree
+		seekRightTree();
+		setCurrent();
 		return (EOF);
 	}
 
 	/**
-	* Set the current object and key based on value of currentPage
+	* Set the current object and key based on value of currentPage.
 	* and currentIndex
 	*/
 	public synchronized void setCurrent() throws IOException {
 		if( DEBUG || DEBUGCURRENT)
 			System.out.println("BTreeMain.setCurrent page:"+currentPage+" index:"+currentIndex);
 		setCurrentKey(currentPage.keyArray[currentIndex]);
-		setCurrentObject(currentPage.getDataFromArray(getIO(), currentIndex));
+		setCurrentObject(currentPage.getDataFromArray(sdbio, currentIndex));
+
 	}
 	/**
-	* Set the current object and key based on value of currentPage
+	* Set the current object and key based on value of currentPage.
 	* and currentIndex
 	*/
 	public synchronized Comparable setCurrentKey() throws IOException {
@@ -1006,86 +1017,60 @@ public final class BTreeMain {
 		return currentPage.keyArray[currentIndex];
 	}
 	/**
-	* 
-	* search method used by seek, insert, and delete etc.
-	* @param targetKey The key to search for
-	* @return true if found
-	* @exception IOException If read fails
-	*/
-	@SuppressWarnings("rawtypes")
+	 * Utilize reposition to locate key. Set currentPage, currentIndex, currentKey, and currentChild.
+	 * deallocOutstanding is called before exit.
+	 * @param targetKey The key to position to in BTree
+	 * @return TreeSearchResult containing page, insertion index, atKey = true for key found
+	 * @throws IOException
+	 */
 	public synchronized TreeSearchResult search(Comparable targetKey) throws IOException {
-		// Search - start at root
-		clearStack();
 		currentPage = getRoot();
-		// File empty?
-		if (currentPage.numKeys == 0) {
-			if( DEBUG ) System.out.println("*** NO KEYS! ***");
-			return new TreeSearchResult(0, false);
-		}
-		do {
-			TreeSearchResult tsr = currentPage.search(targetKey);
-			currentIndex = tsr.insertPoint;
-			if( DEBUG )
-				System.out.println("Search loop "+currentIndex+" "+currentPage);
-			if (tsr.atKey) // Key found
-				break;
-			// dont back it up at 0
-			if( currentIndex > 0 )
-				--currentIndex; // go left
-			if( currentPage.mIsLeafNode ) {
-				return new TreeSearchResult(currentIndex, false);
-			}	
-			BTreeKeyPage targetPage = currentPage.getPage(getIO(), currentIndex);
-			if ( targetPage == null) {
-				return new TreeSearchResult(currentIndex, false);
-			}
-			/*
-			 * Internal routine to push stack. If we are at MAXSTACK just return
-			 * set keyPageStack[stackDepth] to currentPage
-			 * set indexStack[stackDepth] to currentIndex
-			 * Sets stackDepth up by 1
-			 * return true if stackDepth not at MAXSTACK, false otherwise
-			 */
-			if (!push()) {
-				return new TreeSearchResult(currentIndex, false);
-			}
-			sdbio.deallocOutstanding(currentPage.pageId);
-			currentPage = targetPage;
-		} while (true);
-		return new TreeSearchResult(currentIndex, true);
-	}
+		TreeSearchResult tsr = null;
+        if (currentPage != null) {
+        	tsr = reposition(currentPage, targetKey);
+        	currentPage = tsr.page;
+        	currentIndex = tsr.insertPoint;
+        	currentChild = tsr.insertPoint;
+        	setCurrentKey(currentPage.keyArray[currentIndex]);
+        }
+        sdbio.deallocOutstanding(currentPage.pageId);
+        return tsr;
+}
 
 	/**
-	* Seeks to leftmost key in current subtree
+	* Seeks to leftmost key in current subtree. Takes the currentChild and currentIndex from currentPage and uses the
+	* child at currentChild to descend the subtree and gravitate left.
 	*/
-	private boolean seekLeftTree() throws IOException {
+	private void seekLeftTree() throws IOException {
 		if( DEBUG ) {
-			System.out.println("BTreeMain.seekLeftTree page:"+currentPage+" index "+currentIndex);
+			System.out.println("BTreeMain.seekLeftTree page:"+currentPage+" index:"+currentIndex+" child:"+currentChild);
 		}
-		while (push()) {
-			currentPage = currentPage.getPage(getIO(), currentIndex);
+		BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+		while (tPage != null) {
+			push();
 			if( DEBUG )
-				System.out.println("BTreeMain.seekLeftTree PUSH using "+currentPage+" index "+currentIndex);
+				System.out.println("BTreeMain.seekLeftTree PUSH using "+currentPage+" index:"+currentIndex+" child:"+currentChild+" new entry:"+tPage);
 			currentIndex = 0;
-			if (currentPage.getPage(getIO(), currentIndex) == null)
-				return (true);
+			currentChild = 0;
+			currentPage = tPage;
+			tPage = currentPage.getPage(sdbio, currentChild);
 		}
-		return (false);
 	}
 
 	/**
 	* Seeks to rightmost key in current subtree
 	*/
-	private boolean seekRightTree() throws IOException {
-		while (push()) {
-			currentPage = currentPage.getPage(getIO(), currentIndex);
-			currentIndex = currentPage.numKeys;
-			if (currentPage.getPage(getIO(), currentIndex) == null) {
-				currentIndex--;
-				return (true);
-			}
+	private void seekRightTree() throws IOException {
+		BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+		while (tPage != null) {
+			push();
+			if( DEBUG )
+				System.out.println("BTreeMain.seekRightTree PUSH using "+currentPage+" index:"+currentIndex+" child:"+currentChild+" new entry:"+tPage);
+			currentIndex = currentPage.numKeys - 1;
+			currentChild = currentPage.numKeys;
+			currentPage = tPage;
+			tPage = currentPage.getPage(sdbio, currentChild);
 		}
-		return (false);
 	}
 
 	/** 
@@ -1093,14 +1078,22 @@ public final class BTreeMain {
 	 * set keyPageStack[stackDepth] to currentPage
 	 * set indexStack[stackDepth] to currentIndex
 	 * Sets stackDepth up by 1
+	 * @param  
 	 * @return true if stackDepth not at MAXSTACK, false otherwise
 	 */
-	private boolean push() {
-		if (stackDepth == MAXSTACK)
-			return (false);
-		keyPageStack[stackDepth] = currentPage;
-		indexStack[stackDepth++] = currentIndex;
-		return (true);
+	private void push() {
+		//if (stackDepth == MAXSTACK)
+		//	throw new RuntimeException("Maximum retrieval stack depth exceeded at "+stackDepth);
+		if( currentPage == null )
+			throw new RuntimeException("BTreeMain.push cant push a null page to stack");
+		//keyPageStack[stackDepth] = currentPage;
+		//childStack[stackDepth] = currentChild;
+		//indexStack[stackDepth++] = currentIndex;
+		stack.push(new TraversalStackElement(currentPage, currentIndex, currentChild));
+		//if( DEBUG ) {
+			System.out.print("BTreeMain.Push:");
+			printStack();
+		//}
 	}
 
 	/** 
@@ -1112,21 +1105,39 @@ public final class BTreeMain {
 	 * 
 	 */
 	private boolean pop() {
-		if (stackDepth == 0)
+		//if (stackDepth == 0)
+		if( stack.isEmpty() )
 			return (false);
-		stackDepth--;
-		currentPage = keyPageStack[stackDepth];
-		currentIndex = indexStack[stackDepth];
+		//stackDepth--;
+		//currentPage = keyPageStack[stackDepth];
+		//currentIndex = indexStack[stackDepth];
+		//currentChild = childStack[stackDepth];
+		TraversalStackElement tse = stack.pop();
+		currentPage = tse.keyPage;
+		currentIndex = tse.index;
+		currentChild = tse.child;
+		//if( DEBUG ) {
+			System.out.print("BTreeMain.Pop:");
+			printStack();
+		//}
 		return (true);
 	}
 
+	private void printStack() {
+		System.out.println("Stack Depth:"+stack.size());
+		//for(int i = 0; i < stack.size(); i++) {
+		//	TraversalStackElement tse = stack.get(i);
+		//	System.out.println("index:"+i+" "+GlobalDBIO.valueOf(tse.keyPage.pageId)+" "+tse.index+" "+tse.child);
+		//}
+	}
 	/**
 	* Internal routine to clear references on stack
 	*/
 	private void clearStack() {
-		for (int i = 0; i < MAXSTACK; i++)
-			keyPageStack[i] = null;
-		stackDepth = 0;
+		//for (int i = 0; i < MAXSTACK; i++)
+		//	keyPageStack[i] = null;
+		//stackDepth = 0;
+		stack.clear();
 	}
 
 	public Object getCurrentObject() {
@@ -1172,17 +1183,22 @@ public final class BTreeMain {
     void printBTree(BTreeKeyPage node) throws IOException {
             if (node != null) {
                     if (node.mIsLeafNode) {
+                    	System.out.print("Leaf node:");
                             for (int i = 0; i < node.numKeys; i++) {
-                                    System.out.print(node.keyArray[i] + ", ");
+                                    System.out.print("INDEX:"+i+" node:"+node.keyArray[i] + ", ");
                             }
+                            System.out.println("\n");
                     } else {
+                    	System.out.print("NonLeaf node:");
                             int i;
                             for (i = 0; i < node.numKeys; i++) {
-                                    printBTree(node.getPage(sdbio,i));
-                                    System.out.print( node.keyArray[i] + ", ");
+                            	BTreeKeyPage btk = node.getPage(sdbio,i);
+                                printBTree(btk);
+                                System.out.print("INDEX:"+i+" node:"+ node.keyArray[i] + ", ");
                             }
-                            System.out.println();
+                            // get last far right node
                             printBTree(node.getPage(sdbio,i));
+                            System.out.println("\n");
                     }                       
             }
     }
@@ -1216,103 +1232,7 @@ public final class BTreeMain {
             }
             return array;
     }
-    /**
-	* Add key object to tree. If we locate it return that position, else write it
-	* @param newKey The new key to add
-	* @return 0 if ok, <> 0 if error
-	* @exception IOException If write fails 
-	*/
-	@SuppressWarnings("rawtypes")
-	public synchronized int addx(Comparable newKey) throws IOException {
-		int i, j, k;
-		Comparable saveKey = null;
-		//Object saveObject = null;
-		BTreeKeyPage savePagePointer = null;
-		BTreeKeyPage leftPagePtr = null;
-		BTreeKeyPage rightPagePtr = null;
-
-		// If tree is empty, make a root
-		//if (getNumKeys() == 0) {
-		//	currentPage = getRoot();
-		//	currentIndex = 0;
-		//	currentPage.insert(newKey, null, currentIndex);
-		//	++numKeys;
-		//	return 0;
-		//}
-		// Determine whether data is present
-		// we need a search call regardless to set up our target insertion point for later should we decide to do so
-		if( search(newKey).atKey ) {
-			// found it,
-			if( DEBUG ) System.out.println("--Add found key "+newKey+" in current page "+currentPage);
-			return 0;
-		}
-		if( DEBUG ) {
-			System.out.println("Adding key "+newKey);
-		}
-		do {
-			// About to insert key. See if the page is going to overflow
-			// If the current index is at end, dont insert, proceed to split
-			if ((i = currentPage.numKeys) == BTreeKeyPage.MAXKEYS) {
-				if( DEBUG )
-					System.out.println("MAX KEYS REACHED for:"+currentPage);
-				// Save rightmost key/data/pointer
-				--i;
-				if (currentIndex == BTreeKeyPage.MAXKEYS) {
-					saveKey = newKey;
-					//saveObject = null;
-					savePagePointer = rightPagePtr;
-				} else {
-					saveKey = currentPage.keyArray[i];
-					//saveObject = currentPage.getDataFromArray(getIO(), i);
-					savePagePointer = currentPage.getPage(sdbio, i + 1);
-					//currentIndex = currentPage.insert(newKey, null, currentIndex, false);
-					currentPage.putPageToArray(leftPagePtr, currentIndex);
-					currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
-				}
-
-				// Split has occurred. Pull the middle key out
-				i = T;
-				newKey = currentPage.keyArray[i];
-				currentPage.putKeyToArray(null, i);
-				//newObject = currentPage.getDataFromArray(getIO(), i);
-				currentPage.putDataToArray(null, i);
-				leftPagePtr = currentPage;
-				// Create new page for the right half of the old page and move right half in
-				rightPagePtr = BTreeKeyPage.getPageFromPool(sdbio);
-				rightPagePtr.mIsLeafNode = currentPage.mIsLeafNode;
-				// move the right half of the old key into new node, the new right
-				k = 0;
-				for (j = i + 1; j < BTreeKeyPage.MAXKEYS; j++) {
-					moveKeyData(currentPage, j, rightPagePtr, k, true);
-					// if not leaf move child nodes
-					if( !currentPage.mIsLeafNode) {
-						moveChildData(currentPage, j, rightPagePtr, k, true);
-					}
-					++k;
-				}
-				rightPagePtr.putPageToArray(currentPage.getPage(getIO(), BTreeKeyPage.MAXKEYS),k);
-				rightPagePtr.keyArray[k] = saveKey;
-				rightPagePtr.putDataToArray(null, k);
-				rightPagePtr.putPageToArray(savePagePointer, k + 1);
-				rightPagePtr.numKeys = BTreeKeyPage.MAXKEYS - i;
-
-				leftPagePtr.numKeys = i;
-				leftPagePtr.setUpdated(true);
-				leftPagePtr.putPage(sdbio);
-				rightPagePtr.putPage(sdbio);
-			} else {
-				// Insert key/object at current location
-				//currentIndex = currentPage.insert(newKey, null, currentIndex, false);
-				currentPage.putPageToArray(leftPagePtr, currentIndex);
-				currentPage.putPageToArray(rightPagePtr, currentIndex + 1);
-				currentPage.putPage(sdbio);
-				return 0;
-			}
-			// Try to pop. If we can't pop, make a new root
-		} while (pop());
-		splitNodeBalance(getRoot());
-		return 0;
-	}
+  
 
 
 }
