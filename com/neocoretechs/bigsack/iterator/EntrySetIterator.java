@@ -66,6 +66,7 @@ public class EntrySetIterator extends AbstractIterator {
 				} else {
 					nextElem = null;
 					nextKey = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return retElem;

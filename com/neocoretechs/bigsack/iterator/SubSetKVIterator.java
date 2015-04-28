@@ -4,6 +4,7 @@ import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
 import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -42,11 +43,12 @@ public class SubSetKVIterator extends AbstractIterator {
 		this.fromKey = fromKey;
 		this.toKey = toKey;
 		synchronized (bTree) {
-			bTree.seekKey(fromKey);
-			nextKey = bTree.getCurrentKey();
-			nextElem = bTree.getCurrentObject();
+			TreeSearchResult tsr = bTree.seekKey(fromKey);
+			nextKey = tsr.page.keyArray[tsr.insertPoint];
+			nextElem = tsr.page.getDataFromArray(bTree.getIO(), tsr.insertPoint);
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
+					bTree.clearStack();
 			}
 			bTree.getIO().deallocOutstanding();
 		}
@@ -63,7 +65,7 @@ public class SubSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in SubSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if ( !bTree.seekKey(nextKey) )
+				if ( !bTree.seekKey(nextKey).atKey )
 					throw new ConcurrentModificationException("Next SubSetKVIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
@@ -71,10 +73,12 @@ public class SubSetKVIterator extends AbstractIterator {
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextKey = null;
 						nextElem = null; //exclusive
+						bTree.clearStack();
 					}
 				} else {
 					nextKey = null;
 					nextElem = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);

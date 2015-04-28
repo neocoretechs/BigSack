@@ -66,6 +66,7 @@ public class TailSetKVIterator extends AbstractIterator {
 				} else {
 					nextKey = null;
 					nextElem = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);

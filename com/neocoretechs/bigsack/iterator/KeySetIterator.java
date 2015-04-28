@@ -54,12 +54,13 @@ public class KeySetIterator extends AbstractIterator  {
 					throw new NoSuchElementException("No next element in EntrySetIterator");
 				// save for return
 				retKey = nextKey;
-				if ( !bTree.seekKey(nextKey) )
+				if ( !bTree.seekKey(nextKey).atKey )
 					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid");
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
 				} else {
 					nextKey = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return retKey;

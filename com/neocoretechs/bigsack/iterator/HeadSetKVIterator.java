@@ -47,6 +47,7 @@ public class HeadSetKVIterator extends AbstractIterator {
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
 				nextElem = null; //exclusive
 				nextKey = null;
+				bTree.clearStack();
 			}
 			bTree.getIO().deallocOutstanding();
 		}
@@ -71,10 +72,12 @@ public class HeadSetKVIterator extends AbstractIterator {
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextElem = null; //exclusive
 						nextKey = null;
+						bTree.clearStack();
 					}
 				} else {
 					nextElem = null;
 					nextKey = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey, retElem);

@@ -71,7 +71,7 @@ public final class BTreeKeyPage implements Serializable {
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")
 	// The array of keys, non transient.
-	Comparable[] keyArray;
+	public Comparable[] keyArray;
 	// The array of pages corresponding to the pageIds for the child nodes. Transient since we lazily retrieve pages via pageIds
 	transient BTreeKeyPage[] pageArray;
 	// The array of page ids from which the page array is filled. This data is persisted as virtual page pointers. Since
@@ -402,7 +402,7 @@ public final class BTreeKeyPage implements Serializable {
 	 * @return dataArray[index] filled with deep store object
 	 * @throws IOException
 	 */
-	synchronized Object getDataFromArray(ObjectDBIO sdbio, int index) throws IOException {
+	public synchronized Object getDataFromArray(ObjectDBIO sdbio, int index) throws IOException {
 		if (dataArray[index] == null && dataIdArray[index] != null && !dataIdArray[index].isEmptyPointer() ) {
 			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
 			dataUpdatedArray[index] = false;

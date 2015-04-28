@@ -4,6 +4,7 @@ import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
 import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -43,17 +44,35 @@ public class SubSetIterator extends AbstractIterator {
 		if( DEBUG )
 			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
 		synchronized (bTree) {
-			bTree.seekKey(fromKey);
+			TreeSearchResult tsr = bTree.seekKey(fromKey);
+			bTree.setCurrent(tsr);
 			nextKey = bTree.getCurrentKey();
+			if( DEBUG )
+				System.out.println("SubSetIterator.init nextKey:"+nextKey);
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
-					nextKey = null; //exclusive
+			//if (nextKey == null || toKey.compareTo(nextKey) < 0 || fromKey.compareTo(nextKey) > 0) {
+				if( DEBUG ) {
+					if( nextKey != null)
+						System.out.println("SubSetIterator init nextKey non-null toKey:"+nextKey.compareTo(toKey)+" fromKey:"+nextKey.compareTo(fromKey));
+					else
+						System.out.println("SubSetIterator init nextKey null toKey:"+toKey+" fromKey:"+fromKey);
+				}
+				nextKey = null; //exclusive
+				bTree.clearStack();	
 			}
 			bTree.getIO().deallocOutstanding();
 		}
 	}
+	/**
+	 * Standard iterator hasNext method. Checks nextKey for null and returns boolean result.
+	 */
 	public boolean hasNext() {
 		return (nextKey != null);
 	}
+	/**
+	 * Standard Iterator next method. To make it resistant to deletes and insertions, we re-traverse
+	 * the key on each iteration. A somewhat inefficient yet failsafe approach.
+	 */
 	@SuppressWarnings("unchecked")
 	public Object next() {
 		try {
@@ -62,15 +81,22 @@ public class SubSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetIterator");
 				retKey = nextKey;
-				if (!bTree.seekKey(nextKey))
+				TreeSearchResult tsr = bTree.seekKey(nextKey);
+				if (!tsr.atKey)
 					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid");
+				bTree.setCurrent(tsr);
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
+					if ( DEBUG )
+						System.out.println("SubSetIterator.next nextKey returned:"+nextKey);
 					if (nextKey.compareTo(toKey) >= 0) {
+					//if (toKey.compareTo(nextKey) < 0) {
 						nextKey = null;
+						bTree.clearStack();
 					}
 				} else {
 					nextKey = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return retKey;

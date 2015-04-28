@@ -63,6 +63,7 @@ public class TailSetIterator extends AbstractIterator {
 					nextKey = bTree.getCurrentKey();
 				} else {
 					nextKey = null;
+					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
 				return retKey;
