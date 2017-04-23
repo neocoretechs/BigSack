@@ -198,7 +198,7 @@ public class TCPWorker extends IOWorker implements DistributedWorkerResponseInte
 				ObjectInputStream ois = new ObjectInputStream(ins);
 				CompletionLatchInterface iori = (CompletionLatchInterface)ois.readObject();
 				if( DEBUG ) {
-					System.out.println("TCPWorker FROM REMOTE on port:"+SLAVEPORT+" "+iori);
+					System.out.println("TCPWorker Queuing request "+iori+" on port "+SLAVEPORT);
 				}
 				// Hook the request up to a real IoWorker
 				iori.setIoInterface(this);

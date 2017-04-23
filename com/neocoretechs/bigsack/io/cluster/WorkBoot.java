@@ -13,10 +13,10 @@ import com.neocoretechs.bigsack.io.IOWorker;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.cluster.mpi.MPIWorker;
 /**
- * Get an UDP address down, at the master we coordinate the assignment of UDP addresses
+ * Get an address down, at the master we coordinate the assignment of addresses
  * for each tablespace and node. It comes to this known address via TCP packet of serialized
  * command.  Also sent down are the tablespace and database to operate on
- * for the UDP worker we are spinning.  We may also spin a TCP worker or an MPI worker depending
+ * for the worker we are spinning.  We may spin a local worker, a UDP worker,a TCP worker or an MPI worker depending
  * on passed packet at spin up time.
  * @author jg
  *

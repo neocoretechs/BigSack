@@ -2,6 +2,8 @@ package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.TreeSet;
+
+import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -81,6 +83,28 @@ public class BufferedTreeSet {
 				session.put(tvalue);
 				session.Commit();
 				table.add(tvalue);
+		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
+		return session.locate(tvalue);
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public synchronized void add(TreeSearchResult tsr, Comparable tvalue) throws IOException {
+		synchronized (session.getMutexObject()) {
+			if (table.size() >= objectCacheSize) {
+				// throw one out
+				Iterator<Comparable<?>> et = table.iterator();
+				//Object remo = 
+				et.next();
+				et.remove();
+			}
+			// now put new
+			session.put(tsr, tvalue, null);
+			session.Commit();
+			table.add(tvalue);
 		}
 	}
 	/**

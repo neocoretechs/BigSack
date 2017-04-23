@@ -1,6 +1,8 @@
 package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
+
+import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -58,6 +60,15 @@ public class BufferedCachelessTreeSet {
 	@SuppressWarnings("rawtypes")
 	public synchronized void add(Comparable tvalue) throws IOException {
 			session.put(tvalue);
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
+		return session.locate(tvalue);
+	}
+	@SuppressWarnings("rawtypes")
+	public synchronized void add(TreeSearchResult tsr, Comparable tvalue) throws IOException {
+		session.put(tsr, tvalue, null);
 	}
 	/**
 	* Returns true if key is in collection

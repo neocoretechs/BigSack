@@ -30,7 +30,7 @@ public final class BlockStream {
 	public BlockStream(int tablespace, MappedBlockBuffer blockBuffer) throws IOException {
 		this.blockIO = blockBuffer;
 		this.tablespace = tablespace;
-		lbai = null;//new BlockAccessIndex(true);
+		lbai = new BlockAccessIndex(true);
 	}
 	public synchronized BlockAccessIndex getLbai() {
 		return lbai;

@@ -45,7 +45,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * If a node becomes full, a split operation is performed during the insert operation.
  * The split operation transforms a full node with 2*T-1 elements into two nodes with T-1 elements each
  * and moves the median key of the two nodes into its parent node.
- * The elements left of the median (middle) element of the splitted node remain in the original node.
+ * The elements left of the median (middle) element of the split node remain in the original node.
  * The new node becomes the child node immediately to the right of the median element that was moved to the parent node.
  * 
  * Example (T = 4):
@@ -226,14 +226,13 @@ public final class BTreeKeyPage implements Serializable {
 		if(DEBUG) {
 			System.out.println("BTreeKeyPage.getPage Entering BTreeKeyPage to retrieve target index "+index);
 			for(int i = 0; i < pageIdArray.length; i++) {
-				System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
-				System.out.println(pageArray[i]);
+				System.out.println("BTreeKeyPage.getPage initial index "+i+"="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
 			}
 		}
 		if (pageArray[index] == null && pageIdArray[index] != -1L) {
 			// eligible to retrieve page
 			if( DEBUG ) {
-				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index]));
+				System.out.println("BTreeKeyPage.getPage about to retrieve index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index]));
 			}
 			pageArray[index] =
 				(BTreeKeyPage) (sdbio.deserializeObject(pageIdArray[index]));
@@ -241,7 +240,7 @@ public final class BTreeKeyPage implements Serializable {
 			pageArray[index].initTransients();
 			pageArray[index].pageId = pageIdArray[index];
 			if( DEBUG ) {
-				System.out.println("BTreeKeyPage.getPage index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" target page ID:"+GlobalDBIO.valueOf(pageArray[index].pageId));
+				System.out.println("BTreeKeyPage.getPage retrieved index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" page:"+pageArray[index]);
 				for(int i = 0; i < pageIdArray.length; i++)System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
 			}
 		}
@@ -329,7 +328,6 @@ public final class BTreeKeyPage implements Serializable {
 		for (int i = 0; i < numKeys; i++) {
 			// put the data item
 			if (dataUpdatedArray[i]) {
-				dataUpdatedArray[i] = false;
 				// if it gets nulled, should probably delete
 				if (dataArray[i] != null) {
 					// pack the page into this tablespace and within blocks at the last known good position
@@ -337,9 +335,8 @@ public final class BTreeKeyPage implements Serializable {
 					pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
 					//System.out.println("ADDING DATA TO INSTANCE:"+dataArray[i]);
 					sdbio.add_object(dataIdArray[i], pb, pb.length);
-					// set new node position to the current block to pack pages
-					//sdbio.setNewNodePosition();
 				}
+				dataUpdatedArray[i] = false;
 			}
 		}
 		if( DEBUG ) 
@@ -466,7 +463,7 @@ public final class BTreeKeyPage implements Serializable {
 			//	sb.append(pageArray[i]+"\r\n");
 				if(pageArray[i] != null) ++j;
 			}
-			sb.append("Page Array Non null for "+j+" members");
+			sb.append("Page Array Non null for "+j+" members\r\n");
 		}
 		sb.append("BTree Page IDs:\r\n");
 		if( pageIdArray == null ) {
@@ -480,7 +477,7 @@ public final class BTreeKeyPage implements Serializable {
 				sb.append("\r\n");
 			}
 		}
-		/*
+		
 		sb.append("Data Array:\r\n");
 		if(dataArray==null) {
 			sb.append(" DATA ARRAY NULL\r\n");
@@ -503,7 +500,7 @@ public final class BTreeKeyPage implements Serializable {
 				sb.append("\r\n");
 			}
 		}
-		*/
+		
 		sb.append(GlobalDBIO.valueOf(pageId));
 		sb.append(" >>>>>>>>>>>>>>End ");
 		sb.append("\r\n");

@@ -62,9 +62,9 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff Copyright (C) NeoCoreTechs 2015
 */
 public final class BTreeMain {
-	private static boolean DEBUG = false; // General debug
+	private static boolean DEBUG = false; // General debug, overrides other levels
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of BTreeKeyPage
-	private static boolean DEBUGSEARCH = true; // traversal debug
+	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean TEST = false; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = false; // flag to determine whether value data is overwritten for a key or its ignored
@@ -197,6 +197,7 @@ public final class BTreeMain {
 	 * Add an object and/or key to the deep store. Traverse the BTree for the insertion point and insert. Map operation.
 	 * @param key
 	 * @param object
+	 * @return 0 for key absent, 1 for key exists
 	 * @throws IOException
 	 */
 	public int add(Comparable key, Object object) throws IOException {
@@ -214,7 +215,37 @@ public final class BTreeMain {
                 } 
                 insertIntoNode(targetNode, key, object); // Insert the key into the B-Tree with root rootNode.
         }
-        return 0;
+        return (usr.atKey ? 1 : 0);
+	}
+	/**
+	 * Add an object and/or key to the deep store. BTree has been traversed via 'locate' and some
+	 * user operation has been performed to check a partial key perhaps. The TreeSearchResult holds the key
+	 * @param usr The traversed BTree key page
+	 * @param key
+	 * @param object
+	 * @return 0 for key absent, 1 for key exists
+	 * @throws IOException
+	 */
+	public int add(TreeSearchResult usr, Comparable key, Object object) throws IOException {
+        if( usr.atKey ){
+        	if(object != null && OVERWRITE) {
+        		usr.page.deleteData(sdbio, usr.insertPoint);
+        		usr.page.putDataToArray(object,usr.insertPoint);
+        	}
+    	} else {
+    	    BTreeKeyPage rootNode = getRoot();
+        	BTreeKeyPage targetNode = usr.page;
+            if (rootNode.numKeys == (2 * T - 1)) {
+                splitNodeBalance(rootNode);
+                // re position insertion point after split
+                if( DEBUG )
+                    System.out.println("BTreeMain.add calling reposition after splitRootNode for key:"+key+" node:"+rootNode);
+                TreeSearchResult repos = reposition(rootNode, key);
+                targetNode = repos.page;
+            } 
+            insertIntoNode(targetNode, key, object); // Insert the key into the B-Tree with root rootNode.
+        }
+        return (usr.atKey ? 1 : 0);
 	}
 	/**
 	 * Traverse the tree and insert object for key if we find the key.
@@ -240,11 +271,13 @@ public final class BTreeMain {
             			sourcePage.deleteData(sdbio, i);
                         sourcePage.putDataToArray(object,i);
                 	}
+                	/*
                 	if( DEBUG && object != null && OVERWRITE)
                 		System.out.println("BTreeMain.update set to return index :"+i+" AFTER UPDATE for "+sourcePage);
                 	else
                 		if( DEBUG && object != null)
                 			System.out.println("BTreeMain.update set to return index :"+i+" sans update for "+sourcePage);
+                	*/
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
                 if (sourcePage.mIsLeafNode) {
@@ -263,6 +296,22 @@ public final class BTreeMain {
     		System.out.println("BTreeMain.update set to return index :"+i+" on fallthrough for "+sourcePage);
         return new TreeSearchResult(sourcePage, i, false);
     }
+    
+    /**
+     * Sets up the return BTreeKeyPage similar to 'reposition' but this public method initializes root node etc.
+     * The purpose is to provide a detached locate method to do intermediate key checks before insert, then use
+     * 'add' with the BTreeKeyPage in the TreeSearchResult returned from this method.
+     * If the TreeSearchResult.insertPoint is > 0 then insertPoint - 1 points to the key that immediately
+     * precedes the target key.
+     * @param node
+     * @param key
+     * @return
+     * @throws IOException
+     */
+    public TreeSearchResult locate(Comparable key) throws IOException {
+        BTreeKeyPage rootNode = getRoot();
+        return reposition(rootNode, key);
+    }
 	/**
 	 * Same as update without the actual updating.
 	 * Traverse the tree for the given key.
@@ -275,7 +324,7 @@ public final class BTreeMain {
 	 * @return The index of the insertion point if < 0 else if >= 0 the found index point
 	 * @throws IOException
 	 */
-    private TreeSearchResult reposition(BTreeKeyPage node, Comparable key) throws IOException {
+    TreeSearchResult reposition(BTreeKeyPage node, Comparable key) throws IOException {
     	int i = 0;
     	BTreeKeyPage sourcePage = node;
         while (sourcePage != null) {
@@ -548,8 +597,7 @@ public final class BTreeMain {
             parentNode.keyArray[keyIndex] = node.keyArray[T - 1];
             parentNode.dataArray[keyIndex] = node.dataArray[T - 1];
             parentNode.dataIdArray[keyIndex] = node.dataIdArray[T - 1];
-            // the data has not been updated, it does not need rewritten, the pointer has just traveled and is written with key
-            parentNode.dataUpdatedArray[keyIndex] = false;
+            parentNode.dataUpdatedArray[keyIndex] = node.dataUpdatedArray[T - 1];
             // zero the old node mid key, its moved
             node.keyArray[T - 1] = null;
             node.dataArray[T - 1] = null;

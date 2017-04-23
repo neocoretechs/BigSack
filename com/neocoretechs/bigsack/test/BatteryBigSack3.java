@@ -40,15 +40,15 @@ public class BatteryBigSack3 {
 		TransactionalTreeSet session = new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
-		//battery1A(session, argv);
-		//battery1B(session, argv);
-		//battery1D(session, argv);
-		//battery1E(session, argv);
-		//battery1F(session, argv);
-		//battery2(session, argv);
-		//battery3(session.getSession(), argv);
-		//battery4(session, argv);
-		//battery5(session, argv);
+		session.commit();
+		battery1A(session, argv);
+		battery1B(session, argv);
+		battery1D(session, argv);
+		battery1E(session, argv);
+		battery1DD(session, argv);
+		battery1EE(session, argv);
+		battery1F(session, argv);
+		battery2(session, argv);
 		//SessionManager.stopCheckpointDaemon(argv[0]);
 		session.commit();
 		System.out.println("TEST BATTERY 3 COMPLETE.");
@@ -73,7 +73,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1A(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery1A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
 			boolean o = session.contains(key + String.format(uniqKeyFmt, i));
@@ -91,7 +91,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1B(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery1B(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		String f = (String) session.first();
 		String l = (String) session.last();
@@ -129,7 +129,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1D(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery1DD(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// headset strictly less than 'to' element
 		Iterator<?> itk = session.headSet(key+(max)); // set is strictly less than 'to' element so we use max val
@@ -138,17 +138,17 @@ public class BatteryBigSack3 {
 			Object f = itk.next();
 			String nval = key + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nval) ) {
-				 System.out.println("BATTERY1D FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1D FAIL counter reached "+ctr+" not "+max);
-				throw new Exception("B1D Fail on get with "+f+" -- "+nval);
+				 System.out.println("BATTERY1DD FAIL "+f+" -- "+nval);
+				 System.out.println("BATTERY1DD FAIL counter reached "+ctr+" not "+max);
+				throw new Exception("BATTERY1DD Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
 		}
 		if( ctr != max ) {
-			 System.out.println("BATTERY1D FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1D FAIL counter reached "+ctr+" not "+max);
+			 System.out.println("BATTERY1DD FAIL counter reached "+ctr+" not "+max);
+			throw new Exception("BATTERY1DD FAIL counter reached "+ctr+" not "+max);
 		}
-		 System.out.println("BATTERY1D SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+		 System.out.println("BATTERY1DD SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * Subset returns persistent collection iterator 'from' element inclusive, 'to' element exclusive
@@ -156,7 +156,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1E(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery1EE(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// from element inclusive to element exclusive
 		// notice how we use base key to set lower bound as the partial unformed key is least possible value
@@ -166,17 +166,17 @@ public class BatteryBigSack3 {
 			Object f = itk.next();
 			String nval = key + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nval) ) {
-				 System.out.println("BATTERY1E FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1E FAIL counter reached "+ctr+" not "+max);
-				throw new Exception("B1E Fail on get with "+f+" -- "+nval);
+				 System.out.println("BATTERY1EE FAIL "+f+" -- "+nval);
+				 System.out.println("BATTERY1EE FAIL counter reached "+ctr+" not "+max);
+				throw new Exception("BATTERY1EE Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
 		}
 		if( ctr != max ) {
-			 System.out.println("BATTERY1E FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1E FAIL counter reached "+ctr+" not "+max);
+			 System.out.println("BATTERY1EE FAIL counter reached "+ctr+" not "+max);
+			throw new Exception("BATTERY1EE FAIL counter reached "+ctr+" not "+max);
 		}
-		 System.out.println("BATTERY1E SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+		 System.out.println("BATTERY1EE SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * Tailset returns persistent collection iterator greater or equal to 'from' element
@@ -185,7 +185,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1F(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery1F(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// subset strictly less than 'to' element
 		Iterator<?> itk = session.tailSet(key); // >= from, so try partial bare key here
@@ -196,13 +196,13 @@ public class BatteryBigSack3 {
 			if( !f.equals(nval) ) {
 				 System.out.println("BATTERY1F FAIL "+f+" -- "+nval);
 				 System.out.println("BATTERY1F FAIL counter reached "+ctr+" not "+max);
-				throw new Exception("B1F Fail on get with "+f+" -- "+nval);
+				throw new Exception("BATTERY1F Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
 		}
 		if( ctr != max ) {
 			 System.out.println("BATTERY1F FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1F FAIL counter reached "+ctr+" not "+max);
+			throw new Exception("BATTERY1F FAIL counter reached "+ctr+" not "+max);
 		}
 		 System.out.println("BATTERY1F SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -212,7 +212,7 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery2(BufferedTreeSet session, String[] argv) throws Exception {
+	public static void battery2(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int item = 0; item < numDelete; item++) {
 			String nkey = key + String.format(uniqKeyFmt, item);
@@ -232,30 +232,20 @@ public class BatteryBigSack3 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery2A(BigSackSession session, String[] argv) throws Exception {
+	public static void battery2A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = 0; i < numDelete; i++) {
 			int item = min + (int)(Math.random() * ((max - min) + 1));
 			String nkey = key + String.format(uniqKeyFmt, item);
-			 System.out.println("Remo: "+nkey);
+			System.out.println("Remo: "+nkey);
 			session.remove(nkey);
-			Object o = session.get(nkey);
-			if( o != null ) {
-				 System.out.println("BATTERY2 FAIL, found "+o+" after delete on iteration "+i+" for target "+nkey);
-				throw new Exception("BATTERY2 FAIL, found "+o+" after delete on iteration "+i+" for target "+nkey);
+			if( session.contains(nkey) ) {
+				 System.out.println("BATTERY2 FAIL, found "+nkey+" after delete on iteration "+i+" for target "+nkey);
+				throw new Exception("BATTERY2 FAIL, found "+nkey+" after delete on iteration "+i+" for target "+nkey);
 			}
 		}
 		 System.out.println("BATTERY2 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
-	public static void battery3(BigSackSession session, String[] argv) throws Exception {
-		String key = "Lets try this3";
-		session.put(key);
-		session.Rollback();
-		Object o = session.get(key);
-		if( o == null )
-			 System.out.println("BATTERY3 SUCCESS ");
-		else
-			 System.out.println("BATTERY3 FAIL "+o+" "+o.getClass().getName());
-	}
+	
 
 }

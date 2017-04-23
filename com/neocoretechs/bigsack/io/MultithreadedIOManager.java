@@ -44,6 +44,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
  */
 public class MultithreadedIOManager implements IoManagerInterface {
 	private static final boolean DEBUG = false;
+	private static final boolean DEBUG2 = false;
 	private static final boolean DEBUGWRITE = false; // view blocks written to log and store
 	public ObjectDBIO globalIO;
 	// barrier synch for specific functions, cyclic (reusable)
@@ -147,6 +148,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @exception IOException If we cannot get block for new node
 	*/
 	public synchronized Optr getNewNodePosition(int tblsp) throws IOException {
+		if( DEBUG2 )
+			System.out.println("MultithreadedIOManager.getNewNodePosition "+tblsp+" "+lbai[tblsp]);
 		return blockBuffer[tblsp].getNewNodePosition(lbai[tblsp].getLbai());
 	}
 	public synchronized void setNewNodePosition(long newPos) {

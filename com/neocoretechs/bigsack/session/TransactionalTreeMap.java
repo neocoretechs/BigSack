@@ -2,6 +2,8 @@ package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.TreeMap;
+
+import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -76,9 +78,30 @@ public class TransactionalTreeMap {
 				}
 				// now put new
 				session.put(tkey, tvalue);
-				//session.Commit();
+				// commit later
 				table.put(tkey, tvalue);
 		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
+		return session.locate(tvalue);
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public synchronized void add(TreeSearchResult tsr, Comparable tkey, Object tvalue) throws IOException {
+		synchronized (session.getMutexObject()) {
+			if (table.size() >= objectCacheSize) {
+				// throw one out
+				Iterator et = table.keySet().iterator();
+				//Object remo = 
+				et.next();
+				et.remove();
+			}
+			// now put new
+			session.put(tsr, tkey, tvalue);
+			table.put(tkey, tvalue);
+		}	
 	}
 	/**
 	* Get a value from backing store if not in cache.

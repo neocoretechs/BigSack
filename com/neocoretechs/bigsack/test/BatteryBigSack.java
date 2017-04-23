@@ -6,13 +6,17 @@ import com.neocoretechs.bigsack.iterator.KeyValuePair;
 import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.SessionManager;
 /**
+ * Session level testing. A map and a set are only distinguished by the value part of key/value being null
+ * at the session level.
+ * Set the database name as the first argument "C:/users/you/Relatrix/TestDB1" 
+ * Set the name of the properties file in the VM -DBigSack.properties="c:/users/you/Relatrix/BigSack.properties"
  * Yes, this should be a nice JUnit fixture someday
  * The static constant fields in the class control the key generation for the tests
  * In general, the keys and values are formatted according to uniqKeyFmt to produce
  * a series of canonically correct sort order strings for the DB in the range of min to max vals
  * In general most of the battery1 testing relies on checking order against expected values hence the importance of
  * canonical ordering in the sample strings.
- * Of course, you can substitute any class for the Strings here providing its Comparable 
+ * Of course, you can substitute any class for the Strings here providing it implements Comparable 
  * @author jg
  *
  */
@@ -32,20 +36,20 @@ public class BatteryBigSack {
 			System.exit(1);
 		}
 		BigSackSession session = SessionManager.Connect(argv[0], null, true);
-		 System.out.println("Analysis of all");
-		session.analyze(false); // true for more and more stuff
-		battery1(session, argv);
+		// System.out.println("Analysis of all");
+		//session.analyze(false); // true for more and more stuff
+		//battery1(session, argv);
 		battery1A(session, argv);
-		battery1B(session, argv);
-		battery1C(session, argv);
-		battery1D(session, argv);
-		battery1D1(session, argv);
-		battery1E(session, argv);
-		battery1E1(session, argv);
-		battery1F(session, argv);
-		battery1F1(session, argv);
-		battery1G(session, argv);
-		battery2(session, argv);
+		//battery1B(session, argv);
+		//battery1C(session, argv);
+		//battery1D(session, argv);
+		//battery1D1(session, argv);
+		//battery1E(session, argv);
+		//battery1E1(session, argv);
+		//battery1F(session, argv);
+		//battery1F1(session, argv);
+		//battery1G(session, argv);
+		//battery2(session, argv);
 		//battery3(session, argv);
 		//battery4(session, argv);
 		//battery5(session, argv);

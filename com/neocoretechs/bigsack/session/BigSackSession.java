@@ -4,8 +4,8 @@ import java.util.Iterator;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.btree.TreeSearchResult;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
-import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetKVIterator;
@@ -93,18 +93,29 @@ public final class BigSackSession {
 	}
 
 	@SuppressWarnings("rawtypes")
-	public void put(Comparable o) throws IOException {
-		bTree.add(o);
+	public boolean put(Comparable o) throws IOException {
+		return (bTree.add(o) == 0 ? false : true);
 	}
 
 	@SuppressWarnings("rawtypes")
-	public void put(Comparable key, Object o) throws IOException {
-		bTree.add(key, o);
+	public boolean put(Comparable key, Object o) throws IOException {
+		return (bTree.add(key, o) == 0 ? false : true);
 	}
 
 	@SuppressWarnings("rawtypes")
 	public Object get(Comparable o) throws IOException {
 		return bTree.seekObject(o);
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public TreeSearchResult locate(Comparable key) throws IOException {
+		TreeSearchResult tsr = bTree.locate(key);
+		return tsr;
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public boolean put(TreeSearchResult tsr, Comparable key, Object o) throws IOException {
+		return (bTree.add(tsr, key, o) == 0 ? false : true);	
 	}
 	/**
 	* Not a real subset, returns iterator vs set.

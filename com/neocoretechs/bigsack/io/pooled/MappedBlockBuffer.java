@@ -38,6 +38,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex> implements Runnable {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
+	private static final boolean NEWNODEPOSITIONDEBUG = false;
 	private boolean shouldRun = true;
 	private ConcurrentArrayList<BlockAccessIndex> freeBL; // free block list
 	private ObjectDBIO globalIO;
@@ -269,16 +270,17 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	* @exception IOException If we cannot get block for new node
 	*/
 	public Optr getNewNodePosition(BlockAccessIndex lbai) throws IOException {
-		if (lbai.getBlockNum() == -1L) {
-			stealblk(lbai);
-		} else {
-			//BlockAccessIndex tlbai = findOrAddBlock(lbai.getBlockNum());
-			//newNodePosBlk = tlbai.getBlockNum();
-			// ok, 5 bytes is rather arbitrary but seems a waste to start a big ole object so close to the end of a block
-			if (lbai.getBlk().getBytesused()+5 >= DBPhysicalConstants.DATASIZE)
-				stealblk(lbai);
+		long blockNum = lbai.getBlockNum();
+		short bytesUsed = lbai.getBlk().getBytesused();
+		// ok, 5 bytes is rather arbitrary but seems a waste to start a big ole object so close to the end of a block
+		if (blockNum == -1L || lbai.getBlk().getBytesused()+5 >= DBPhysicalConstants.DATASIZE) {
+			BlockAccessIndex tbai = stealblk(lbai);
+			blockNum = tbai.getBlockNum();
+			bytesUsed = tbai.getBlk().getBytesused();
 		}
-		return new Optr(lbai.getBlockNum(), lbai.getBlk().getBytesused());
+		if( NEWNODEPOSITIONDEBUG )
+			System.out.println("MappedBlockBuffer.getNewNodePosition "+blockNum+" "+bytesUsed);
+		return new Optr(blockNum, bytesUsed);
 	}
 	/**
 	* Attempt to free pool blocks by the following:
@@ -306,10 +308,11 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 			BlockAccessIndex[] found = new BlockAccessIndex[minBufferSize];// our candidates
 			while (elbn.hasMoreElements()) {
 				BlockAccessIndex ebaii = (elbn.nextElement());
-				if( DEBUG )
+				if( DEBUG ) {
 					System.out.println("MappedBlockBuffer.checkBufferFlush Block buffer "+ebaii);
-				if( ebaii.getAccesses() > 1 )
-					System.out.println("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
+					if( ebaii.getAccesses() > 1 )
+						System.out.println("****COMMIT BUFFER access "+ebaii.getAccesses()+" for buffer "+ebaii);
+				}
 				assert(!(ebaii.getBlk().isIncore() && ebaii.getBlk().isInlog())) : "****COMMIT BUFFER block in core and log simultaneously! "+ebaii;
 				if (Lbn != ebaii.getBlockNum() && ebaii.getAccesses() <= 1) {
 					if(ebaii.getBlk().isIncore()) {
@@ -325,7 +328,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 						break;
 					}
 				} else {
-					if( ebaii.getAccesses() > 1 ) System.out.println("FLUSH:"+ebaii);
+					if( DEBUG )
+						if( ebaii.getAccesses() > 1 ) System.out.println("FLUSH:"+ebaii);
 					++latched;
 				}
 			}
@@ -358,9 +362,11 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 					}
 				}
 				if( numGot == 0 ) {
-					Enumeration elems = this.elements();
-					while(elems.hasMoreElements())
-						System.out.println(elems.nextElement());
+					if( DEBUG ) {
+						Enumeration elems = this.elements();
+						while(elems.hasMoreElements())
+							System.out.println(elems.nextElement());
+					}
 					throw new IOException("Unable to free up blocks in buffer pool with "+latched+" singley and "+latched2+" MULTIPLY latched.");
 				}
 			}
@@ -731,7 +737,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		int runcount = osize;
 		if (osize <= 0)
 			throw new IOException("Attempt to delete object with size invalid: " + osize);
-		long nextblk; //running count of object size,next
+
 		for (;;) {
 			// bytesused is high water mark, bytesinuse is # bytes occupied by data
 			// we assume contiguous data
