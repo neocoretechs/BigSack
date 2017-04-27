@@ -113,10 +113,7 @@ public final class BigSackSession {
 		return tsr;
 	}
 	
-	@SuppressWarnings("rawtypes")
-	public boolean put(TreeSearchResult tsr, Comparable key, Object o) throws IOException {
-		return (bTree.add(tsr, key, o) == 0 ? false : true);	
-	}
+
 	/**
 	* Not a real subset, returns iterator vs set.
 	* 'from' element inclusive, 'to' element exclusive

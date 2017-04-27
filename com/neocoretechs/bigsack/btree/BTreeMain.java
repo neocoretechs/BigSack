@@ -59,7 +59,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
  *                 /   \
  *     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
  *
-* @author Groff Copyright (C) NeoCoreTechs 2015
+* @author Groff Copyright (C) NeoCoreTechs 2015,2017
 */
 public final class BTreeMain {
 	private static boolean DEBUG = false; // General debug, overrides other levels
@@ -217,36 +217,7 @@ public final class BTreeMain {
         }
         return (usr.atKey ? 1 : 0);
 	}
-	/**
-	 * Add an object and/or key to the deep store. BTree has been traversed via 'locate' and some
-	 * user operation has been performed to check a partial key perhaps. The TreeSearchResult holds the key
-	 * @param usr The traversed BTree key page
-	 * @param key
-	 * @param object
-	 * @return 0 for key absent, 1 for key exists
-	 * @throws IOException
-	 */
-	public int add(TreeSearchResult usr, Comparable key, Object object) throws IOException {
-        if( usr.atKey ){
-        	if(object != null && OVERWRITE) {
-        		usr.page.deleteData(sdbio, usr.insertPoint);
-        		usr.page.putDataToArray(object,usr.insertPoint);
-        	}
-    	} else {
-    	    BTreeKeyPage rootNode = getRoot();
-        	BTreeKeyPage targetNode = usr.page;
-            if (rootNode.numKeys == (2 * T - 1)) {
-                splitNodeBalance(rootNode);
-                // re position insertion point after split
-                if( DEBUG )
-                    System.out.println("BTreeMain.add calling reposition after splitRootNode for key:"+key+" node:"+rootNode);
-                TreeSearchResult repos = reposition(rootNode, key);
-                targetNode = repos.page;
-            } 
-            insertIntoNode(targetNode, key, object); // Insert the key into the B-Tree with root rootNode.
-        }
-        return (usr.atKey ? 1 : 0);
-	}
+
 	/**
 	 * Traverse the tree and insert object for key if we find the key.
 	 * At each page descent, check the index and compare, if equal put data to array at the spot
@@ -271,13 +242,6 @@ public final class BTreeMain {
             			sourcePage.deleteData(sdbio, i);
                         sourcePage.putDataToArray(object,i);
                 	}
-                	/*
-                	if( DEBUG && object != null && OVERWRITE)
-                		System.out.println("BTreeMain.update set to return index :"+i+" AFTER UPDATE for "+sourcePage);
-                	else
-                		if( DEBUG && object != null)
-                			System.out.println("BTreeMain.update set to return index :"+i+" sans update for "+sourcePage);
-                	*/
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
                 if (sourcePage.mIsLeafNode) {
@@ -312,6 +276,7 @@ public final class BTreeMain {
         BTreeKeyPage rootNode = getRoot();
         return reposition(rootNode, key);
     }
+
 	/**
 	 * Same as update without the actual updating.
 	 * Traverse the tree for the given key.
@@ -337,10 +302,11 @@ public final class BTreeMain {
                 		System.out.println("BTreeMain.reposition set to return index :"+i+" after locating key for "+sourcePage);
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
+                // Its a leaf node and we fell through, return the index but not 'atKey'
                 if (sourcePage.mIsLeafNode) {
                 	if( DEBUG )
                 		System.out.println("BTreeMain.reposition set to return index :"+i+" for leaf "+sourcePage);
-                        return new TreeSearchResult(sourcePage, i, false);
+                	return new TreeSearchResult(sourcePage, i, false);
                 } else {
                 	BTreeKeyPage targetPage  = sourcePage.getPage(sdbio, i);// get the page at the index of the given page
                 	if( targetPage == null )

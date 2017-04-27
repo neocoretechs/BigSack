@@ -88,21 +88,6 @@ public class TransactionalTreeMap {
 		return session.locate(tvalue);
 	}
 	
-	@SuppressWarnings("rawtypes")
-	public synchronized void add(TreeSearchResult tsr, Comparable tkey, Object tvalue) throws IOException {
-		synchronized (session.getMutexObject()) {
-			if (table.size() >= objectCacheSize) {
-				// throw one out
-				Iterator et = table.keySet().iterator();
-				//Object remo = 
-				et.next();
-				et.remove();
-			}
-			// now put new
-			session.put(tsr, tkey, tvalue);
-			table.put(tkey, tvalue);
-		}	
-	}
 	/**
 	* Get a value from backing store if not in cache.
 	* We may toss out one to make room if size surpasses objectCacheSize

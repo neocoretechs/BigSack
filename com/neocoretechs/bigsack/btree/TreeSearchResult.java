@@ -28,17 +28,6 @@ public final class TreeSearchResult {
 		this(i,b);
 		page = sourcePage;
 	}
-	/**
-	 * Get the target key at the stopping point of the search. Use insertPoint-1
-	 * as the location of the last good key that the search found immediately preceding the
-	 * item searched for.
-	 * @return The Comparable key at the search location or null if insertPoint was 0
-	 */
-	public Comparable getTargetKey() {
-		if( insertPoint == 0 )
-			return null;
-		return page.keyArray[insertPoint-1];
-	}
 	
 	public String toString() {
 		return "TreeSearchResult atKey:"+atKey+" insert point:"+insertPoint+" page:"+page;

@@ -90,20 +90,6 @@ public class TransactionalTreeSet {
 		return session.locate(tvalue);
 	}
 	
-	@SuppressWarnings("rawtypes")
-	public void add(TreeSearchResult tsr, Comparable tvalue) throws IOException {
-		synchronized (session.getMutexObject()) {
-				if (objectCacheSize > 0 && table.size() >= objectCacheSize) {
-					// throw one out
-					Iterator<Comparable<?>> et = table.iterator();
-					et.next();
-					et.remove();
-					table.add(tvalue);
-				}
-				// now put new
-				session.put(tsr, tvalue, null);
-		}
-	}
 	/**
 	* Returns true if value in table
 	* @param tvalue the value to match

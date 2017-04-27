@@ -91,22 +91,6 @@ public class BufferedTreeSet {
 		return session.locate(tvalue);
 	}
 	
-	@SuppressWarnings("rawtypes")
-	public synchronized void add(TreeSearchResult tsr, Comparable tvalue) throws IOException {
-		synchronized (session.getMutexObject()) {
-			if (table.size() >= objectCacheSize) {
-				// throw one out
-				Iterator<Comparable<?>> et = table.iterator();
-				//Object remo = 
-				et.next();
-				et.remove();
-			}
-			// now put new
-			session.put(tsr, tvalue, null);
-			session.Commit();
-			table.add(tvalue);
-		}
-	}
 	/**
 	* Returns true if value in table
 	* @param tvalue the value to match

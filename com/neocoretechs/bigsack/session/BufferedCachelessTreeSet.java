@@ -66,10 +66,7 @@ public class BufferedCachelessTreeSet {
 	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
 		return session.locate(tvalue);
 	}
-	@SuppressWarnings("rawtypes")
-	public synchronized void add(TreeSearchResult tsr, Comparable tvalue) throws IOException {
-		session.put(tsr, tvalue, null);
-	}
+	
 	/**
 	* Returns true if key is in collection
 	* @param tkey The key to match
