@@ -42,6 +42,10 @@ public class TailSetIterator extends AbstractIterator {
 			bTree.rewind();
 			bTree.search(fromKey);
 			nextKey = bTree.setCurrentKey();
+			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
+				nextKey = null;
+				bTree.clearStack();
+			}
 			bTree.getIO().deallocOutstanding();
 			if( DEBUG )
 				System.out.println("Relatrix TailSetIterator.Nextkey:"+nextKey);

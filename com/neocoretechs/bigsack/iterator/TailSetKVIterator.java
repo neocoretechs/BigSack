@@ -44,6 +44,11 @@ public class TailSetKVIterator extends AbstractIterator {
 			bTree.setCurrent();
 			nextKey = bTree.getCurrentKey();
 			nextElem = bTree.getCurrentObject();
+			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
+				nextElem = null; //exclusive
+				nextKey = null;
+				bTree.clearStack();
+			}
 			bTree.getIO().deallocOutstanding();
 		}
 	}
