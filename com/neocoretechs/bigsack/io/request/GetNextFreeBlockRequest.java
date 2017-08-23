@@ -14,7 +14,7 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
  *
  */
 public final class GetNextFreeBlockRequest implements IoRequestInterface {
-	private static boolean DEBUG = false;
+	private static boolean DEBUG = true;
 	private IoInterface ioUnit;
 	Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 	private int tablespace;

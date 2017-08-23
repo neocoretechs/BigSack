@@ -49,6 +49,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 public final class RecoveryLogManager  {
 	private static boolean DEBUG = false;
 	private ObjectDBIO blockIO;
+	private IoManagerInterface ioManager;
 	private FileLogger fl = null;
 	private LogToFile ltf = null;
 	private LogInstance firstTrans = null;
@@ -64,11 +65,12 @@ public final class RecoveryLogManager  {
 	 * @throws IOException
 	 */
 	public RecoveryLogManager(ObjectDBIO tglobalio, int tablespace) throws IOException {
-		blockIO = tglobalio;
+		this.blockIO = tglobalio;
+		this.ioManager = blockIO.getIOManager();
 		this.tablespace = tablespace;
-		tblk = new BlockAccessIndex(true); // for writeLog reserved
-		ltf = new LogToFile(blockIO, tablespace);
-		fl = (FileLogger) ltf.getLogger();
+		this.tblk = new BlockAccessIndex(true); // for writeLog reserved
+		this.ltf = new LogToFile(blockIO, tablespace);
+		this.fl = (FileLogger) ltf.getLogger();
 		ltf.boot();
 	}
 	/**
@@ -83,7 +85,11 @@ public final class RecoveryLogManager  {
 		if( DEBUG )
 			System.out.println("RecoveryLogManager.stop terminated.");
 	}
-	
+	/**
+	 * Call stop on the LogTofile instance
+	 * @param tblsp
+	 * @throws IOException
+	 */
 	public synchronized void stop(int tblsp) throws IOException {
 		if( DEBUG )
 			System.out.println("RecoveryLog.stop invoked for tablespace "+tblsp);
@@ -111,7 +117,7 @@ public final class RecoveryLogManager  {
 		//	blockIO.getIOManager().getDirectIO(tablespace).Fseek(GlobalDBIO.getBlock(blk.getBlockNum()));
 		//	tblk.getBlk().read(blockIO.getIOManager().getDirectIO(tablespace));
 		//}
-		blockIO.getIOManager().readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
+		ioManager.readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		if( firstTrans == null )
 			firstTrans = fl.logAndDo(blockIO, undoBlk);
@@ -161,7 +167,7 @@ public final class RecoveryLogManager  {
 	public synchronized void rollBackCache() throws IOException {
 		if(DEBUG )
 			System.out.println("RecoveryLogManager.rollbackCache invoked");
-		blockIO.getIOManager().Fforce(); // make sure we synch our main file buffers
+		ioManager.Fforce(); // make sure we synch our main file buffers
 	}
 	
 	/**

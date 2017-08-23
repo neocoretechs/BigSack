@@ -67,7 +67,7 @@ public final class Datablock implements Externalizable {
 	* @param fobj the IoInterface
 	* @exception IOException error writing field
 	*/
-	public synchronized void  write(IoInterface fobj) throws IOException {
+	public synchronized void write(IoInterface fobj) throws IOException {
 		//synchronized(fobj) {
 			fobj.Fwrite_long(getPrevblk());
 			fobj.Fwrite_long(getNextblk());
@@ -224,7 +224,7 @@ public final class Datablock implements Externalizable {
 		               ++nzero;
 		        }
 		}
-		return "Blockdump "+this.toString()+" "+(nzero == 0 ? "NO Non-Zero elements found" : nzero+" non-zero elements found");
+		return "Blockdump "+this.toString()+" "+(nzero == 0 ? "NO Non-Zero bytes found" : nzero+" non-zero bytes found");
 		
 	}
 

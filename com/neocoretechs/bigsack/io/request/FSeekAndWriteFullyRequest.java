@@ -26,13 +26,18 @@ public final class FSeekAndWriteFullyRequest implements IoRequestInterface {
 		FseekAndWriteFully();
 		barrierCount.countDown();
 	}
+	/**
+	 * Seek the black and fully write the data and headers, perform Fforce to ensure writethrough
+	 * @throws IOException
+	 */
 	private void FseekAndWriteFully() throws IOException {
 		synchronized(ioUnit) {
-		ioUnit.Fseek(offset);
-		dblk.write(ioUnit);
-		dblk.setIncore(false);
+			ioUnit.Fseek(offset);
+			dblk.write(ioUnit);
+			ioUnit.Fforce();
+			dblk.setIncore(false);
 		}
-		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+		//if( DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}
 	@Override
 	public long getLongReturn() {

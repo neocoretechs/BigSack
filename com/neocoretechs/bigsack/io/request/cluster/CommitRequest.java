@@ -2,20 +2,21 @@ package com.neocoretechs.bigsack.io.request.cluster;
 
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
-import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
+
 /**
  * A special case of request the does not propagate outward to workers but instead is
  * used to serialize commit/rollback etc. on the request queue. The overridden method
  * of AbstractClusterWork 'doPropagate' is set false to prevent this request from
  * traveling outward to nodes. The commit is two stage, with the first local 
- * operation happening which pushes out blocks from resident buffer polls to nodes.
- * In the second stage a request si sent to the nodes, causing the buffers to be persisted.
+ * operation happening which pushes out blocks from resident buffer pools to nodes.
+ * In the second stage a request is sent to the nodes, causing the buffers to be persisted.
  * In lieu of waiting for a synchronization or waiting for the queue to empty, queue this 
  * type of special request to assure completion. We use countdown latches to control synchronization.
  * These latches are not serializable so we maintain them separately at the nodes.
@@ -33,6 +34,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
  */
 public final class CommitRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
 	private static final long serialVersionUID = 1L;
+	private static final boolean DEBUG = false;
 	private transient MappedBlockBuffer blockManager;
 	private transient CyclicBarrier barrierSynch;
 	private int tablespace;
@@ -54,9 +56,28 @@ public final class CommitRequest extends AbstractClusterWork implements Completi
 	}
 	@Override
 	public void process() throws IOException {
-		CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
-		cbfr.setIoInterface(ioManager);
-		blockManager.queueRequest(cbfr);
+		// dealloc outstanding block, call commit buffer flush in global IO, call recovery log manager commit
+		if( DEBUG  )
+			System.out.println("CommitRequest.process "+blockManager+" "+barrierSynch+" "+barrierCount);
+		blockManager.commitBufferFlush(recoveryLog);
+		try {
+			if( DEBUG  )
+				System.out.println("CommitRequest.process "+blockManager+" awaiting barrier "+barrierSynch);
+			barrierSynch.await();
+		} catch (InterruptedException |  BrokenBarrierException e) {
+			// executor requests shutdown
+		}
+		// all buffers flushed, call commit
+		recoveryLog.commit();
+		// if we have local io manager that has file ops, call the close
+		if( ioManager != null )
+			ioManager.Fclose();
+		barrierCount.countDown();
+		if( DEBUG  )
+			System.out.println("CommitRequest.process "+blockManager);
+		//CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
+		//cbfr.setIoInterface(ioManager);
+		//blockManager.queueRequest(cbfr);
 	}
 	@Override
 	public long getLongReturn() {

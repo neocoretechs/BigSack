@@ -14,7 +14,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
-import com.neocoretechs.bigsack.io.request.CommitRequest;
+
 import com.neocoretechs.bigsack.io.request.FSeekAndReadFullyRequest;
 import com.neocoretechs.bigsack.io.request.FSeekAndReadRequest;
 import com.neocoretechs.bigsack.io.request.FSeekAndWriteFullyRequest;
@@ -24,17 +24,13 @@ import com.neocoretechs.bigsack.io.request.GetNextFreeBlockRequest;
 import com.neocoretechs.bigsack.io.request.GetNextFreeBlocksRequest;
 import com.neocoretechs.bigsack.io.request.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
-import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
 
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
  * Requests are queued to the IO worker assigned to the tablespace desired and can operate in parallel
  * with granularity at the tablespace/randomaccessfile level. This is asynchronous IO on random access files
  * either memory mapped or filesystem.
+ * Starts a MappedBlockBuffer and an IOWorker for each tablespace
  * When we need to cast a global operation which requires all tablespaces to coordinate a response we use
  * the CyclicBarrier class to set up the rendezvous with each IOworker and its particular request to the
  * set of all IO workers.
@@ -43,268 +39,25 @@ import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
  *
  */
 public class MultithreadedIOManager implements IoManagerInterface {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static final boolean DEBUG2 = false;
 	private static final boolean DEBUGWRITE = false; // view blocks written to log and store
 	public ObjectDBIO globalIO;
 	// barrier synch for specific functions, cyclic (reusable)
 	protected final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected final CyclicBarrier nextBlocksBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	protected final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
-	protected final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected IOWorkerInterface ioWorker[];
+	protected BufferPool bufferPool;
 	protected int L3cache = 0;
-	protected long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
-	protected MappedBlockBuffer[] blockBuffer; // block number to Datablock
-	protected RecoveryLogManager[] ulog;
-	protected BlockStream[] lbai = new BlockStream[DBPhysicalConstants.DTABLESPACES];
-	
+
 	public MultithreadedIOManager(ObjectDBIO globalIO) throws IOException {
 		this.globalIO = globalIO;
-		assignIoWorker();
-		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
-		ulog = new RecoveryLogManager[DBPhysicalConstants.DTABLESPACES];
+		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
+		bufferPool = new BufferPool();
 		// Initialize the thread pool group NAMES to spin new threads in controllable batches
 		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"}, false);
 		setNextFreeBlocks();
 	}
-	
-	protected void assignIoWorker() {
-		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
-	}
-	/**
-	 * Return the MappedBlockBuffer for the tablespace
-	 */
-	public MappedBlockBuffer getBlockBuffer(int tblsp) { return blockBuffer[tblsp]; }
-	/**
-	 * Return the block access index and db buffered stream for this tablespace
-	 * @param tblsp
-	 * @return
-	 */
-	public BlockStream getBlockStream(int tblsp) { return lbai[tblsp]; }
-	
-	public RecoveryLogManager getUlog(int tablespace) {
-		return ulog[tablespace];
-	}
-	
-	public void setUlog(int tablespace, RecoveryLogManager ulog) {
-		this.ulog[tablespace] = ulog;
-	}
-	/**
-	* Find or add the block to in-mem list.  First deallocate the currently
-	* used block, get the new block, then allocate it
-	* @param tbn The virtual block
-	* @exception IOException If low-level access fails
-	*/
-	public int findOrAddBlock(long tbn) throws IOException {
-		int tblsp = GlobalDBIO.getTablespace(tbn);
-		if( DEBUG )
-			System.out.println("MultithreadedIoManager.findOrAddBlock tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+lbai[tblsp]);
-		// If the current entry is the one we are looking for, set byteindex to 0 and return
-		// if not, call 'dealloc' and find our target
-		lbai[tblsp].setLbai(blockBuffer[tblsp].findOrAddBlock(tbn));
-		return tblsp;
-	}
-
-	public int deleten(Optr adr, int osize) throws IOException {
-		int tblsp = objseek(adr);
-		blockBuffer[tblsp].deleten(lbai[tblsp].getLbai(), osize);
-		return tblsp;
-	}
-	/**
-	* objseek - seek to offset within block
-	* @param adr block/offset to seek to
-	* @exception IOException If problem seeking block
-	* @see Optr
-	*/
-	public int objseek(Optr adr) throws IOException {
-		if (adr.getBlock() == -1L)
-			throw new IOException("Sentinel block seek error");
-		int tblsp = findOrAddBlock(adr.getBlock());
-		lbai[tblsp].getLbai().setByteindex(adr.getOffset());
-		return tblsp;
-	}
-	/**
-	* objseek - seek to offset within block
-	* @param adr long block to seek to
-	* @return the tablespace extracted from passed pointer
-	* @exception IOException If problem seeking block
-	* @see Optr
-	*/
-	public int objseek(long adr) throws IOException {
-		assert(adr != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		int tblsp = findOrAddBlock(adr);
-		lbai[tblsp].getLbai().setByteindex((short) 0);
-		return tblsp;
-	}
-
-	/**
-	* Get the new node position for clustered entries. If we have values associated with keys we store
-	* the values in alternate blocks from the BTree page. This method delivers the block to pack
-	* For sets vs maps, we store only the serialized keys clustered on the page
-	* determine location of new node, store in new_node_pos.
-	* Attempts to cluster entries in used blocks near insertion point
-	* @return The Optr pointing to the new node position
-	* @exception IOException If we cannot get block for new node
-	*/
-	public synchronized Optr getNewNodePosition(int tblsp) throws IOException {
-		if( DEBUG2 )
-			System.out.println("MultithreadedIOManager.getNewNodePosition "+tblsp+" "+lbai[tblsp]);
-		return blockBuffer[tblsp].getNewNodePosition(lbai[tblsp].getLbai());
-	}
-	public synchronized void setNewNodePosition(long newPos) {
-	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#getNextFreeBlock(int)
-	 */
-	@Override
-	public synchronized long getNextFreeBlock(int tblsp) throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.getNextFreeBlock "+tblsp);
-		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, nextFree[tblsp]);
-		ioWorker[tblsp].queueRequest(iori);
-		try {
-			barrierCount.await();
-		} catch (InterruptedException e) {}
-		nextFree[tblsp] = iori.getLongReturn();
-		return nextFree[tblsp];
-	}
-	/**
-	* Return the reverse scan of the first free block of each tablespace
-	* queue the request to the proper ioworker, they wait at barrier synch, 
-	* then activate countdown latch to signal main. Result in placed in class level nextFree
-	* @exception IOException if IO problem
-	*/
-	private void getNextFreeBlocks() throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.getNextFreeBlocks ");
-		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
-		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
-		// queue to each tablespace
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			iori[i] = new GetNextFreeBlocksRequest(nextBlocksBarrierSynch, barrierCount);
-			ioWorker[i].queueRequest(iori[i]);
-		}
-		try {
-			barrierCount.await();
-		} catch (InterruptedException e) {}
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			nextFree[i] = iori[i].getLongReturn();
-		}
-
-	}
-	
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndWrite(long, com.neocoretechs.bigsack.io.pooled.Datablock)
-	 */
-	@Override
-	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.FseekAndWrite "+toffset);
-		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, offset, tblk);
-		// no need to wait, let the queue handle serialization
-		ioWorker[tblsp].queueRequest(iori);
-	}
-	
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndWriteFully(long, com.neocoretechs.bigsack.io.pooled.Datablock)
-	 */
-	@Override
-	public synchronized void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.FseekAndWriteFully "+toffset);
-		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new FSeekAndWriteFullyRequest(barrierCount, offset, tblk);
-		ioWorker[tblsp].queueRequest(iori);
-	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndRead(long, com.neocoretechs.bigsack.io.pooled.Datablock)
-	 */
-	@Override
-	public synchronized void FseekAndRead(long toffset, Datablock tblk) throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.FseekAndRead "+GlobalDBIO.valueOf(toffset));
-		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
-		//	System.out.println("MultithreadedIOManager.FseekAndRead Tablespace_1_114688");
-		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new FSeekAndReadRequest(barrierCount, offset, tblk);
-		ioWorker[tblsp].queueRequest(iori);
-		try {
-			barrierCount.await();
-		} catch (InterruptedException e) {}
-
-		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
-		//	System.out.println("MultithreadedIOManager.FseekAndRead EXIT Tablespace_1_114688 "+tblk+" dump:"+tblk.blockdump());
-		//assert(tblk.getBytesused() != 0 && tblk.getBytesinuse() != 0) : "MultithreadedIOManager.FseekAndRead returned unusable block from offset "+GlobalDBIO.valueOf(toffset)+" "+tblk.blockdump();
-	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndReadFully(long, com.neocoretechs.bigsack.io.pooled.Datablock)
-	 */
-	@Override
-	public synchronized void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.FseekAndReadFully "+toffset);
-		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new FSeekAndReadFullyRequest(barrierCount, offset, tblk);
-		ioWorker[tblsp].queueRequest(iori);
-		try {
-			barrierCount.await();
-		} catch (InterruptedException e) {}
-	}
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#setNextFreeBlocks()
-	 */
-	@Override
-	public synchronized void setNextFreeBlocks() {
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			if (i == 0)
-				nextFree[i] = ((long) DBPhysicalConstants.DBLOCKSIZ);
-			else
-				nextFree[i] = 0L;
-	}
-
-	/* (non-Javadoc)
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#firstTableSpace()
-	 */
-	@Override
-	public long firstTableSpace() throws IOException {
-		return 0L;
-	}
-
-	/**
-	 * Use the parallel getNextFreeBlocks to return the free array, then find
-	 * the smallest element in the array. utility method since we use simple random numbers to
-	 * tablespaces for new blocks
-	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#findSmallestTablespace()
-	 */
-	@Override
-	public synchronized int findSmallestTablespace() throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.findSmallestTablespace ");
-		// always make sure we have primary
-		long primarySize = Fsize(0);
-		int smallestTablespace = 0; // default main
-		long smallestSize = primarySize;
-		getNextFreeBlocks();
-		for (int i = 0; i < nextFree.length; i++) {
-			if(nextFree[i] != -1 && GlobalDBIO.getBlock(nextFree[i]) < smallestSize) {
-				smallestSize = GlobalDBIO.getBlock(nextFree[i]);
-				smallestTablespace = i;
-			}
-		}
-		return smallestTablespace;
-	}
-	
 	/**
 	 * Invoke each tablespace open request by creating buffers and spinning workers.
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen(java.lang.String, int, boolean)
@@ -314,13 +67,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		this.L3cache = L3cache;
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			ioWorker[i] = new IOWorker(translateDb(fname,i), i, L3cache);
-			blockBuffer[i] = new MappedBlockBuffer(this, i);
-			lbai[i] = new BlockStream(i, blockBuffer[i]);
-			ulog[i] = new RecoveryLogManager(globalIO,i);
+			bufferPool.createPool(globalIO, this, i);
 			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i],"IOWORKER");
-			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
+			ThreadPoolManager.getInstance().spin(bufferPool.getBlockBuffer(i), "BLOCKPOOL");
 			// attempt recovery if needed
-			ulog[i].getLogToFile().recover();
+			bufferPool.recover(i);
 		}
 		// fill in the next free block indicators and set the smallest tablespace
 		findSmallestTablespace();
@@ -348,18 +99,193 @@ public class MultithreadedIOManager implements IoManagerInterface {
 					ioWorker[i] = new IOWorker(translateDb(fname,i), i, L3cache);
 			else
 					ioWorker[i] = new IOWorker(translateDb(fname,i), translateDb(remote,i), i, L3cache);
-			blockBuffer[i] = new MappedBlockBuffer(this, i);
-			lbai[i] = new BlockStream(i, blockBuffer[i]);
-			ulog[i] = new RecoveryLogManager(globalIO,i);
+			bufferPool.createPool(globalIO, this, i);
 			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i], "IOWORKER");
-			ThreadPoolManager.getInstance().spin(blockBuffer[i], "BLOCKPOOL");
+			ThreadPoolManager.getInstance().spin(getBlockBuffer(i), "BLOCKPOOL");
 			// attempt recovery if needed
-			ulog[i].getLogToFile().recover();
+			bufferPool.recover(i);
 		}
 		// fill in the next free block indicators and set the smallest tablespace
 		findSmallestTablespace();
 		return true;
 	}
+
+	/**
+	* Find or add the block to in-mem list.  First deallocate the currently
+	* used block, get the new block, then allocate it
+	* @param tbn The virtual block
+	* @exception IOException If low-level access fails
+	*/
+	public int findOrAddBlock(long tbn) throws IOException {
+		int tblsp = GlobalDBIO.getTablespace(tbn);
+		if( DEBUG )
+			System.out.println("MultithreadedIoManager.findOrAddBlock tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+bufferPool.getLbai(tblsp));
+		// If the current entry is the one we are looking for, set byteindex to 0 and return
+		// if not, call 'dealloc' and find our target
+		bufferPool.findOrAddBlock(tblsp, tbn);
+		return tblsp;
+	}
+
+	/**
+	* Get the new node position for clustered entries. If we have values associated with keys we store
+	* the values in alternate blocks from the BTree page. This method delivers the block to pack
+	* For sets vs maps, we store only the serialized keys clustered on the page
+	* determine location of new node, store in new_node_pos.
+	* Attempts to cluster entries in used blocks near insertion point
+	* @return The Optr pointing to the new node position
+	* @exception IOException If we cannot get block for new node
+	*/
+	public Optr getNewNodePosition(int tblsp) throws IOException {
+		if( DEBUG2 )
+			System.out.println("MultithreadedIOManager.getNewNodePosition "+tblsp+" "+bufferPool.getLbai(tblsp));
+		return bufferPool.getNewNodePosition(tblsp);
+	}
+
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#getNextFreeBlock(int)
+	 */
+	@Override
+	public long getNextFreeBlock(int tblsp) throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.getNextFreeBlock "+tblsp);
+		CountDownLatch barrierCount = new CountDownLatch(1);
+		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, bufferPool.getNextFree(tblsp));
+		ioWorker[tblsp].queueRequest(iori);
+		try {
+			barrierCount.await();
+		} catch (InterruptedException e) {}
+		synchronized(bufferPool) {
+			bufferPool.setNextFree(tblsp, iori.getLongReturn());
+			return bufferPool.getNextFree(tblsp);
+		}
+	}
+	/**
+	* Return the reverse scan of the first free block of each tablespace
+	* queue the request to the proper ioworker, they wait at barrier synch, 
+	* then activate countdown latch to signal main. Result in placed in class level nextFree
+	* @exception IOException if IO problem
+	*/
+	private void getNextFreeBlocks() throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.getNextFreeBlocks ");
+		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
+		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
+		// queue to each tablespace
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			iori[i] = new GetNextFreeBlocksRequest(nextBlocksBarrierSynch, barrierCount);
+			ioWorker[i].queueRequest(iori[i]);
+		}
+		try {
+			barrierCount.await();
+		} catch (InterruptedException e) {}
+		synchronized(bufferPool) {
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				bufferPool.setNextFree(i, iori[i].getLongReturn());
+			}
+		}
+
+	}
+	
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndWrite(long, com.neocoretechs.bigsack.io.pooled.Datablock)
+	 */
+	@Override
+	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.FseekAndWrite "+toffset);
+		int tblsp = GlobalDBIO.getTablespace(toffset);
+		long offset = GlobalDBIO.getBlock(toffset);
+		CountDownLatch barrierCount = new CountDownLatch(1);
+		IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, offset, tblk);
+		// no need to wait, let the queue handle serialization
+		ioWorker[tblsp].queueRequest(iori);
+	}
+	
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndWriteFully(long, com.neocoretechs.bigsack.io.pooled.Datablock)
+	 */
+	@Override
+	public void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.FseekAndWriteFully "+toffset);
+		int tblsp = GlobalDBIO.getTablespace(toffset);
+		long offset = GlobalDBIO.getBlock(toffset);
+		CountDownLatch barrierCount = new CountDownLatch(1);
+		IoRequestInterface iori = new FSeekAndWriteFullyRequest(barrierCount, offset, tblk);
+		ioWorker[tblsp].queueRequest(iori);
+	}
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndRead(long, com.neocoretechs.bigsack.io.pooled.Datablock)
+	 */
+	@Override
+	public void FseekAndRead(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.FseekAndRead "+GlobalDBIO.valueOf(toffset));
+		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
+		//	System.out.println("MultithreadedIOManager.FseekAndRead Tablespace_1_114688");
+		int tblsp = GlobalDBIO.getTablespace(toffset);
+		long offset = GlobalDBIO.getBlock(toffset);
+		CountDownLatch barrierCount = new CountDownLatch(1);
+		IoRequestInterface iori = new FSeekAndReadRequest(barrierCount, offset, tblk);
+		ioWorker[tblsp].queueRequest(iori);
+		try {
+			barrierCount.await();
+		} catch (InterruptedException e) {}
+
+		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
+		//	System.out.println("MultithreadedIOManager.FseekAndRead EXIT Tablespace_1_114688 "+tblk+" dump:"+tblk.blockdump());
+		//assert(tblk.getBytesused() != 0 && tblk.getBytesinuse() != 0) : "MultithreadedIOManager.FseekAndRead returned unusable block from offset "+GlobalDBIO.valueOf(toffset)+" "+tblk.blockdump();
+	}
+	/**
+	 * Formulate a request to seek a block and read all data.
+	 * The request architecture allows us to maintain high cohesion and low coupling with all the models
+	 * including cluster and standalone. The queue can be 'extended' to remote nodes with the queues servicing
+	 * threads also acting as data pipes across the networks once subclassed.
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndReadFully(long, com.neocoretechs.bigsack.io.pooled.Datablock)
+	 */
+	@Override
+	public void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.FseekAndReadFully "+toffset);
+		int tblsp = GlobalDBIO.getTablespace(toffset);
+		long offset = GlobalDBIO.getBlock(toffset);
+		CountDownLatch barrierCount = new CountDownLatch(1);
+		IoRequestInterface iori = new FSeekAndReadFullyRequest(barrierCount, offset, tblk);
+		ioWorker[tblsp].queueRequest(iori);
+		try {
+			barrierCount.await();
+		} catch (InterruptedException e) {}
+	}
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#setNextFreeBlocks()
+	 */
+	@Override
+	public void setNextFreeBlocks() {
+		bufferPool.setNextFreeBlocks();
+	}
+
+	/* (non-Javadoc)
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#firstTableSpace()
+	 */
+	@Override
+	public long firstTableSpace() throws IOException {
+		return 0L;
+	}
+
+	/**
+	 * Use the parallel getNextFreeBlocks to return the free array, then find
+	 * the smallest element in the array. utility method since we use simple random numbers to
+	 * tablespaces for new blocks
+	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#findSmallestTablespace()
+	 */
+	@Override
+	public int findSmallestTablespace() throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.findSmallestTablespace ");
+		getNextFreeBlocks();
+		return bufferPool.findSmallestTablespace(Fsize(0));	
+	}
+
 	/**
 	 * Deallocate the outstanding block and call commit on the recovery log
 	 * @throws IOException
@@ -374,17 +300,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * Deallocate the outstanding block and call rollback on the recovery log
 	 * @throws IOException
 	 */
-	public void deallocOutstandingRollback() throws IOException {
-			synchronized( lbai ) {
-				for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-					if( lbai[i] != null & lbai[i].getLbai() != null ) {
-						lbai[i].getLbai().decrementAccesses();
-						forceBufferClear();
-						ulog[i].rollBack();
-						ulog[i].stop();
+	public synchronized void deallocOutstandingRollback() throws IOException {
+			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+					if( bufferPool.rollback(i) )
 						((IoInterface)ioWorker[i]).Fclose();
-					}
-				}
 			}
 	}
 	/**
@@ -392,14 +311,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException
 	 */
 	public void deallocOutstanding() throws IOException {
-			synchronized(lbai) {
-				for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-					if( lbai[i] != null ) {
-						if( lbai[i].getLbai() != null )
-							lbai[i].getLbai().decrementAccesses();
-					}
-				}	
-			}
+			bufferPool.deallocOutstanding();
 	}
 	/**
 	 * Deallocate the outstanding BlockAccesIndex from the virtual block number. First
@@ -409,26 +321,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException
 	 */
 	public void deallocOutstanding(long pos) throws IOException {
-		int tablespace = GlobalDBIO.getTablespace(pos);
-		if( lbai[tablespace].getLbai().getBlockNum() == pos ) {
-			if( lbai[tablespace].getLbai().getBlk().isIncore() ) {
-				//deallocOutstandingWriteLog(tablespace, lbai[tablespace].getLbai());
-			} else
-				lbai[tablespace].getLbai().decrementAccesses();
-			if( DEBUG )
-				System.out.println("MultithreadedIOManager.deallocOutstanding current "+GlobalDBIO.valueOf(pos));
-		} else {
-			BlockAccessIndex bai = blockBuffer[tablespace].get(pos);
-			if( bai != null) {
-				if( bai.getBlk().isIncore() ) {
-					//deallocOutstandingWriteLog(tablespace, bai);
-				} else
-					bai.decrementAccesses(); 
-			} else {
-				//System.out.println("MultithreadedIOManager WARNING!! FAILED TO DEALLOCATE "+GlobalDBIO.valueOf(pos));
-				//new Throwable().printStackTrace();
-			}
-		}
+		bufferPool.deallocOutstanding(pos);
 	}
 	
 	/**
@@ -436,13 +329,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * accesses = 1 (latched) and and NOT yet in log.
 	 */
 	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex lbai) throws IOException {
-		if( lbai.getAccesses() == 1 &&  lbai.getBlk().isIncore() &&  !lbai.getBlk().isInlog()) {
-				// will set incore, inlog, and push to raw store via applyChange of Loggable
-				ulog[tablespace].writeLog(lbai);
-				lbai.decrementAccesses();
-		} else {
-			System.out.println("MultithreadedIOManager.deallocOutstandingWriteLog failed to dealloc intended target tablespace:"+tablespace+" "+lbai);
-		}
+		bufferPool.deallocOutstandingWriteLog(tablespace, lbai);
 	}
 		
 	private String translateDb(String dbname, int tablespace) {
@@ -462,20 +349,17 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen()
 	 */
  	@Override
-	public void Fopen() throws IOException {
- 		synchronized(ioWorker) {
+	public synchronized void Fopen() throws IOException {
  			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
  				if (ioWorker[i] != null && !((IoInterface)ioWorker[i]).isopen())
  					((IoInterface)ioWorker[i]).Fopen();
- 		}
 	}
 	
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fclose()
 	 */
 	@Override
-	public void Fclose() throws IOException {
-		synchronized(ioWorker) {
+	public synchronized void Fclose() throws IOException {
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 			if (ioWorker[i] != null && ((IoInterface)ioWorker[i]).isopen()) {
 				if( ioWorker[i].getRequestQueueLength() == 0 )
@@ -483,28 +367,25 @@ public class MultithreadedIOManager implements IoManagerInterface {
 				else
 					throw new IOException("Attempt to close tablespace with outstanding requests");
 			}
-		}
 	}
 	
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fforce()
 	 */
 	@Override
-	public void Fforce() throws IOException {
+	public synchronized void Fforce() throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.Fforce ");
-		synchronized(ioWorker) {
-			CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
-			IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
-			// queue to each tablespace
-			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
+		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
+		// queue to each tablespace
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				iori[i] = new FSyncRequest(forceBarrierSynch, barrierCount);
 				ioWorker[i].queueRequest(iori[i]);
-			}
-			try {
-				barrierCount.await();
-			} catch (InterruptedException e) {}
 		}
+		try {
+				barrierCount.await();
+		} catch (InterruptedException e) {}
 	}
 	
 	/* (non-Javadoc)
@@ -512,9 +393,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	@Override
 	public boolean isNew() {
-		synchronized(ioWorker) {
 			return ((IoInterface)ioWorker[0]).isnew();
-		}
 	}
 	
 	/* (non-Javadoc)
@@ -529,20 +408,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 		//	blockBuffer[i].forceBufferClear();
 		//}
-		synchronized(blockBuffer) {
-			CountDownLatch cdl = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-					ForceBufferClearRequest fbcr = new ForceBufferClearRequest(blockBuffer[i], cdl, forceBarrierSynch);
-					blockBuffer[i].queueRequest(fbcr);
-					//blockBuffer[i].forceBufferClear();
-			}
-			try {
-					cdl.await();// wait for completion
-			} catch (InterruptedException e) {
-					// executor requested thread shutdown
-					return;
-			}
-		}
+		bufferPool.forceBufferClear();
 	}
 	/**
 	 * Load up a block from the freelist with the assumption that it will be filled in later. Do not 
@@ -551,58 +417,21 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	@Override
 	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		int tblsp = GlobalDBIO.getTablespace(Lbn);
-		//return blockBuffer[tblsp].addBlockAccessNoRead(Lbn);
-		CountDownLatch cdl = new CountDownLatch(1);
-		AddBlockAccessNoReadRequest abanrr = new AddBlockAccessNoReadRequest(blockBuffer[tblsp], cdl, Lbn);
-		blockBuffer[tblsp].queueRequest(abanrr);
-		try {
-			cdl.await();
-			return (BlockAccessIndex) abanrr.getObjectReturn();
-		} catch (InterruptedException e) {
-			// shutdown waiting for return
-			return null;
-		}
+		return bufferPool.addBlockAccessNoRead(Lbn);
 	}
+	
 	@Override
 	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
-		if( DEBUG )
-			System.out.println("MultithreadedIOManager.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn));
-		
-		//int tblsp = GlobalDBIO.getTablespace(bn);
-		//return blockBuffer[tblsp].findOrAddBlockAccess(bn);
-		int tblsp = GlobalDBIO.getTablespace(bn);
-		CountDownLatch cdl = new CountDownLatch(1);
-		FindOrAddBlockAccessRequest abanrr = new FindOrAddBlockAccessRequest(blockBuffer[tblsp], cdl, bn);
-		blockBuffer[tblsp].queueRequest(abanrr);
-		try {
-			cdl.await();
-			if( DEBUG )
-				System.out.println("MultithreadedIOManager.findOrAddBlockAccess "+(BlockAccessIndex) abanrr.getObjectReturn());
-			lbai[tblsp].setLbai(((BlockAccessIndex) abanrr.getObjectReturn()));
-			return (BlockAccessIndex) abanrr.getObjectReturn();
-		} catch (InterruptedException e) {
-			// shutdown waiting for return
-			return null;
-		}
+		return bufferPool.findOrAddBlockAccess(bn);
 	}
+	
 	@Override
 	public BlockAccessIndex getUsedBlock(long loc) {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.getUsedBlock "+GlobalDBIO.valueOf(loc));
 		//int tblsp = GlobalDBIO.getTablespace(loc);
 		//return blockBuffer[tblsp].getUsedBlock(loc);
-		int tblsp = GlobalDBIO.getTablespace(loc);
-		CountDownLatch cdl = new CountDownLatch(1);
-		GetUsedBlockRequest abanrr = new GetUsedBlockRequest(blockBuffer[tblsp], cdl, loc);
-		blockBuffer[tblsp].queueRequest(abanrr);
-		try {
-			cdl.await();
-			return (BlockAccessIndex) abanrr.getObjectReturn();
-		} catch (InterruptedException e) {
-			// shutdown waiting for return
-			return null;
-		}
+		return bufferPool.getUsedBlock(loc);
 	}
 
 	/**
@@ -612,17 +441,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void commitBufferFlush() throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.commitBufferFlush invoked.");
-		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
-		// queue to each tablespace
-		synchronized(ioWorker) {
-			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				IoRequestInterface iori  = new CommitRequest(blockBuffer[i], ulog[i], commitBarrierSynch, barrierCount);
-				ioWorker[i].queueRequest(iori);
-			}
-			try {
-				barrierCount.await();
-			} catch (InterruptedException e) {}
-		}
+		bufferPool.commmitBufferFlush(ioWorker);
 	}
 	
 	@Override
@@ -632,19 +451,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 		//	blockBuffer[i].directBufferWrite();
 		//}
-		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
-		synchronized(blockBuffer) {
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				//blockBuffer[i].directBufferWrite();
-				DirectBufferWriteRequest dbwr = new DirectBufferWriteRequest(blockBuffer[i], cdl, directWriteBarrierSynch);
-				blockBuffer[i].queueRequest(dbwr);
-			}
-			try {
-				cdl.await();
-			} catch (InterruptedException e) {
-				return;
-			}
-		}
+		bufferPool.directBufferWrite();
 	}
 	
 	/**
@@ -653,7 +460,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @exception IOException If we cannot acquire next block
 	*/
 	public boolean seek_fwd(int tblsp, long offset) throws IOException {
-		return blockBuffer[tblsp].seek_fwd(lbai[tblsp].getLbai(), offset);
+		return bufferPool.seekFwd(tblsp, offset);
 	}
 	
 
@@ -679,14 +486,19 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	
 	@Override
 	public void writen(int tblsp, byte[] o, int osize) throws IOException {
-		blockBuffer[tblsp].writen(lbai[tblsp].getLbai(), o, osize);
+		bufferPool.writen(tblsp, o, osize);
 	}
-
+	
+	@Override
+	public int deleten(Optr adr, int osize) throws IOException {
+		return bufferPool.deleten(adr, osize);
+	}
+	
 	@Override
 	public void deallocOutstandingWriteLog(int tblsp) throws IOException {
-		deallocOutstandingWriteLog(tblsp, lbai[tblsp].getLbai());
+		bufferPool.deallocOutstandingWriteLog(tblsp);
 		if( DEBUGWRITE ) {
-			System.out.println("MultithreadedIOManager.deallocOutstandingWriteLog:"+lbai[tblsp].getLbai());
+			System.out.println("MultithreadedIOManager.deallocOutstandingWriteLog:"+bufferPool.getLbai(tblsp).getLbai());
 		}
 	}
 	
@@ -696,10 +508,49 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			blkV2.write((IoInterface) ioWorker[tblsp]);
 		}
 	}
+	
 	public void readDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
 		synchronized(ioWorker[tblsp]) {
 			((IOWorker) ioWorker[tblsp]).Fseek(blkn);
 			blkV2.read((IoInterface) ioWorker[tblsp]);
 		}
 	}
+	/**
+	* objseek - seek to offset within block
+	* @param adr block/offset to seek to
+	* @exception IOException If problem seeking block
+	* @see Optr
+	*/
+	public int objseek(Optr adr) throws IOException {
+		assert (adr.getBlock() != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
+		return bufferPool.objseek(adr);
+	}
+	/**
+	* objseek - seek to offset within block
+	* @param adr long block to seek to
+	* @return the tablespace extracted from passed pointer
+	* @exception IOException If problem seeking block
+	* @see Optr
+	*/
+	public int objseek(long adr) throws IOException {
+		assert(adr != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
+		return bufferPool.objseek(adr);
+	}
+	@Override
+	public RecoveryLogManager getUlog(int tblsp) {
+		return bufferPool.getUlog(tblsp);
+	}
+	@Override
+	public MappedBlockBuffer getBlockBuffer(int tblsp) {
+		return bufferPool.getBlockBuffer(tblsp);
+	}
+	@Override
+	public BlockStream getBlockStream(int tblsp) {
+		return bufferPool.getBlockStream(tblsp);
+	}
+	@Override
+	public BufferPool getBufferPool() {
+		return bufferPool;
+	}
+
 }

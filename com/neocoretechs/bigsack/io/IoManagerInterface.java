@@ -139,6 +139,7 @@ public interface IoManagerInterface {
 
 	public IOWorkerInterface getIOWorker(int tblsp);
 	
+	public BufferPool getBufferPool();
 	
 	public RecoveryLogManager getUlog(int tblsp);
 	

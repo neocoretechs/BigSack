@@ -60,7 +60,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff Copyright (C) NeoCoreTechs 2014,2015
 */
 public final class BTreeKeyPage implements Serializable {
-	static final boolean DEBUG = false;
+	static final boolean DEBUG = true;
 	static final long serialVersionUID = -2441425588886011772L;
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block
 	// Can be overridden by properties element. the number of maximum children is MAXKEYS+1 per node

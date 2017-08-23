@@ -4,9 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
-import com.neocoretechs.bigsack.io.stream.DBBufferedInputStream;
 import com.neocoretechs.bigsack.io.stream.DBInputStream;
-import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 /**
  * This class encapsulates the BlockAccessIndex cursor blocks for each tablespace and the corresponding 
@@ -24,7 +22,7 @@ public final class BlockStream {
 	private BlockAccessIndex lbai;
 	// DataStream for DB I/O
 	private DataInputStream DBInput = null;
-	private DataOutputStream DBOutput = null;
+	
 	private MappedBlockBuffer blockIO;
 	private int tablespace;
 	public BlockStream(int tablespace, MappedBlockBuffer blockBuffer) throws IOException {
@@ -49,21 +47,13 @@ public final class BlockStream {
 				DBInput.close();
 			} catch (IOException e) {}
 		if( lbai == null ) throw new RuntimeException("DBInputStream uninitialized for BlockStream tablespace "+tablespace+" db"+blockIO.getGlobalIO().getDBName());
-		DBInput = new DataInputStream(new DBBufferedInputStream(new DBInputStream(lbai, blockIO)));
+		DBInput = new DataInputStream(new DBInputStream(lbai, blockIO));
 		return DBInput;
 	}
-	public synchronized DataOutputStream getDBOutput() {
-		if( DBOutput != null )
-			try {
-				DBOutput.close();
-			} catch (IOException e) {}
-		if( lbai == null ) throw new RuntimeException("DBOutputStream uninitialized for BlockStream tablespace "+tablespace+" db"+blockIO.getGlobalIO().getDBName());
-		DBOutput = new DataOutputStream(new DBOutputStream(lbai, blockIO));
-		return DBOutput;
-	}
+	
 	@Override
 	public synchronized String toString() {
-		return "BlockStream for tablespace "+tablespace+" with block "+(lbai == null ? "UNASSIGNED" : lbai)+" streams:"+DBInput+" "+DBOutput+" and blocks in buffer:"+blockIO.size();
+		return "BlockStream for tablespace "+tablespace+" with block "+(lbai == null ? "UNASSIGNED" : lbai)+" stream:"+DBInput+" and blocks in buffer:"+blockIO.size();
 	}
 
 }

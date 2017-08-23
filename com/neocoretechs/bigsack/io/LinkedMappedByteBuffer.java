@@ -57,8 +57,7 @@ final class LinkedMappedByteBuffer {
 	* and must be less than Integer.MAX_SIZE
 	* @param rPos The position to set to
 	*/
-	LinkedMappedByteBuffer(FileChannel tFC, long tiSize, long rPos)
-		throws IOException {
+	LinkedMappedByteBuffer(FileChannel tFC, long tiSize, long rPos) throws IOException {
 		FC = tFC;
 		setRange(rPos, tiSize);
 	}
@@ -140,15 +139,10 @@ final class LinkedMappedByteBuffer {
 	
 	// writing..
 	void put(byte[] buf) throws IOException {
-		try {
 			put(buf, 0, buf.length);
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	void put(byte[] buf, int ioffs, int numbyte) throws IOException {
-		try {
 			int i = ioffs, runcount = numbyte, blkbytes;
 			// assume our position is set and we have space
 			if (bb.position() == (rangeSize - 1))
@@ -167,13 +161,9 @@ final class LinkedMappedByteBuffer {
 				}
 			}
 			//bb.put(obuf, 0, osiz);
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	void putInt(int obuf) throws IOException {
-		try {
 			//ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			//DataOutputStream daos = new DataOutputStream(baos);
 			//daos.writeInt(obuf);
@@ -184,13 +174,9 @@ final class LinkedMappedByteBuffer {
 			tbb.putInt(obuf);
 			put(tbb.array());
 			//bb.putInt(obuf);
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	void putLong(long obuf) throws IOException {
-		try {
 			//ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			//DataOutputStream daos = new DataOutputStream(baos);
 			//daos.writeLong(obuf);
@@ -201,13 +187,9 @@ final class LinkedMappedByteBuffer {
 			tbb.putLong(obuf);
 			put(tbb.array());
 			//bb.putLong(obuf);
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	void putShort(short obuf) throws IOException {
-		try {
 			//ByteArrayOutputStream baos = new ByteArrayOutputStream();
 			//DataOutputStream daos = new DataOutputStream(baos);
 			//daos.writeShort(obuf);
@@ -218,14 +200,10 @@ final class LinkedMappedByteBuffer {
 			tbb.putShort(obuf);
 			put(tbb.array());
 			//bb.putShort(obuf);
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 
 	// reading...
-	int get(byte[] buf, int ioffs, int numbyte) throws IOException {
-		try {
+	int get(byte[] buf, int ioffs, int numbyte) throws IOException {	
 			int i = ioffs, runcount = numbyte, blkbytes;
 			// assume our position is set and we have space
 			if (bb.position() == (rangeSize - 1L))
@@ -246,23 +224,15 @@ final class LinkedMappedByteBuffer {
 			}
 			//bb.get(b, 0, osiz);
 			return i;
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	int get(byte[] b) throws IOException {
-		try {
 			//bb.get(b);
 			return get(b, 0, b.length);
 			//return b.length;
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	int getInt() throws IOException {
-		try {
 			byte[] b = new byte[4];
 			get(b);
 			//ByteArrayInputStream bais = new ByteArrayInputStream(b);
@@ -271,13 +241,9 @@ final class LinkedMappedByteBuffer {
 			ByteBuffer tbb = ByteBuffer.wrap(b);
 			return tbb.getInt();
 			//return bb.getInt();
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	long getLong() throws IOException {
-		try {
 			byte[] b = new byte[8];
 			get(b);
 			//ByteArrayInputStream bais = new ByteArrayInputStream(b);
@@ -286,13 +252,9 @@ final class LinkedMappedByteBuffer {
 			ByteBuffer tbb = ByteBuffer.wrap(b);
 			return tbb.getLong();
 			//return bb.getLong();
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 	
 	short getShort() throws IOException {
-		try {
 			byte[] b = new byte[2];
 			get(b);
 			//ByteArrayInputStream bais = new ByteArrayInputStream(b);
@@ -301,8 +263,5 @@ final class LinkedMappedByteBuffer {
 			ByteBuffer tbb = ByteBuffer.wrap(b);
 			return tbb.getShort();
 			//return bb.getShort();
-		} catch (Exception bue) {
-			throw new IOException(bue.toString());
-		}
 	}
 }

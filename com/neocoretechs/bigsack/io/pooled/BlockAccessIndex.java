@@ -1,6 +1,8 @@
 package com.neocoretechs.bigsack.io.pooled;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 /*
@@ -35,12 +37,13 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 */
 @SuppressWarnings("rawtypes")
 public final class BlockAccessIndex implements Comparable, Serializable {
-	private static boolean DEBUG = false;
+	private static boolean DEBUG = true;
 	private static final long serialVersionUID = -7046561350843262757L;
 	private Datablock blk;
 	private transient int accesses = 0;
 	private long blockNum = -1L;
 	protected short byteindex = -1;
+	//private transient ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
 	public BlockAccessIndex(boolean init) throws IOException {
 		if(init) init();
@@ -53,10 +56,23 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 * @throws IOException if block superceded a block under write or latched 
 	 * */
 	public synchronized void init() throws IOException {
+		//if( lock.isWriteLocked() ) {
+		//	throw new IOException("init() Attempt to unlock write locked Datablock "+this);
+		//}
+		//if( lock.getReadLockCount() > 0) {
+		//	System.out.println("init() read lock count:"+lock.getReadLockCount());
+		//	lock.readLock().unlock();
+		//}
 		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
 	}
 	
 	public synchronized void resetBlock() {
+		//if( lock.isWriteLocked() )
+		//	lock.writeLock().unlock();
+		//if( lock.getReadLockCount() > 0) {
+		//	System.out.println("resetBlock() read lock count:"+lock.getReadLockCount());
+		//	lock.readLock().unlock();
+		//}
 		accesses = 0;
 		byteindex = 0;
 		blk.resetBlock();
@@ -67,6 +83,8 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	}
 	
 	synchronized void addAccess() {
+		//if( !lock.isWriteLocked() )
+		//		lock.writeLock().lock();
 		++accesses;
 		//if( accesses > 1 ) {
 		//	System.out.println("BlockAccessIndex.addAccess access > 1 "+this);
@@ -77,8 +95,14 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public synchronized int decrementAccesses() throws IOException {
 		if( accesses == 1 && blk.isIncore() )
 			return accesses;
-		if (accesses > 0 )
+		if (accesses > 0 ) {
 			--accesses;
+		}
+		//if( accesses == 0 && lock.isWriteLocked()) {
+		//	if( DEBUG )
+		//		System.out.println("BlockAccessIndex.decrementAccesses:"+lock+" "+Thread.currentThread()+" holds this lock:"+lock.isWriteLockedByCurrentThread()+" locks:"+lock.getWriteHoldCount()+" queue:"+lock.getQueueLength());
+		//	lock.writeLock().unlock();
+		//}
 		//else {
 			//if( blk.isIncore() ) {
 				//System.out.println("Accesses to 0 with incore latched:"+this);
@@ -89,18 +113,17 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	}
 	
 	public synchronized String toString() {
-		String db = "BlockAccessIndex: ";
-		db += " data "
-			+ blk == null ?  "null block" : blk.toBriefString()
-			+ " accesses:"
-			+ accesses
-			+ " byteindex:"
-			+ byteindex
-			+ " inLog:"
-			+ blk.isInlog()
-			+ "."
-			;
-		return db;
+		StringBuilder db = new StringBuilder("BlockAccessIndex: ");
+		db.append(" data ");
+		db.append(blk == null ?  "null block" : blk.toBriefString());
+		db.append(" accesses:");
+		db.append(accesses);
+		db.append(" byteindex:");
+		db.append(byteindex);
+		db.append(" inLog:");
+		db.append(blk == null ?  "null block" : blk.isInlog());
+		db.append(".");
+		return db.toString();
 	}
 
 	public synchronized long getBlockNum() {

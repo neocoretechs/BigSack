@@ -25,7 +25,7 @@ public class BatteryBigSack3 {
 	static String val = "Of a BigSack K/V pair!yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0;
-	static int max = 16;
+	static int max = 1;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**

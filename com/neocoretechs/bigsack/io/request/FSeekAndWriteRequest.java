@@ -30,6 +30,10 @@ public final class FSeekAndWriteRequest implements IoRequestInterface {
 		FseekAndWrite();
 		barrierCount.countDown();
 	}
+	/**
+	 * Perform a seek and write of used bytes, an Fforce is called to ensure writethrough
+	 * @throws IOException
+	 */
 	private void FseekAndWrite() throws IOException {
 		if( dblk.getBytesinuse() == 0 && 
 				(dblk.getData()[0] == 0xAC && dblk.getData()[1] == 0xED && dblk.getData()[2] == 0x00 && dblk.getData()[3] == 0x05) )
@@ -37,6 +41,7 @@ public final class FSeekAndWriteRequest implements IoRequestInterface {
 		synchronized(ioUnit) {
 			ioUnit.Fseek(offset);
 			dblk.writeUsed(ioUnit);
+			ioUnit.Fforce();
 			dblk.setIncore(false);
 		}
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");

@@ -33,17 +33,35 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 * @author Groff
 */
 public final class DBInputStream extends InputStream {
-	MappedBlockBuffer sdbio;
+	MappedBlockBuffer blockBuffer;
 	BlockAccessIndex lbai;
 	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai = tlbai;
-		sdbio = tsdbio;
+		blockBuffer = tsdbio;
 	}
+	
+	@Override
+	public int read(byte[] b) throws IOException {
+		return read(b, 0, b.length);
+	}
+		
+	//Reads bytes from this byte-input stream into the specified byte array, starting at the given offset.
+	@Override
+	public int read(byte[] b, int off, int len) throws IOException {
+		return blockBuffer.readn(lbai, b, off, len);
+	}
+		
+	@Override
 	public int read() throws IOException {
-		try {
-			return sdbio.readi(lbai);
-		} catch (Exception e) {
-			throw new IOException(e.toString());
-		}
+		return blockBuffer.readi(lbai);
 	}
+
+	@Override
+	public long skip(long len) throws IOException {
+		for(int i = 0; i < len; i++)
+				read();
+		return len;
+	}
+
+		
 }

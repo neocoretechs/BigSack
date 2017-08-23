@@ -96,13 +96,13 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 
 	}
 
-	public long getNextFreeBlock() {
+	public synchronized long getNextFreeBlock() {
 		return nextFreeBlock;
 	}
-	public void setNextFreeBlock(long nextFreeBlock) {
+	public synchronized void setNextFreeBlock(long nextFreeBlock) {
 		this.nextFreeBlock = nextFreeBlock;
 	}
-	public BlockingQueue<IoRequestInterface> getRequestQueue() {
+	public synchronized BlockingQueue<IoRequestInterface> getRequestQueue() {
 		return requestQueue;
 	}
 	/**
@@ -110,7 +110,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	 * once the request is processed, a notify is issued on the request object
 	 * @param irf
 	 */
-	public void queueRequest(IoRequestInterface irf) {
+	public synchronized void queueRequest(IoRequestInterface irf) {
 		irf.setIoInterface(ioUnit); 
 		irf.setTablespace(tablespace);
 		if( DEBUG ) {
@@ -123,7 +123,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		}
 	}
 	
-	public int getRequestQueueLength() { return requestQueue.size(); }
+	public synchronized int getRequestQueueLength() { return requestQueue.size(); }
 	
 	@Override
 	public void run() {
@@ -144,16 +144,14 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	}
 	
 	@Override
-	public boolean Fopen(String fname, boolean create) throws IOException {
-		synchronized(ioUnit) {
+	public synchronized boolean Fopen(String fname, boolean create) throws IOException {
 			if (!ioUnit.Fopen(fname + "." + String.valueOf(tablespace), create))
 				return false;
 			return true;
-		}
 	}
 	
 	@Override
-	public void Fopen() throws IOException {
+	public synchronized void Fopen() throws IOException {
 		Fopen(DBName, false);	
 	}
 	
@@ -168,7 +166,9 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	 */
 	@Override
 	public long Ftell() throws IOException {
-		return ioUnit.Ftell();
+		synchronized(ioUnit) {
+				return ioUnit.Ftell();
+		}
 	}
 	/**
 	 * Seek the real offset, not virtual
@@ -176,7 +176,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public void Fseek(long offset) throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker Fseek "+offset);
+			System.out.println("IOWorker Fseek "+offset);
 		synchronized(ioUnit) {
 			ioUnit.Fseek(offset);
 		}
@@ -184,23 +184,23 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public long Fsize() throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fsize "+ioUnit.Fsize());
+			System.out.println("IOWorker fsize "+ioUnit.Fsize());
 		synchronized(ioUnit) {
 			return ioUnit.Fsize();
 		}
 	}
 	@Override
 	public void Fset_length(long newlen) throws IOException {
-		synchronized(ioUnit) {
 		if( DEBUG )
-		System.out.println("IOUnit Fset_length "+newlen);
+			System.out.println("IOUnit Fset_length "+newlen);
+		synchronized(ioUnit) {
 			ioUnit.Fset_length(newlen);	
 		}
 	}
 	@Override
 	public void Fforce() throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker force ");
+			System.out.println("IOWorker force ");
 		synchronized(ioUnit) {
 			ioUnit.Fforce();
 		}
@@ -208,7 +208,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public void Fwrite(byte[] obuf) throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
+			System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
 		synchronized(ioUnit) {
 			ioUnit.Fwrite(obuf);
 		}
@@ -216,7 +216,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public void Fwrite(byte[] obuf, int osiz) throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
+			System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
 		synchronized(ioUnit) {
 			ioUnit.Fwrite(obuf, osiz);
 		}
@@ -242,7 +242,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public int Fread(byte[] b, int osiz) throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fread "+osiz+" @"+Ftell());
+			System.out.println("IOWorker fread "+osiz+" @"+Ftell());
 		synchronized(ioUnit) {
 			return ioUnit.Fread(b, osiz);
 		}
@@ -250,7 +250,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public int Fread(byte[] b) throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fread "+b.length+" @"+Ftell());
+			System.out.println("IOWorker fread "+b.length+" @"+Ftell());
 		synchronized(ioUnit) {
 			return ioUnit.Fread(b);
 		}
@@ -258,7 +258,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public long Fread_long() throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fread_long @"+Ftell());
+			System.out.println("IOWorker fread_long @"+Ftell());
 		synchronized(ioUnit) {
 			return ioUnit.Fread_long();
 		}
@@ -266,7 +266,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public int Fread_int() throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fread_int @"+Ftell());
+			System.out.println("IOWorker fread_int @"+Ftell());
 		synchronized(ioUnit) {
 			return ioUnit.Fread_int();
 		}
@@ -274,13 +274,13 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	@Override
 	public short Fread_short() throws IOException {
 		if( DEBUG )
-		System.out.println("IOWorker fread_short @"+Ftell());
+			System.out.println("IOWorker fread_short @"+Ftell());
 		synchronized(ioUnit) {
 			return ioUnit.Fread_short();
 		}
 	}
 	@Override
-	public String FTread() throws IOException {
+	public synchronized String FTread() throws IOException {
 		synchronized(ioUnit) {
 			return ioUnit.FTread();
 		}
@@ -298,7 +298,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		}
 	}
 	@Override
-	public String Fname() {
+	public synchronized String Fname() {
 		return DBName;
 	}
 	@Override
@@ -320,7 +320,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		}
 	}
 	@Override
-	public Channel getChannel() {
+	public synchronized Channel getChannel() {
 		synchronized(ioUnit) {
 			return ioUnit.getChannel();
 		}

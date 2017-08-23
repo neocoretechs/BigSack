@@ -45,7 +45,7 @@ public final class FileIO implements IoInterface {
 	 * create is true for 'create if not existing' 
 	 * Open the file, performing the proper initialization on creation
 	 */
-	public boolean Fopen(String fname, boolean create) throws IOException {
+	public synchronized boolean Fopen(String fname, boolean create) throws IOException {
 		WO = new File(fname);
 		if (!WO.exists()) {
 			if (create) {
@@ -71,7 +71,7 @@ public final class FileIO implements IoInterface {
 	 * Open the random access file encapsulated by constructor
 	 * mode is rw
 	 */
-	public void Fopen() throws IOException {
+	public synchronized void Fopen() throws IOException {
 		RA = new RandomAccessFile(WO, "rw");
 		fisnew = false;
 		fisopen = true;
@@ -79,7 +79,7 @@ public final class FileIO implements IoInterface {
 	/**
 	 * Close the encapsulated random access file
 	 */
-	public void Fclose() throws IOException {
+	public synchronized void Fclose() throws IOException {
 		if (fisopen) {
 			fisopen = false;
 			Fforce();
@@ -89,90 +89,90 @@ public final class FileIO implements IoInterface {
 	/**
 	 * Return the result of getFilePointer on encapsulated randomaccessfile
 	 */
-	public long Ftell() throws IOException {
+	public synchronized long Ftell() throws IOException {
 		return RA.getFilePointer();
 	}
 	/**
 	 * See the designated position in encapsulated random access file
 	 */
-	public void Fseek(long offset) throws IOException {
+	public synchronized void Fseek(long offset) throws IOException {
 		RA.seek(offset);
 	}
-	public long Fsize() throws IOException {
+	public synchronized long Fsize() throws IOException {
 		return RA.length();
 	}
 	/**
 	 * Set the length of the encapsulated RandomAccessFile
 	 */
-	public void Fset_length(long newlen) throws IOException {
+	public synchronized void Fset_length(long newlen) throws IOException {
 		RA.setLength(newlen);
 	}
 	/**
 	 * Get the file descriptor of the encapsulated RandomAccessFile and perform a 'sync' upon it.
 	 * The will guarantee a flush of the filesystem buffers
 	 */
-	public void Fforce() throws IOException {
+	public synchronized void Fforce() throws IOException {
 		RA.getFD().sync();
 	}
 
 	/**
 	 * Write the byte buffer to the encapsulated random access file
 	 */
-	public void Fwrite(byte[] obuf) throws IOException {
+	public synchronized void Fwrite(byte[] obuf) throws IOException {
 		RA.write(obuf);
 	}
-	public void Fwrite(byte[] obuf, int osiz) throws IOException {
+	public synchronized void Fwrite(byte[] obuf, int osiz) throws IOException {
 		RA.write(obuf, 0, osiz);
 	}
-	public void Fwrite_int(int obuf) throws IOException {
+	public synchronized void Fwrite_int(int obuf) throws IOException {
 		RA.writeInt(obuf);
 	}
-	public void Fwrite_long(long obuf) throws IOException {
+	public synchronized void Fwrite_long(long obuf) throws IOException {
 		RA.writeLong(obuf);
 	}
-	public void Fwrite_short(short obuf) throws IOException {
+	public synchronized void Fwrite_short(short obuf) throws IOException {
 		RA.writeShort(obuf);
 	}
 	/**
 	 * Read from the encap random file
 	 */
-	public int Fread(byte[] b, int osiz) throws IOException {
+	public synchronized int Fread(byte[] b, int osiz) throws IOException {
 		return RA.read(b, 0, osiz);
 	}
-	public int Fread(byte[] b) throws IOException {
+	public synchronized int Fread(byte[] b) throws IOException {
 		return RA.read(b);
 	}
-	public int Fread_int() throws IOException {
+	public synchronized int Fread_int() throws IOException {
 		return RA.readInt();
 	}
-	public long Fread_long() throws IOException {
+	public synchronized long Fread_long() throws IOException {
 		return RA.readLong();
 	}
-	public short Fread_short() throws IOException {
+	public synchronized short Fread_short() throws IOException {
 		return RA.readShort();
 	}
-	public String FTread() throws IOException {
+	public synchronized String FTread() throws IOException {
 		return RA.readLine();
 	}
-	public void FTwrite(String ins) throws IOException {
+	public synchronized void FTwrite(String ins) throws IOException {
 		RA.writeBytes(ins);
 	}
-	public void Fdelete() {
+	public synchronized void Fdelete() {
 		WO.delete();
 	}
-	public String Fname() {
+	public synchronized String Fname() {
 		return WO.getName();
 	}
-	public boolean isopen() {
+	public synchronized boolean isopen() {
 		return fisopen;
 	}
-	public boolean iswriteable() {
+	public synchronized boolean iswriteable() {
 		return true;
 	}
-	public boolean isnew() {
+	public synchronized boolean isnew() {
 		return fisnew;
 	}
-	public Channel getChannel() {
+	public synchronized Channel getChannel() {
 		return RA.getChannel();
 	}
 }

@@ -1,13 +1,14 @@
 package com.neocoretechs.bigsack.io.request;
 
 import java.io.IOException;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
-import com.neocoretechs.bigsack.io.request.iomanager.CommitBufferFlushRequest;
+
 /**
  * A special case of request the does not propagate outward to workers but instead is
  * used to serialize commit/rollback etc. on the request queue. In lieu of waiting for a synchronization
@@ -39,9 +40,26 @@ public final class CommitRequest implements IoRequestInterface {
 	}
 	@Override
 	public void process() throws IOException {
-		CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
-		cbfr.setIoInterface(ioManager);
-		blockManager.queueRequest(cbfr);	
+		// dealloc outstanding block, call commit buffer flush in global IO, call recovery log manager commit
+		if( DEBUG  )
+			System.out.println("CommitRequest.process "+blockManager+" "+barrierSynch+" "+barrierCount);
+		blockManager.commitBufferFlush(recoveryLog);
+		try {
+			if( DEBUG  )
+				System.out.println("CommitRequest.process "+blockManager+" awaiting barrier "+barrierSynch);
+			barrierSynch.await();
+		} catch (InterruptedException |  BrokenBarrierException e) {
+			// executor requests shutdown
+		}
+		// all buffers flushed, call commit
+		recoveryLog.commit();
+		// if we have local io manager that has file ops, call the close
+		if( ioManager != null )
+			ioManager.Fclose();
+		barrierCount.countDown();
+		//CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
+		//cbfr.setIoInterface(ioManager);
+		//blockManager.queueRequest(cbfr);	
 		if( DEBUG )
 			System.out.println("CommitRequest queued flushed buffer, tablespace "+tablespace+ " latches "+barrierCount+
 				" barrier waiters:"+barrierSynch.getNumberWaiting()+

@@ -23,7 +23,7 @@ public final class FindOrAddBlockAccessRequest implements CompletionLatchInterfa
 	}
 	@Override
 	public void process() throws IOException {
-		returnObject = blockBuffer.findOrAddBlockAccess(block);
+		returnObject = blockBuffer.findOrAddBlock(block);
 		barrierCount.countDown();
 	}
 

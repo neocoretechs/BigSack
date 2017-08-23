@@ -63,7 +63,7 @@ public class GlobalDBIO {
 	}
 	
 	/**
-	* Translate the virtual tablspace (first 3 bits) and block to real block
+	* Translate the virtual tablespace (first 3 bits) and block to real block
 	* @param tvblock The virtual block
 	* @return The actual block for that tablespace
 	*/
@@ -212,7 +212,7 @@ public class GlobalDBIO {
 	* @return true if successful
 	* @see IoInterface
 	*/
-	boolean Fopen(String fname, String remote, boolean create) throws IOException {
+	synchronized boolean Fopen(String fname, String remote, boolean create) throws IOException {
 		if( DEBUG )
 			System.out.println("GlobalDBIO.Fopen "+fname+" "+remote+" "+create);
 		return ioManager.Fopen(fname, remote, L3cache, create);
@@ -247,7 +247,7 @@ public class GlobalDBIO {
 	 * Return the properties file entries for the remote worker nodes in cluster mode, if they were present
 	 * @return the nodes otherwise null if no entry in the properties file
 	 */
-	public String[][] getWorkerNodes() { return nodePorts; }
+	public synchronized String[][] getWorkerNodes() { return nodePorts; }
 	
 	/**
 	* Static method for object to serialized byte conversion.
@@ -450,15 +450,15 @@ public class GlobalDBIO {
 			ioManager.forceBufferClear();
 	}
 	
-	public void findOrAddBlock(long pos) throws IOException {
+	public synchronized void findOrAddBlock(long pos) throws IOException {
 		ioManager.findOrAddBlockAccess(pos);	
 	}
 	
-	public void deallocOutstanding() throws IOException {
+	public synchronized void deallocOutstanding() throws IOException {
 		ioManager.deallocOutstanding();	
 	}
 	
-	public void deallocOutstanding(long pos) throws IOException {
+	public synchronized void deallocOutstanding(long pos) throws IOException {
 		ioManager.deallocOutstanding(pos);	
 	}
 	/**
@@ -468,16 +468,16 @@ public class GlobalDBIO {
 	 * @return The BlockAccessIndex from the random tablespace
 	 * @throws IOException
 	 */
-	public BlockAccessIndex stealblk() throws IOException {
+	public synchronized BlockAccessIndex stealblk() throws IOException {
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
 		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getLbai());
 	}
 	
-	public void deallocOutstandingRollback() throws IOException {
+	public synchronized void deallocOutstandingRollback() throws IOException {
 		ioManager.deallocOutstandingRollback();
 	}
 	
-	public void deallocOutstandingCommit() throws IOException {
+	public synchronized void deallocOutstandingCommit() throws IOException {
 		ioManager.deallocOutstandingCommit();
 		
 	}
@@ -486,7 +486,7 @@ public class GlobalDBIO {
 	* Create initial buckets
 	* @exception IOException if buckets cannot be created
 	*/
-	private void createBuckets() throws IOException {
+	private synchronized void createBuckets() throws IOException {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 		d.resetBlock();
 		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
@@ -542,7 +542,7 @@ public class GlobalDBIO {
 	 * @param tblk
 	 * @throws IOException
 	 */
-	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
+	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.blockdump()+"|");
 		// send write command and queues be damned, writes only happen
@@ -559,7 +559,7 @@ public class GlobalDBIO {
 		return MAXBLOCKS;
 	}
 
-	public synchronized void setMAXBLOCKS(int mAXBLOCKS) {
+	public void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
 	}
 	

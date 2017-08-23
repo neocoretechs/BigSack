@@ -6,6 +6,7 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.btree.TreeSearchResult;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetKVIterator;
@@ -347,6 +348,7 @@ public final class BigSackSession {
 		int numberBlks = 1;
 		long minBlock = bTree.getIO().firstTableSpace();
 		int itab = 0;
+		bTree.getIO();
 		do {
 			int tnumberBlks = 1;
 			float ttotutil = 0;
@@ -354,19 +356,22 @@ public final class BigSackSession {
 			long fsiz = bTree.getIO().getIOManager().Fsize(itab);
 			//long maxBlock = GlobalDBIO.makeVblock(itab, fsiz);
 			
-			System.out.println("BigSack Analysis|Tablespace number "+itab+" bytes: " + fsiz);
+			System.out.println("<<BigSack Analysis|Tablespace number "+itab+" File size bytes: " + fsiz+">>");
 			while (minBlock < fsiz) {
 				bTree.getIO().getIOManager().FseekAndReadFully(minBlock, db);
-				if( db.getBytesused() == 0 || db.getBytesinuse() == 0 && 
-						(db.getData()[0] == 0xAC && db.getData()[1] == 0xED && db.getData()[2] == 0x00 && db.getData()[3] == 0x05) ) {
-					//System.out.println("Block has zero in use values but object stream header for tablespace"+itab+" pos:"+xpos+" Data:"+db+","+db.blockdump());
+				if( db.getBytesused() == 0 || db.getBytesinuse() == 0 ) {		
 					++zeroBlocks;
+				} else {
+					if(db.getData()[0] == 0xAC && db.getData()[1] == 0xED && db.getData()[2] == 0x00 && db.getData()[3] == 0x05) 
+						System.out.println("Detected object stream header for tablespace"+itab+" pos:"+minBlock);
+					else
+						System.out.println("Detected NO object stream header for tablespace"+itab+" pos:"+minBlock);
 				}
 				
 				//if( Props.DEBUG ) 
 				//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toBriefString());
 				if( verbose ) {
-						System.out.println("BigSack Block tablespace "+itab+" zero blocks:"+zeroBlocks+" pos:"+minBlock+" Data:"+db+","+db.blockdump());
+						System.out.println("BigSack Block tablespace "+itab+". Current zero blocks:"+zeroBlocks+". Pos:"+minBlock+". Data:"+db.blockdump());
 				}
 				totutil += ((float) (db.getBytesinuse()));
 				ttotutil += ((float) (db.getBytesinuse()));
@@ -374,14 +379,13 @@ public final class BigSackSession {
 	
 				++numberBlks;
 				++tnumberBlks;
-				if( ((float)(tnumberBlks))/1000.0f == (float)(tnumberBlks/1000) ) System.out.print(tnumberBlks+"\r");
+				//if( ((float)(tnumberBlks))/1000.0f == (float)(tnumberBlks/1000) ) System.out.print(tnumberBlks+"\r");
 			}
 			int ttTotal = DBPhysicalConstants.DBLOCKSIZ * tnumberBlks; // bytes total theoretical
 			int taTotal = (int) ((ttotutil / (float)ttTotal) * 100.0); // ratio of total to used
 			System.out.println("BigSack Tablespace "+itab+" utilization: " + (int)ttotutil + " bytes in "+tnumberBlks+" blocks");
 			System.out.println("Maximum possible utilization is "+ttTotal+" bytes, making data Utilization "+taTotal+"%");
-			++itab;
-		} while( (minBlock = bTree.getIO().nextTableSpace(itab)) != 0);
+		} while( (minBlock = GlobalDBIO.nextTableSpace(itab++)) != 0);
 		System.out.println("Total BigSack utilization: " + (int)totutil + " bytes in "+numberBlks+" blocks");
 		int tTotal = DBPhysicalConstants.DBLOCKSIZ * numberBlks; // bytes total theoretical
 		int aTotal = (int) ((totutil / (float)tTotal) * 100.0); // ratio of total to used
