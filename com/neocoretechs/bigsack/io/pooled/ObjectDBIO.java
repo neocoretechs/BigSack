@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 
+import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.Optr;
 //import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
@@ -176,6 +177,20 @@ public final class ObjectDBIO extends GlobalDBIO {
 
 	public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
 		this.customClassLoader = customClassLoader;
+	}
+	/**
+	 * Find a block with some available space starting at the given position.
+	 * @param startblk
+	 * @return The block with the available space or null if the reference block is full.
+	 * @throws IOException
+	 */
+	public synchronized BlockAccessIndex findfreeblock(long startblk) throws IOException {
+		BlockAccessIndex tblk = ioManager.findOrAddBlockAccess(startblk);
+		if( tblk.getBlk().getBytesinuse() >= DBPhysicalConstants.DATASIZE ) {
+			tblk.decrementAccesses();
+			return null;
+		}
+		return tblk;
 	}
 	
 

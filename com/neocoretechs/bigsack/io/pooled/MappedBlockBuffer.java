@@ -390,7 +390,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		try {
 			bai = freeBL.take();
 		} catch (InterruptedException e) {}
-		// ups access
+		// ups access, set blockindex 0
 		bai.setBlockNumber(Lbn);
 		ioManager.FseekAndRead(Lbn, bai.getBlk());
 		put(Lbn, bai);
@@ -415,7 +415,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		try {
 			bai = freeBL.take();
 		} catch (InterruptedException e) {}
-		// ups the access latch
+		// ups the access latch, set byteindex to 0
 		bai.setBlockNumber(Lbn);
 		put(Lbn, bai);
 		if( DEBUG ) {
@@ -429,8 +429,12 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.getusedBlock Calling for USED BLOCK "+GlobalDBIO.valueOf(loc)+" "+loc);
 		BlockAccessIndex bai = get(loc);
-		if( bai == null ) ++cacheMiss;
-		else ++cacheHit;
+		if( bai == null ) {
+			++cacheMiss;
+		} else {
+			++cacheHit;
+			bai.setByteindex((short) 0);
+		}
 		return bai;
 
 	}
@@ -464,7 +468,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		int i = offs, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.getByteindex() >= lbai.getBlk().getBytesused())
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
 			if((tblk=getnextblk(lbai)) != null) {
 				lbai=tblk;
 			} else {
@@ -516,7 +520,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		int i = 0, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.getByteindex() >= lbai.getBlk().getBytesused())
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
 			if((tblk=getnextblk(lbai)) != null) {
 				lbai=tblk;
 			} else {
@@ -554,7 +558,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		BlockAccessIndex tblk;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()) {
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1) {
 			if((tblk=getnextblk(lbai)) == null) {
 				return -1;
 			}

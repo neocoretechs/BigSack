@@ -135,7 +135,7 @@ public final class BTreeMain {
 			++numKeys;
 			while ((i = gotoNextKey()) == 0) {
 			if( DEBUG )
-				System.out.println("gotoNextKey returned: "+currentPage.keyArray[currentIndex]);
+				System.out.println("gotoNextKey returned: "+currentPage.getKey(currentIndex));
 				++numKeys;
 			}
 		}
@@ -234,12 +234,12 @@ public final class BTreeMain {
     	BTreeKeyPage sourcePage = node;
         while (sourcePage != null) {
                 i = 0;
-                while (i < sourcePage.numKeys && key.compareTo(sourcePage.keyArray[i]) > 0) {
+                while (i < sourcePage.numKeys && key.compareTo(sourcePage.getKey(i)) > 0) {
                         i++;
                 }
-                if (i < sourcePage.numKeys && key.compareTo(sourcePage.keyArray[i]) == 0) {
+                if (i < sourcePage.numKeys && key.compareTo(sourcePage.getKey(i)) == 0) {
                 	if( object != null && OVERWRITE) {
-            			sourcePage.deleteData(sdbio, i);
+            			sourcePage.deleteData(i);
                         sourcePage.putDataToArray(object,i);
                 	}
                 	return new TreeSearchResult(sourcePage, i, true);
@@ -249,7 +249,7 @@ public final class BTreeMain {
                 		System.out.println("BTreeMain.update set to return index :"+i+" for "+sourcePage);
                         return new TreeSearchResult(sourcePage, i, false);
                 } else {
-                	BTreeKeyPage targetPage  = sourcePage.getPage(sdbio, i);// get the page at the index of the given page
+                	BTreeKeyPage targetPage  = sourcePage.getPage(i);// get the page at the index of the given page
                 	if( targetPage == null )
                 		break;
                 	sdbio.deallocOutstanding(node.pageId);
@@ -294,10 +294,10 @@ public final class BTreeMain {
     	BTreeKeyPage sourcePage = node;
         while (sourcePage != null) {
                 i = 0;
-                while (i < sourcePage.numKeys && key.compareTo(sourcePage.keyArray[i]) > 0) {
+                while (i < sourcePage.numKeys && key.compareTo(sourcePage.getKey(i)) > 0) {
                         i++;
                 }
-                if (i < sourcePage.numKeys && key.compareTo(sourcePage.keyArray[i]) == 0) {
+                if (i < sourcePage.numKeys && key.compareTo(sourcePage.getKey(i)) == 0) {
                  	if( DEBUG )
                 		System.out.println("BTreeMain.reposition set to return index :"+i+" after locating key for "+sourcePage);
                 	return new TreeSearchResult(sourcePage, i, true);
@@ -308,7 +308,7 @@ public final class BTreeMain {
                 		System.out.println("BTreeMain.reposition set to return index :"+i+" for leaf "+sourcePage);
                 	return new TreeSearchResult(sourcePage, i, false);
                 } else {
-                	BTreeKeyPage targetPage  = sourcePage.getPage(sdbio, i);// get the page at the index of the given page
+                	BTreeKeyPage targetPage  = sourcePage.getPage(i);// get the page at the index of the given page
                 	if( targetPage == null )
                 		break;
                 	sdbio.deallocOutstanding(node.pageId);
@@ -347,7 +347,7 @@ public final class BTreeMain {
 				int goodKeys = 0;
 				// find the blanks in indexes, we only remove beginning blanks where keys were removed
 				for(int j = 0; j < BTreeKeyPage.MAXKEYS; j++) {
-					if(parentNode.keyArray[j] == null ) 
+					if(parentNode.getKey(j) == null ) 
 						++nullKeys;
 					else
 						break;
@@ -357,7 +357,7 @@ public final class BTreeMain {
 				}
 				// find the number of good keys from the nulls forward
 				for(int j = nullKeys; j < BTreeKeyPage.MAXKEYS; j++) {
-					if(parentNode.keyArray[j] != null )
+					if(parentNode.getKey(j) != null )
 						++goodKeys;
 					else
 						break;
@@ -394,9 +394,9 @@ public final class BTreeMain {
 				// Write the three new pages back to deep store and log them along the way
 				// Deallocate (unlatch) them after the write completes.
 				//
-				parentNode.putPage(sdbio);
-				((BTreeKeyPage)lnsr.getObjectReturn()).putPage(sdbio);
-				((BTreeKeyPage)rnsr.getObjectReturn()).putPage(sdbio);
+				parentNode.putPage();
+				((BTreeKeyPage)lnsr.getObjectReturn()).putPage();
+				((BTreeKeyPage)rnsr.getObjectReturn()).putPage();
 				//sdbio.deallocOutstanding(parentNode.pageId);
 				//sdbio.deallocOutstanding(((BTreeKeyPage)lnsr.getObjectReturn()).pageId);
 				//sdbio.deallocOutstanding(((BTreeKeyPage)rnsr.getObjectReturn()).pageId);
@@ -430,12 +430,12 @@ public final class BTreeMain {
             		return;
             	}
                 // If node is not a full node insert the new element into its proper place within node.
-                while (i >= 0 && key.compareTo(node.keyArray[i]) < 0) {
+                while (i >= 0 && key.compareTo(node.getKey(i)) < 0) {
                     	moveKeyData(node, i, node, i+1, false);
                         i--;
                 }
                 i++;
-                node.keyArray[i] = key;
+                node.setKey(i, key);
                 // leaf, no child data
                 if( object != null ) {
                     	node.dataArray[i] = object;
@@ -444,7 +444,7 @@ public final class BTreeMain {
                 }
                 node.numKeys++;
                 node.setUpdated(true);
-                node.putPage(sdbio);
+                node.putPage();
             } else {
             		// x is not a leaf node. We can't just stick k in because it doesn't have any children; 
             		// children are really only created when we split a node, so we don't get an unbalanced tree. 
@@ -459,8 +459,8 @@ public final class BTreeMain {
             		i = node.numKeys-1;
             		int childPos = i + 1;
             		// keep going backward checking while key is < keyArray or no child pointer
-            		// if not found the key was > all pointers
-                    while (i >= 0 && (node.pageIdArray[childPos] == -1 || key.compareTo(node.keyArray[i]) < 0)) {
+            		// if not found, the key was > all pointers
+                    while (i >= 0 && (node.pageIdArray[childPos] == -1 || key.compareTo(node.getKey(i)) < 0)) {
                             i--;
                             childPos--;
                     }
@@ -475,7 +475,7 @@ public final class BTreeMain {
                     }
                     if( DEBUG )
                     	System.out.println("BTreeMain.insertIntoNonLeafNode index:"+i+" child:"+childPos);
-                    BTreeKeyPage npage = node.getPage(sdbio,childPos);
+                    BTreeKeyPage npage = node.getPage(childPos);
                     if( npage != null ) {
                     	// check to see if intended child node insertion point is full 
                     	if (npage.numKeys == BTreeKeyPage.MAXKEYS) {
@@ -529,7 +529,7 @@ public final class BTreeMain {
                     }
             }
             for (int j = T; j < node.numKeys; j++) {
-                    node.keyArray[j] = null;
+                    node.setKey(j, null);
                     node.dataArray[j] = null;
                     node.dataIdArray[j] = Optr.emptyPointer;
             }
@@ -560,12 +560,12 @@ public final class BTreeMain {
             }  
             // insert the mid key (T-1, middle key number adjusted to index) data to the designated spot in the parent node
             // 
-            parentNode.keyArray[keyIndex] = node.keyArray[T - 1];
+            parentNode.setKey(keyIndex, node.getKey(T - 1));
             parentNode.dataArray[keyIndex] = node.dataArray[T - 1];
             parentNode.dataIdArray[keyIndex] = node.dataIdArray[T - 1];
             parentNode.dataUpdatedArray[keyIndex] = node.dataUpdatedArray[T - 1];
             // zero the old node mid key, its moved
-            node.keyArray[T - 1] = null;
+            node.setKey(T - 1,  null);
             node.dataArray[T - 1] = null;
             node.dataIdArray[T - 1] = null;
             // bump the parent node key count
@@ -574,8 +574,8 @@ public final class BTreeMain {
             node.setUpdated(true);
             parentNode.setUpdated(true);
             // put to log and deep store
-            node.putPage(sdbio);
-            parentNode.putPage(sdbio);
+            node.putPage();
+            parentNode.putPage();
            	if( DEBUG )
         		System.out.println("BTreeMain.splitChildNode EXIT parent:"+parentNode+" index:"+keyIndex+" target:"+node+" new:"+newNode);
     }
@@ -589,13 +589,19 @@ public final class BTreeMain {
      * @param targetIndex
      */
     public static void moveKeyData(BTreeKeyPage source, int sourceIndex, BTreeKeyPage target, int targetIndex, boolean nullify) {
-        	target.keyArray[targetIndex] = source.keyArray[sourceIndex];
+        	try {
+				target.setKey(targetIndex, source.getKey(sourceIndex));
+			} catch (IOException e) { e.printStackTrace();}
+        	target.keyIdArray[targetIndex] = source.keyIdArray[sourceIndex];
+        	target.keyUpdatedArray[targetIndex] = source.keyUpdatedArray[sourceIndex];
         	target.dataArray[targetIndex] = source.dataArray[sourceIndex];
         	target.dataIdArray[targetIndex] = source.dataIdArray[sourceIndex];
         	target.dataUpdatedArray[targetIndex] = source.dataUpdatedArray[sourceIndex];
      
         if( nullify ) {
-            	source.keyArray[sourceIndex] = null;
+            	source.setKey(sourceIndex, null);
+            	target.keyIdArray[sourceIndex] = Optr.emptyPointer;
+            	target.keyUpdatedArray[sourceIndex] = false;
             	source.dataArray[sourceIndex] = null;
             	source.dataIdArray[sourceIndex] = Optr.emptyPointer;
             	source.dataUpdatedArray[sourceIndex] = false; // have not updated off-page data, just moved its pointer
@@ -640,17 +646,17 @@ public final class BTreeMain {
 			// delete is percolating up the tree
 			// Collapse the page at the key
 			// location
-			if ((currentPage.getPage(getIO(), currentIndex) == null) || 
-				(currentPage.getPage(getIO(), currentIndex + 1) == null)) {
+			if ((currentPage.getPage(currentIndex) == null) || 
+				(currentPage.getPage(currentIndex + 1) == null)) {
 				if( Props.DEBUG ) System.out.println("Delete loop No left/right pointer on "+currentPage);
 				// Save non-null pointer
 				if (currentPage.pageArray[currentIndex] == null)
-					tpage = currentPage.getPage(getIO(), currentIndex + 1);
+					tpage = currentPage.getPage(currentIndex + 1);
 				else
-					tpage = currentPage.getPage(getIO(), currentIndex);
+					tpage = currentPage.getPage(currentIndex);
 				if( Props.DEBUG ) System.out.println("Delete selected non-null page is "+tpage);
 				// At leaf - delete the key/data
-				currentPage.deleteData(getIO(), currentIndex);
+				currentPage.deleteData(currentIndex);
 				currentPage.delete(currentIndex);
 				if( Props.DEBUG ) System.out.println("Just deleted "+currentPage+" @ "+currentIndex);
 				// Rewrite non-null pointer
@@ -685,7 +691,7 @@ public final class BTreeMain {
 					} else {
 						// no more keys
 						if( DEBUG ) System.out.println("Delete No more keys, setting new root page");
-						setRoot(new BTreeKeyPage(0L));
+						setRoot(new BTreeKeyPage(sdbio, 0L));
 						getRoot().setUpdated(true);
 						currentPage = null;
 						//numKeys = 0;
@@ -714,14 +720,14 @@ public final class BTreeMain {
 				// Get sibling pages
 				if( DEBUG ) System.out.println("Delete Getting sibling pages");
 				if (tindex > 0) {
-					leftPage = tpage.getPage(getIO(), tindex - 1);
+					leftPage = tpage.getPage(tindex - 1);
 					if( DEBUG ) System.out.println("Delete tindex > 0 @ "+tindex+" left page "+leftPage);
 				} else {
 					leftPage = null;
 					if( DEBUG ) System.out.println("Delete tindex not > 0 @ "+tindex+" left page "+leftPage);
 				}
 				if (tindex < tpage.numKeys) {
-					rightPage = tpage.getPage(getIO(), tindex + 1);
+					rightPage = tpage.getPage(tindex + 1);
 				} else {
 					rightPage = null;
 				}
@@ -784,12 +790,12 @@ public final class BTreeMain {
 				if( Props.DEBUG ) System.out.println("Delete Not a leaf, find next key");
 				tpage = currentPage;
 				tindex = currentIndex;
-				if (currentPage.getPage(getIO(), currentIndex) != null) {
+				if (currentPage.getPage(currentIndex) != null) {
 					// Get predecessor if possible
 					if( DEBUG ) System.out.println("Delete Seeking right tree");
 					seekRightTree();	
 				} else { // Get successor
-					if (currentPage.getPage(getIO(), currentIndex + 1) == null) {
+					if (currentPage.getPage(currentIndex + 1) == null) {
 						if( DEBUG ) System.out.println("Delete cant get successor, returning");
 						return (TREEERROR);
 					}
@@ -799,9 +805,9 @@ public final class BTreeMain {
 					return (STACKERROR);	
 				}
 				// Replace key/data with successor/predecessor
-				tpage.putKeyToArray(currentPage.keyArray[currentIndex], tindex);
+				tpage.putKeyToArray(currentPage.getKey(currentIndex), tindex);
 				tpage.putDataToArray(
-					currentPage.getDataFromArray(getIO(), currentIndex),
+					currentPage.getDataFromArray(currentIndex),
 					tindex);
 				if( DEBUG ) System.out.println("Delete re-entring loop to delete key on leaf of tpage "+tpage);
 				// Reenter loop to delete key on leaf
@@ -830,27 +836,27 @@ public final class BTreeMain {
 		int i, j;
 
 		// Append the parent key to the end of the left key page
-		left.putKeyToArray(parent.keyArray[index], left.numKeys);
-		left.putDataToArray(parent.getDataFromArray(getIO(), index), left.numKeys);
+		left.putKeyToArray(parent.getKey(index), left.numKeys);
+		left.putDataToArray(parent.getDataFromArray(index), left.numKeys);
 
 		// Append the contents of the right
 		// page onto the left key page
 		j = left.numKeys + 1;
 		for (i = 0; i < right.numKeys; i++) {
-			left.putPageToArray(right.getPage(getIO(), i), j);
-			left.putDataToArray(right.getDataFromArray(getIO(), i), j);
-			left.keyArray[j] = right.keyArray[i];
+			left.putPageToArray(right.getPage(i), j);
+			left.putDataToArray(right.getDataFromArray(i), j);
+			left.setKey(j, right.getKey(i));
 			j++;
 		}
 		left.putPageToArray(
-			right.getPage(getIO(), right.numKeys),
+			right.getPage(right.numKeys),
 			left.numKeys + right.numKeys + 1);
 		left.numKeys += right.numKeys + 1;
 
 		// Null the right page (no leaks)
 		for (i = 0; i < right.numKeys; i++) {
 			right.nullPageArray(i);
-			right.keyArray[i] = null;
+			right.setKey(i, null);
 			right.putDataToArray(null, i);
 		}
 		right.nullPageArray(right.numKeys);
@@ -902,11 +908,11 @@ public final class BTreeMain {
         while (sourcePage != null) {
                 i = 0;
                 //while (i < sourcePage.numKeys && key.compareTo(sourcePage.keyArray[i]) > 0) {
-                while (i < sourcePage.numKeys && sourcePage.keyArray[i].compareTo(key) < 0) {
+                while (i < sourcePage.numKeys && sourcePage.getKey(i).compareTo(key) < 0) {
                         i++;
                 }
                 //if (i < sourcePage.numKeys && key.compareTo(sourcePage.keyArray[i]) == 0) {
-                if (i < sourcePage.numKeys && sourcePage.keyArray[i].compareTo(key) == 0) {	
+                if (i < sourcePage.numKeys && sourcePage.getKey(i).compareTo(key) == 0) {	
                  	if( DEBUG || DEBUGSEARCH )
                 		System.out.println("BTreeMain.repositionStack set to return index :"+i+" after locating key for "+sourcePage);
                 	return new TreeSearchResult(sourcePage, i, true);
@@ -914,14 +920,14 @@ public final class BTreeMain {
                 if (sourcePage.mIsLeafNode) {
                 	if( DEBUG || DEBUGSEARCH)
                 		System.out.println("BTreeMain.repositionStack set to return index :"+i+" for leaf "+sourcePage);
-                	if( i >= sourcePage.numKeys || sourcePage.keyArray[i].compareTo(key) < 0 ) {
+                	if( i >= sourcePage.numKeys || sourcePage.getKey(i).compareTo(key) < 0 ) {
                 		currentPage = sourcePage;
                 		popUntilValid(true);
                 		return new TreeSearchResult(currentPage, currentIndex, true);
                 	}
              		return new TreeSearchResult(sourcePage, i, true);
                 } else {
-                	BTreeKeyPage targetPage  = sourcePage.getPage(sdbio, i);// get the page at the index of the given page
+                	BTreeKeyPage targetPage  = sourcePage.getPage(i);// get the page at the index of the given page
                 	if( DEBUG || DEBUGSEARCH) {
                 		System.out.println("BTreeMain.repositionStack traverse next page for key:"+key+" page:"+targetPage);
                 	}
@@ -970,7 +976,7 @@ public final class BTreeMain {
 				// Not a leaf node with valid index, so we have to either return the index or find a subtree to descend
 				// should be positioned at key to which we descend left subtree
 				// 
-				BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+				BTreeKeyPage tPage = currentPage.getPage(currentChild);
 				if (tPage  == null) {
 					// Pointer is null, we can return this index as we cant descend subtree
 					if( DEBUG || DEBUGSEARCH) {
@@ -1025,7 +1031,7 @@ public final class BTreeMain {
 				// Not a leaf node with valid index, so we have to either return the index or find a subtree to descend
 				// should be positioned at key to which we descend left subtree
 				// 
-				BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+				BTreeKeyPage tPage = currentPage.getPage(currentChild);
 				if (tPage  == null) {
 					// Pointer is null, we can return this index as we cant descend subtree
 					if( DEBUG || DEBUGSEARCH) {
@@ -1102,8 +1108,8 @@ public final class BTreeMain {
 	public synchronized void setCurrent() throws IOException {
 		if( DEBUG || DEBUGCURRENT)
 			System.out.println("BTreeMain.setCurrent page:"+currentPage+" index:"+currentIndex);
-		setCurrentKey(currentPage.keyArray[currentIndex]);
-		setCurrentObject(currentPage.getDataFromArray(sdbio, currentIndex));
+		setCurrentKey(currentPage.getKey(currentIndex));
+		setCurrentObject(currentPage.getDataFromArray(currentIndex));
 
 	}
 	/**
@@ -1113,8 +1119,8 @@ public final class BTreeMain {
 	public synchronized Comparable setCurrentKey() throws IOException {
 		if( DEBUG || DEBUGCURRENT)
 			System.out.println("BTreeMain.setCurrentKey page:"+currentPage+" index:"+currentIndex);
-		setCurrentKey(currentPage.keyArray[currentIndex]);
-		return currentPage.keyArray[currentIndex];
+		setCurrentKey(currentPage.getKey(currentIndex));
+		return currentPage.getKey(currentIndex);
 	}
 	/**
 	 * Utilize reposition to locate key. Set currentPage, currentIndex, currentKey, and currentChild.
@@ -1148,7 +1154,7 @@ public final class BTreeMain {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.println("BTreeMain.seekLeftTree page:"+currentPage+" index:"+currentIndex+" child:"+currentChild);
 		}
-		BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+		BTreeKeyPage tPage = currentPage.getPage(currentChild);
 		while (tPage != null) {
 			// Push the 'old' value of currentPage, currentIndex etc as a TraversalStackElement since we are
 			// intent on descending. After push and verification that tPage is not null, set page to tPage.
@@ -1158,8 +1164,8 @@ public final class BTreeMain {
 			currentIndex = 0;
 			currentChild = 0;
 			currentPage = tPage;
-			setCurrentKey(currentPage.keyArray[currentIndex]);
-			tPage = currentPage.getPage(sdbio, currentChild);
+			setCurrentKey(currentPage.getKey(currentIndex));
+			tPage = currentPage.getPage(currentChild);
 		}
 	}
 
@@ -1167,7 +1173,7 @@ public final class BTreeMain {
 	* Seeks to rightmost key in current subtree
 	*/
 	private void seekRightTree() throws IOException {
-		BTreeKeyPage tPage = currentPage.getPage(sdbio, currentChild);
+		BTreeKeyPage tPage = currentPage.getPage(currentChild);
 		while (tPage != null) {
 			push();
 			if( DEBUG || DEBUGSEARCH)
@@ -1175,8 +1181,8 @@ public final class BTreeMain {
 			currentIndex = currentPage.numKeys - 1;
 			currentChild = currentPage.numKeys;
 			currentPage = tPage;
-			setCurrentKey(currentPage.keyArray[currentIndex]);
-			tPage = currentPage.getPage(sdbio, currentChild);
+			setCurrentKey(currentPage.getKey(currentIndex));
+			tPage = currentPage.getPage(currentChild);
 		}
 	}
 
@@ -1305,19 +1311,19 @@ public final class BTreeMain {
                     if (node.mIsLeafNode) {
                     	System.out.print("Leaf node:");
                             for (int i = 0; i < node.numKeys; i++) {
-                                    System.out.print("INDEX:"+i+" node:"+node.keyArray[i] + ", ");
+                                    System.out.print("INDEX:"+i+" node:"+node.getKey(i) + ", ");
                             }
                             System.out.println("\n");
                     } else {
                     	System.out.print("NonLeaf node:");
                             int i;
                             for (i = 0; i < node.numKeys; i++) {
-                            	BTreeKeyPage btk = node.getPage(sdbio,i);
+                            	BTreeKeyPage btk = node.getPage(i);
                                 printBTree(btk);
-                                System.out.print("INDEX:"+i+" node:"+ node.keyArray[i] + ", ");
+                                System.out.print("INDEX:"+i+" node:"+ node.getKey(i) + ", ");
                             }
                             // get last far right node
-                            printBTree(node.getPage(sdbio,i));
+                            printBTree(node.getPage(i));
                             System.out.println("\n");
                     }                       
             }
@@ -1339,15 +1345,15 @@ public final class BTreeMain {
             if (node != null) {
                     if (node.mIsLeafNode) {
                             for (int i = 0; i < node.numKeys; i++) {
-                                    array.add(node.keyArray[i]);
+                                    array.add(node.getKey(i));
                             }
                     } else {
                             int i;
                             for (i = 0; i < node.numKeys; i++) {
-                                    array.addAll(getKeys(node.getPage(sdbio,i)));
-                                    array.add(node.keyArray[i]);
+                                    array.addAll(getKeys(node.getPage(i)));
+                                    array.add(node.getKey(i));
                             }
-                            array.addAll(getKeys(node.getPage(sdbio,i)));
+                            array.addAll(getKeys(node.getPage(i)));
                     }                       
             }
             return array;

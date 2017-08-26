@@ -37,15 +37,14 @@ public class SubSetKVIterator extends AbstractIterator {
 	Comparable fromKey, toKey, nextKey, retKey;
 	Object nextElem, retElem;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public SubSetKVIterator(Comparable fromKey, Comparable toKey, BTreeMain bTree)
-		throws IOException {
+	public SubSetKVIterator(Comparable fromKey, Comparable toKey, BTreeMain bTree) throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		this.toKey = toKey;
 		synchronized (bTree) {
 			TreeSearchResult tsr = bTree.seekKey(fromKey);
-			nextKey = tsr.page.keyArray[tsr.insertPoint];
-			nextElem = tsr.page.getDataFromArray(bTree.getIO(), tsr.insertPoint);
+			nextKey = tsr.page.getKey(tsr.insertPoint);
+			nextElem = tsr.page.getDataFromArray(tsr.insertPoint);
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
 					bTree.clearStack();

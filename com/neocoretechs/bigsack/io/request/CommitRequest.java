@@ -54,8 +54,9 @@ public final class CommitRequest implements IoRequestInterface {
 		// all buffers flushed, call commit
 		recoveryLog.commit();
 		// if we have local io manager that has file ops, call the close
-		if( ioManager != null )
-			ioManager.Fclose();
+		//if( ioManager != null ) {
+		//	ioManager.Fclose();
+		//}
 		barrierCount.countDown();
 		//CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
 		//cbfr.setIoInterface(ioManager);

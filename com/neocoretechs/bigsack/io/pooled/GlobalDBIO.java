@@ -497,7 +497,7 @@ public class GlobalDBIO {
 				// check for tablespace 0 , pos 0 and add our btree root
 				if( ispace == 0 && i == 0) {
 					long rootbl = makeVblock(0, 0);
-					BTreeKeyPage broot = new BTreeKeyPage(rootbl);
+					BTreeKeyPage broot = new BTreeKeyPage((ObjectDBIO) this, rootbl);
 					broot.setUpdated(true);
 					//broot.putPage(this);
 					byte[] pb = GlobalDBIO.getObjectAsBytes(broot);
