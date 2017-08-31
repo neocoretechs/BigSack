@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.stream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
@@ -28,14 +29,14 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 *
 */
 /**
-* InputStream reading directly from the DB blocks
+* OutputStream writing directly from the DB blocks
 * obviates need for intermediate byte array
 * @author Groff
 */
-public final class DBInputStream extends InputStream {
+public final class DBOutputStream extends OutputStream {
 	MappedBlockBuffer blockBuffer;
 	BlockAccessIndex lbai;
-	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
+	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai = tlbai;
 		blockBuffer = tsdbio;
 	}
@@ -51,27 +52,20 @@ public final class DBInputStream extends InputStream {
 	}
 	
 	@Override
-	public int read(byte[] b) throws IOException {
-		return read(b, 0, b.length);
+	public void write(byte[] b) throws IOException {
+		blockBuffer.writen(lbai, b, b.length);
 	}
 		
 	//Reads bytes from this byte-input stream into the specified byte array, starting at the given offset.
 	@Override
-	public int read(byte[] b, int off, int len) throws IOException {
-		return blockBuffer.readn(lbai, b, off, len);
+	public void write(byte[] b, int off, int len) throws IOException {
+		for(int i = off; i < len; i++)
+			blockBuffer.writei(lbai, b[i]);
 	}
 		
 	@Override
-	public int read() throws IOException {
-		return blockBuffer.readi(lbai);
+	public void write(int b) throws IOException {
+		blockBuffer.writei(lbai, b);
 	}
-
-	@Override
-	public long skip(long len) throws IOException {
-		for(int i = 0; i < len; i++)
-				read();
-		return len;
-	}
-
-		
+	
 }

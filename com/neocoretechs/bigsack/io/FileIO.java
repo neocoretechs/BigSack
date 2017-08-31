@@ -175,4 +175,12 @@ public final class FileIO implements IoInterface {
 	public synchronized Channel getChannel() {
 		return RA.getChannel();
 	}
+	@Override
+	public void Fwrite_byte(byte keypage) throws IOException {
+		RA.writeByte(keypage);
+	}
+	@Override
+	public byte Fread_byte() throws IOException {
+		return RA.readByte();
+	}
 }

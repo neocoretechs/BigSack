@@ -201,7 +201,13 @@ final class LinkedMappedByteBuffer {
 			put(tbb.array());
 			//bb.putShort(obuf);
 	}
-
+	
+	void putByte(byte obuf) throws IOException {
+		ByteBuffer tbb = ByteBuffer.allocate(1);
+		tbb.put(obuf);
+		put(tbb.array());		
+	}
+	
 	// reading...
 	int get(byte[] buf, int ioffs, int numbyte) throws IOException {	
 			int i = ioffs, runcount = numbyte, blkbytes;
@@ -264,4 +270,15 @@ final class LinkedMappedByteBuffer {
 			return tbb.getShort();
 			//return bb.getShort();
 	}
+	
+	byte get() throws IOException {
+		byte[] b = new byte[1];
+		get(b);
+		//ByteArrayInputStream bais = new ByteArrayInputStream(b);
+		//DataInputStream dais = new DataInputStream(bais);
+		//return dais.readShort();
+		ByteBuffer tbb = ByteBuffer.wrap(b);
+		return tbb.get();
+	}
+
 }

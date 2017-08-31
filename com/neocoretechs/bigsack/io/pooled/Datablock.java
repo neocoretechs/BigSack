@@ -45,6 +45,7 @@ public final class Datablock implements Externalizable {
 	private long nextblk = -1L; // offset of next blk in chain
 	private short bytesused; // bytes used this blk-highwater mark
 	private short bytesinuse; // actual # of bytes in use
+	private byte isKeypage = 0; // is this a key page
 	private long pageLSN = -1L; // pageLSN number of this block
 	byte data[]; // data section of blk
 	private boolean incore = false; // is it modified?
@@ -68,15 +69,15 @@ public final class Datablock implements Externalizable {
 	* @exception IOException error writing field
 	*/
 	public synchronized void write(IoInterface fobj) throws IOException {
-		//synchronized(fobj) {
 			fobj.Fwrite_long(getPrevblk());
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
+			fobj.Fwrite_byte(getKeypage());
 			fobj.Fwrite_long(getPageLSN());
 			fobj.Fwrite(data);
-		//}
 	}
+
 	/**
 	* write the header and used data portion to IoInterface implementor
 	* @param fobj the IoInterface
@@ -88,6 +89,7 @@ public final class Datablock implements Externalizable {
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
+			fobj.Fwrite_byte(getKeypage());
 			fobj.Fwrite_long(getPageLSN());
 			if (getBytesused() == datasize)
 				fobj.Fwrite(data);
@@ -96,18 +98,22 @@ public final class Datablock implements Externalizable {
 		//}
 	}
 
-	
+	/**
+	 * Sets up default header
+	 */
 	public synchronized void resetBlock() {
 		if( DEBUG )
-		System.out.println("Datablock,resetBlock "+this);
+			System.out.println("Datablock,resetBlock "+this);
 		prevblk = -1L;
 		nextblk = -1L;
 		bytesused = 0;
 		bytesinuse = 0;
 		pageLSN = -1;
+		isKeypage = 0;
 		incore = false;
 		inlog = false;
 	}
+	
 	/**
 	* write the header and data portion to IoInterface implementor
 	* in compressed form
@@ -141,6 +147,7 @@ public final class Datablock implements Externalizable {
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
 			setBytesinuse(fobj.Fread_short());
+			setKeypage(fobj.Fread_byte());
 			setPageLSN(fobj.Fread_long());
 			if (fobj.Fread(data, datasize) != datasize) {
 				throw new IOException(
@@ -159,6 +166,7 @@ public final class Datablock implements Externalizable {
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
 			setBytesinuse(fobj.Fread_short());
+			setKeypage(fobj.Fread_byte());
 			setPageLSN(fobj.Fread_long());
 			if (getBytesused() > datasize) {
 				throw new IOException("block inconsistency " + this.toString());
@@ -190,6 +198,7 @@ public final class Datablock implements Externalizable {
 		out.writeLong(getNextblk());
 		out.writeShort(getBytesused());
 		out.writeShort(getBytesinuse());
+		out.writeByte(getKeypage());
 		out.writeLong(getPageLSN());
 		if (getBytesused() == datasize)
 			out.write(data);
@@ -198,16 +207,17 @@ public final class Datablock implements Externalizable {
 	}
 
 	/**
-	Read this in
-	@exception IOException error reading from log stream
-	@exception ClassNotFoundException corrupted log stream
-	 */
+	* Read this in
+	* @exception IOException error reading from log stream
+	* @exception ClassNotFoundException corrupted log stream
+	*/
 	public synchronized void readExternal(ObjectInput in) throws IOException, ClassNotFoundException
 	{
 		setPrevblk(in.readLong());
 		setNextblk(in.readLong());
 		setBytesused(in.readShort());
 		setBytesinuse(in.readShort());
+		setKeypage(in.readByte());
 		setPageLSN(in.readLong());
 		in.read(data);
 		//if (in.read(data) != datasize) {
@@ -238,6 +248,8 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
+		d.setKeypage(isKeypage);
+		d.setPageLSN(pageLSN);
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
 		d.setIncore(true);
 		return d;
@@ -251,6 +263,7 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
+		d.setKeypage(isKeypage);
 		d.setPageLSN(pageLSN);
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
 		d.setIncore(incore);
@@ -276,6 +289,8 @@ public final class Datablock implements Externalizable {
 				+ bytesinuse
 				+ " pageLSN: "
 				+ pageLSN
+				+" keypage ="
+				+ isKeypage
 				+ " incore "
 				+ incore;
 		//return o;
@@ -300,6 +315,8 @@ public final class Datablock implements Externalizable {
 					+ bytesinuse
 					+ " pageLSN: "
 					+ pageLSN
+					+" keypage ="
+					+ isKeypage
 					+ " incore "
 					+ incore
 			:  "[[ Block Empty ]]";
@@ -328,6 +345,12 @@ public final class Datablock implements Externalizable {
 	public synchronized void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
+	public boolean isKeypage() { return (isKeypage == 0 ? true : false); }
+	
+	public void setKeypage(byte b) { isKeypage = b; }
+	
+	public byte getKeypage() { return isKeypage; }
+	
 	public synchronized long getPageLSN() {
 		return pageLSN;
 	}

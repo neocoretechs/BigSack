@@ -89,6 +89,8 @@ public interface IoManagerInterface {
 	 * @exception IOException if IO problem
 	 */
 	public long getNextFreeBlock(int tblsp) throws IOException;
+	
+	public void getNextFreeBlocks() throws IOException;
 
 	public void FseekAndWrite(long toffset, Datablock tblk)
 			throws IOException;
@@ -170,5 +172,6 @@ public interface IoManagerInterface {
 	public void writeDirect(int tablespace, long block, Datablock blk) throws IOException;
 
 	public void readDirect(int tablespace, long block, Datablock blk) throws IOException;
+
 
 }

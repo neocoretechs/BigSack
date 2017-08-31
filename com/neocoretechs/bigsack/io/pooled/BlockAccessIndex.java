@@ -66,14 +66,19 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
 	}
 	
-	public synchronized void resetBlock() {
+	/**
+	 * Reset the block, set default block headers
+	 * @param clearAccess True to clear the accesses latch
+	 */
+	public synchronized void resetBlock(boolean clearAccess) {
 		//if( lock.isWriteLocked() )
 		//	lock.writeLock().unlock();
 		//if( lock.getReadLockCount() > 0) {
 		//	System.out.println("resetBlock() read lock count:"+lock.getReadLockCount());
 		//	lock.readLock().unlock();
 		//}
-		accesses = 0;
+		if( clearAccess )
+			accesses = 0;
 		byteindex = 0;
 		blk.resetBlock();
 	}
@@ -113,7 +118,8 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	}
 	
 	public synchronized String toString() {
-		StringBuilder db = new StringBuilder("BlockAccessIndex: ");
+		StringBuilder db = new StringBuilder("BlockAccessIndex:");
+		db.append(GlobalDBIO.valueOf(blockNum));
 		db.append(" data ");
 		db.append(blk == null ?  "null block" : blk.toBriefString());
 		db.append(" accesses:");
@@ -198,7 +204,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 * Check to make sure the previous block is not in danger 
 	 * @param blk
 	 */
-	public synchronized void setBlk(Datablock blk) throws IOException {
+	private synchronized void setBlk(Datablock blk) throws IOException {
 		// blocks not same and not first, check for condition of the block we are replacing
 		if( blk.isIncore() ) 
 			throw new IOException("****Attempt to overwrite block in core for buffer "+this);

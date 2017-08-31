@@ -132,6 +132,18 @@ public interface IoInterface {
 	*/
 	public short Fread_short() throws IOException;
 	/**
+	 * Write a byte
+	 * @param keypage
+	 * @throws IOException 
+	 */
+	public void Fwrite_byte(byte keypage) throws IOException;
+	/**
+	 * Read a byte
+	 * @return
+	 * @throws IOException 
+	 */
+	public byte Fread_byte() throws IOException;
+	/**
 	* text read; reads until EOL
 	* @exception IOException if read fails
 	*/
@@ -161,4 +173,5 @@ public interface IoInterface {
 	public boolean isnew();
 
 	public Channel getChannel();
+	
 }

@@ -3,6 +3,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.Props;
@@ -46,7 +47,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private int MAXKEYS = 5; // Number of keys per page max
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
@@ -155,15 +156,11 @@ public class GlobalDBIO {
 				System.out.println("Multithreaded IO Manager coming up...");
 			ioManager = new MultithreadedIOManager((ObjectDBIO) this);
 		}
-	    
+		
 		Fopen(dbName, remoteDBName, create);
-	
-		if (create && isNew()) {
+		if(create && isNew()) {
 			isNew = true;
-			// init the Datablock arrays, create freepool
-			createBuckets();
-			ioManager.setNextFreeBlocks();
-		} 
+		}
 
 	}
 
@@ -323,7 +320,6 @@ public class GlobalDBIO {
 
 	/**
 	* static method for serialized byte to object conversion
-	* @param sdbio The BlockDBIO which may contain a custom class loader to use
 	* @param obuf the byte buffer containing serialized data
 	* @return Object instance
 	* @exception IOException cannot convert
@@ -352,7 +348,12 @@ public class GlobalDBIO {
 		}
 		return Od;
 	}
-	
+	/**
+	 * Deserialize an object from the provided InputStream
+	 * @param is
+	 * @return The magically reconstituted object
+	 * @throws IOException
+	 */
 	public static Object deserializeObject(InputStream is) throws IOException {
 		Object Od;
 		try {
@@ -375,7 +376,12 @@ public class GlobalDBIO {
 		}
 		return Od;
 	}
-	
+	/**
+	 * Deserialize an object from the provided ByteChannel
+	 * @param rbc
+	 * @return The magically reconstituted object
+	 * @throws IOException
+	 */
 	public static Object deserializeObject(ByteChannel rbc) throws IOException {
 		Object Od;
 		try {
@@ -397,7 +403,12 @@ public class GlobalDBIO {
 		}
 		return Od;
 	}
-	
+	/**
+	 * Deserialize an object from the provided ByteBuffer
+	 * @param bb
+	 * @return The magically reconstituted object
+	 * @throws IOException
+	 */
 	public static Object deserializeObject(ByteBuffer bb) throws IOException {
 		Object Od;
 		try {
@@ -426,18 +437,31 @@ public class GlobalDBIO {
 		return Od;
 	}
 
-
+	/**
+	 * Decrement the access count on a page pool resident block.
+	 * @param bai
+	 * @throws IOException
+	 */
 	protected static void dealloc(BlockAccessIndex bai) throws IOException {
 		bai.decrementAccesses();
 	}
-
+	/**
+	 * Flush the page pool buffer and commit the outstanding blocks
+	 * @throws IOException
+	 */
 	public synchronized void commitBufferFlush() throws IOException {
 		ioManager.commitBufferFlush();
 	}
-	
+	/**
+	 * Flush the page pool buffers and discard outstanding blocks.
+	 */
 	public synchronized void rollbackBufferFlush() {
 		forceBufferClear();
 	}
+	/**
+	 * Force a write of the outstanding blocks in the page buffer pool.
+	 * @throws IOException
+	 */
 	public synchronized void forceBufferWrite() throws IOException {
 		ioManager.directBufferWrite();
 	}
@@ -449,34 +473,58 @@ public class GlobalDBIO {
 	public synchronized void forceBufferClear() {
 			ioManager.forceBufferClear();
 	}
-	
-	public synchronized void findOrAddBlock(long pos) throws IOException {
-		ioManager.findOrAddBlockAccess(pos);	
+	/**
+	 * Find the block at the desired vblock in the page pool or allocate the resources and
+	 * bring block into pool from deep store.
+	 * @param pos
+	 * @throws IOException
+	 */
+	public synchronized BlockAccessIndex findOrAddBlock(long pos) throws IOException {
+		return ioManager.findOrAddBlockAccess(pos);	
 	}
-	
+	/**
+	 * Deallocate the outstanding buffer resources, block latches, etc. for 
+	 * without regard to transaction status..
+	 * @throws IOException
+	 */
 	public synchronized void deallocOutstanding() throws IOException {
 		ioManager.deallocOutstanding();	
 	}
-	
+	/**
+	 * Deallocate the resources for the pooled block at the desired position
+	 * @param pos The long vblock of the resource
+	 * @throws IOException
+	 */
 	public synchronized void deallocOutstanding(long pos) throws IOException {
 		ioManager.deallocOutstanding(pos);	
 	}
 	/**
-	 * Selects a random tablespace to call the ioManager blockbuffer for that tablespace
-	 * to steal a block from the freechain or acquire it into the BlockAccessIndex buffer for that tablespace.
+	 * Selects a random tablespace to prepare call the ioManager.
+	 * (ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface), in order to acquire the
+	 * blockbuffer for that tablespace to steal a block from the freechain or acquire it into the 
+	 * BlockAccessIndex buffer for that tablespace.
 	 * At that point the buffers are set for cursor based retrieval from the tablespace buffer.
-	 * @return The BlockAccessIndex from the random tablespace
+	 * @return The BlockAccessIndex from the random tablespace, with byte index set to 0
 	 * @throws IOException
 	 */
 	public synchronized BlockAccessIndex stealblk() throws IOException {
-		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
-		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getLbai());
+		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
+		// ioManager = ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface
+		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getBlockAccessIndex());
 	}
-	
+	/**
+	 * Deallocate the outstanding buffer resources, block latches, etc. for 
+	 * the purpose of transaction checkpoint rollback.
+	 * @throws IOException
+	 */
 	public synchronized void deallocOutstandingRollback() throws IOException {
 		ioManager.deallocOutstandingRollback();
 	}
-	
+	/**
+	 * Deallocate the outstanding buffer resources, block latches, etc. for 
+	 * the purpose of transaction checkpoint commit.
+	 * @throws IOException
+	 */	
 	public synchronized void deallocOutstandingCommit() throws IOException {
 		ioManager.deallocOutstandingCommit();
 		
@@ -486,52 +534,30 @@ public class GlobalDBIO {
 	* Create initial buckets
 	* @exception IOException if buckets cannot be created
 	*/
-	private synchronized void createBuckets() throws IOException {
+	public synchronized void createBuckets() throws IOException {
 		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
 		d.resetBlock();
 		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
 			long xsize = 0L;
 			// write bucket blocks
-			//	int ispace = 0;
 			for (int i = 0; i < DBPhysicalConstants.DBUCKETS; i++) {
 				// check for tablespace 0 , pos 0 and add our btree root
-				if( ispace == 0 && i == 0) {
-					long rootbl = makeVblock(0, 0);
-					BTreeKeyPage broot = new BTreeKeyPage((ObjectDBIO) this, rootbl);
-					broot.setUpdated(true);
-					//broot.putPage(this);
-					byte[] pb = GlobalDBIO.getObjectAsBytes(broot);
-					if( DEBUG ) System.out.println("Main btree create root: "+pb.length+" bytes");
-					if( pb.length > DBPhysicalConstants.DATASIZE) {
-						System.out.println("WARNING: Btree root node keysize of "+pb.length+
-								" overflows page boundary of size "+DBPhysicalConstants.DATASIZE+
-								" possible database instability. Fix configs to rectify.");
-					}
-					if( DEBUG ) {
-						int inz = 0;
-						for(int ii = 0; ii < pb.length; ii++) {
-							if( pb[ii] != 0) ++inz;
-						}
-						assert(inz > 0) : "No non-zero elements in btree root buffer";
-						System.out.println(inz+" non zero elements in serialized array");
-					}
-					Datablock db = new Datablock();
-					db.setBytesused((short) pb.length);
-					db.setBytesinuse((short) pb.length);
-					db.setPageLSN(-1L);
-					System.arraycopy(pb, 0, db.data, 0, pb.length);
-					db.setIncore(true);
-					ioManager.FseekAndWriteFully(rootbl, db);
-					//db.setIncore(false);
-					//Fsync(rootbl);
-					if( DEBUG ) System.out.println("CreateBuckets Added object @ root, bytes:"+pb.length+" data:"+db);
-					broot.setUpdated(false);
-				} else {
-					ioManager.FseekAndWriteFully(makeVblock(ispace, xsize), d);
-				}
+				ioManager.FseekAndWriteFully(makeVblock(ispace, xsize), d);
 				xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
 			}
 		}
+		long rootbl = makeVblock(0, 0);
+		// This constructor for BtreeKeyPage takes a block from freechain and allocates it
+		BTreeKeyPage broot = new BTreeKeyPage((ObjectDBIO) this, rootbl, true);
+		// Set all fields to be written
+		broot.setUpdated(true);
+		broot.setAllUpdated(true);
+		// Put the page into the block byte buffer
+		broot.putPage();
+		if( DEBUG ) {
+				System.out.println("Main btree create root: "+broot+" with block "+broot.getBlockAccessIndex());
+		}
+		if( DEBUG ) System.out.println("GlobalDBIO.CreateBuckets Added root key page @:"+broot);
 
 	}
 	/**

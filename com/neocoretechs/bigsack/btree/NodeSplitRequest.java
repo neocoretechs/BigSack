@@ -32,7 +32,7 @@ public final class NodeSplitRequest extends AbstractNodeSplitRequest {
 				}
 	}
 	/**
-	 * Attempt insert, we may not have it on this node. A slit is always assumed necessary if we get here.
+	 * Attempt insert, we may not have it on this node. A split is always assumed necessary if we get here.
 	 */
 	@Override
 	public void process() throws IOException {
@@ -47,22 +47,22 @@ public final class NodeSplitRequest extends AbstractNodeSplitRequest {
 					BTreeMain.moveChildData(oldRoot, nodeOffs+i, newNode, i, true);
 			}
 			//
-			newNode.numKeys = keysToMove;
+			newNode.setNumKeys(keysToMove);
 			// See if leaf node, simply, no pointers out
-			newNode.mIsLeafNode = true;
-			for( int i = 0; i < newNode.numKeys; i++) {
-				if( newNode.pageIdArray[i] != -1L ) {
-					newNode.mIsLeafNode = false;
+			newNode.setmIsLeafNode(true);
+			for( int i = 0; i < newNode.getNumKeys(); i++) {
+				if( newNode.getPageId(i) != -1L ) {
+					newNode.setmIsLeafNode(false);
 					break;
 				}
 			}
 			newNode.setUpdated(true);
 			// set our new left/right pointers from root
 			if(nodeOffs == 0) { // left
-				oldRoot.pageIdArray[BTreeMain.T-1] = newNode.pageId;
+				oldRoot.setPageIdArray(BTreeMain.T-1, newNode.pageId); // sets updated
 				oldRoot.pageArray[BTreeMain.T-1] = newNode;
 			} else {
-				oldRoot.pageIdArray[BTreeMain.T] = newNode.pageId;
+				oldRoot.setPageIdArray(BTreeMain.T, newNode.pageId);
 				oldRoot.pageArray[BTreeMain.T] = newNode;
 			}
 				

@@ -5,55 +5,72 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 
 import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 /**
- * This class encapsulates the BlockAccessIndex cursor blocks for each tablespace and the corresponding 
- * DB Streams to access them.
- * There is a simple paradigm at work here, we carry a single block access index in another class and use it
- * to cursor through the blocks as we access them. The BlockStream class has the BlockAccessIndex and DBStream
- * for each tablespace. The cursor window block is read and written from deep store and buffer pool.
- * These blocks occupy the shadow world between the buffer pool and deep store. We create them by taking from the
- * freechain and those blocks taken are backed by an actual page brought into the buffer pool. 
- * The pool page is blank though and the contents of these buffers are used to fill them.
+ * This class encapsulates the BlockAccessIndex cursor which is the corresponding DB Streams to access block bytes as data.
+ * The BlockStream class has the BlockAccessIndex and DBInputStream and DBOutputStream which are stream subclasses
+ * that point into the block bytes. We can use them to read blocks as serialized objects or construct 
+ * for each block. 
  * @author jg
  *
  */
-public final class BlockStream {
-	private BlockAccessIndex lbai;
+public final class BlockStream implements BlockChangeEvent{
+	private BlockAccessIndex lbai = null;
 	// DataStream for DB I/O
 	private DataInputStream DBInput = null;
+	private DataOutputStream DBOutput = null;
+	private DBInputStream dbInputStream = null;
+	private DBOutputStream dbOutputStream = null;
 	
 	private MappedBlockBuffer blockIO;
 	private int tablespace;
 	public BlockStream(int tablespace, MappedBlockBuffer blockBuffer) throws IOException {
 		this.blockIO = blockBuffer;
 		this.tablespace = tablespace;
-		lbai = new BlockAccessIndex(true);
 	}
-	public synchronized BlockAccessIndex getLbai() {
+	public synchronized BlockAccessIndex getBlockAccessIndex() {
+		//assert(lbai != null) : "BlockStream has null BlockAccessIndex for tablespace:"+tablespace+" and "+blockIO;
 		return lbai;
 	}
 	/**
-	 * Delegate addAcces to setBlockNumber of BlockAccessIndex
+	 * Set the current BlockAccessIndex block, reset byteindex of block to 0; 
 	 * @param lbai
 	 */
-	public synchronized void setLbai(BlockAccessIndex lbai) {
+	public synchronized void setBlockAccessIndex(BlockAccessIndex lbai) {
 		this.lbai = lbai;
 		this.lbai.byteindex = 0;
+		if( dbInputStream == null )
+			dbInputStream = new DBInputStream(this.lbai, this.blockIO);
+		else
+			dbInputStream.replaceSource(this.lbai, this.blockIO);
+		if( dbOutputStream == null )
+			dbOutputStream = new DBOutputStream(this.lbai, this.blockIO);
+		else
+			dbOutputStream.replaceSource(this.lbai, this.blockIO);
 	}
+	
 	public synchronized DataInputStream getDBInput() {
-		if( DBInput != null )
-			try {
-				DBInput.close();
-			} catch (IOException e) {}
-		if( lbai == null ) throw new RuntimeException("DBInputStream uninitialized for BlockStream tablespace "+tablespace+" db"+blockIO.getGlobalIO().getDBName());
-		DBInput = new DataInputStream(new DBInputStream(lbai, blockIO));
+		assert(lbai != null) : "BlockStream has null BlockAccessIndex for tablespace:"+tablespace+" and "+blockIO;
+		DBInput = new DataInputStream(dbInputStream);
 		return DBInput;
+	}
+	
+	public synchronized DataOutputStream getDBOutput() {
+		assert(lbai != null) : "BlockStream has null BlockAccessIndex for tablespace:"+tablespace+" and "+blockIO;
+		DBOutput = new DataOutputStream(dbOutputStream);
+		return DBOutput;
 	}
 	
 	@Override
 	public synchronized String toString() {
-		return "BlockStream for tablespace "+tablespace+" with block "+(lbai == null ? "UNASSIGNED" : lbai)+" stream:"+DBInput+" and blocks in buffer:"+blockIO.size();
+		return "BlockStream for tablespace "+tablespace+" with block "+(lbai == null ? "UNASSIGNED" : lbai)+" and blocks in buffer:"+blockIO.size();
+	}
+	
+	@Override
+	public synchronized void blockChanged(int tablespace, BlockAccessIndex bai) {
+		assert(this.tablespace == tablespace) : "Wrong BlockStream instance notified of BlockChangeEvent from BlockChangeEvent observable";
+		setBlockAccessIndex(bai);
 	}
 
 }

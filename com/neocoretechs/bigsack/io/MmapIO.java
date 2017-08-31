@@ -204,24 +204,30 @@ public final class MmapIO implements IoInterface {
 	
 	public synchronized void Fwrite_int(int obuf) throws IOException {
 		if( DEBUG )
-			System.out.println("MMapIO.Fwrite int @"+linkedMappedByteBuff.position()+" val:"+obuf);	
+			System.out.println("MMapIO.Fwrite_int @"+linkedMappedByteBuff.position()+" val:"+obuf);	
 		linkedMappedByteBuff.putInt(obuf);
 	}
 	
 	public synchronized void Fwrite_long(long obuf) throws IOException {
 		if( DEBUG )
-			System.out.println("MMapIO.Fwrite long @"+linkedMappedByteBuff.position()+" val:"+obuf);
+			System.out.println("MMapIO.Fwrite_long @"+linkedMappedByteBuff.position()+" val:"+obuf);
 		linkedMappedByteBuff.putLong(obuf);
 	}
 	
 	public synchronized void Fwrite_short(short obuf) throws IOException {
 		if( DEBUG )
-			System.out.println("MMapIO.Fwrite short @"+linkedMappedByteBuff.position()+" val:"+obuf);
+			System.out.println("MMapIO.Fwrite_short @"+linkedMappedByteBuff.position()+" val:"+obuf);
 		linkedMappedByteBuff.putShort(obuf);
-	
 	}
 	
+	public synchronized void Fwrite_byte(byte obuf) throws IOException {
+		if( DEBUG )
+			System.out.println("MMapIO.Fwrite_short @"+linkedMappedByteBuff.position()+" val:"+obuf);
+		linkedMappedByteBuff.putByte(obuf);	
+	}
+	//
 	// reading...
+	//
 	public synchronized int Fread(byte[] b, int osiz) throws IOException {
 		if( DEBUG )
 			System.out.println("MMapIO.Fread @"+linkedMappedByteBuff.position()+" buf:"+b.length+" size:"+osiz);
@@ -239,7 +245,7 @@ public final class MmapIO implements IoInterface {
 	public synchronized int Fread_int() throws IOException {
 		if( DEBUG ) {	
 			int i = linkedMappedByteBuff.getInt();
-			System.out.println("MMapIO.Fread int @"+linkedMappedByteBuff.position()+" value:"+i);
+			System.out.println("MMapIO.Fread_int @"+linkedMappedByteBuff.position()+" value:"+i);
 			return i;
 		}
 		return linkedMappedByteBuff.getInt();	
@@ -248,7 +254,7 @@ public final class MmapIO implements IoInterface {
 	public synchronized long Fread_long() throws IOException {
 		if( DEBUG ) {
 			long l = linkedMappedByteBuff.getLong();
-			System.out.println("MMapIO.Fread long @"+linkedMappedByteBuff.position()+" value:"+l);
+			System.out.println("MMapIO.Fread_long @"+linkedMappedByteBuff.position()+" value:"+l);
 			return l;
 		}
 		return linkedMappedByteBuff.getLong();
@@ -257,10 +263,19 @@ public final class MmapIO implements IoInterface {
 	public synchronized short Fread_short() throws IOException {
 		if( DEBUG ) {
 			short s = linkedMappedByteBuff.getShort();
-			System.out.println("MMapIO.Fread short @"+linkedMappedByteBuff.position()+" value:"+s);
+			System.out.println("MMapIO.Fread_short @"+linkedMappedByteBuff.position()+" value:"+s);
 			return s;
 		}
 		return linkedMappedByteBuff.getShort();
+	}
+
+	public synchronized byte Fread_byte() throws IOException {
+		if( DEBUG ) {
+			byte s = linkedMappedByteBuff.get();
+			System.out.println("MMapIO.Fread_byte @"+linkedMappedByteBuff.position()+" value:"+s);
+			return s;
+		}
+		return linkedMappedByteBuff.get();
 	}
 	
 	public synchronized String FTread() throws IOException {
@@ -302,4 +317,5 @@ public final class MmapIO implements IoInterface {
 			System.out.println("MMapIO.getChannel:"+FC);
 		return FC;
 	}
+
 }

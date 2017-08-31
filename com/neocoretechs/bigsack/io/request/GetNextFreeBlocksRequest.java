@@ -23,7 +23,7 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
  *
  */
 public final class GetNextFreeBlocksRequest implements IoRequestInterface {
-	private final static boolean DEBUG = false;
+	private final static boolean DEBUG = true;
 	private long nextFreeBlock = -1L;
 	private IoInterface ioUnit;
 	private Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
@@ -53,25 +53,21 @@ public final class GetNextFreeBlocksRequest implements IoRequestInterface {
 	*/
 	private void getNextFreeBlocks() throws IOException {
 		synchronized(ioUnit) {
-			long endBlock = 0L;
+			// tablespace 0 end of rearward scan is block 2 otherwise 0, tablespace 0 has root node
+			long endBlock = tablespace == 0 ? DBPhysicalConstants.DBLOCKSIZ : 0L;
 			long endBl = ioUnit.Fsize();
-			nextFreeBlock = 0L; // assume there are none and if we fall through get block 0
+			nextFreeBlock = -1L;
 			while (endBl > endBlock) {
 				ioUnit.Fseek(endBl - (long) DBPhysicalConstants.DBLOCKSIZ);
 				d.read(ioUnit);
-				if (d.getPrevblk() == -1L
-					&& d.getNextblk() == -1L
-					&& d.getBytesinuse() == 0) {
+				if (d.getPrevblk() == -1L && d.getNextblk() == -1L && d.getBytesinuse() == 0) {
 					endBl -= (long) DBPhysicalConstants.DBLOCKSIZ;
-					continue;
 				} else {
-					// this is it
+					nextFreeBlock = endBl - DBPhysicalConstants.DBLOCKSIZ;
 					break;
 				}
 			}
-			if( endBl == ioUnit.Fsize()) {
-				nextFreeBlock = -1L;
-			} else {
+			if(nextFreeBlock != -1L) {
 				nextFreeBlock = GlobalDBIO.makeVblock(tablespace, endBl);
 			}
 		}

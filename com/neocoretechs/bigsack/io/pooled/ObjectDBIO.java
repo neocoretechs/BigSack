@@ -75,7 +75,7 @@ public final class ObjectDBIO extends GlobalDBIO {
 	 * @exception IOException If the adding did not happen
 	 */
 	public synchronized void add_object(int tblsp, BlockAccessIndex lbai, byte[] o, int osize) throws IOException {
-		ioManager.getBlockStream(tblsp).setLbai(lbai);
+		ioManager.getBlockStream(tblsp).setBlockAccessIndex(lbai);
 		ioManager.writen(tblsp, o, osize);
 		
 		//ioManager.deallocOutstandingWriteLog(tblsp, lbai);
@@ -180,13 +180,14 @@ public final class ObjectDBIO extends GlobalDBIO {
 	}
 	/**
 	 * Find a block with some available space starting at the given position.
+	 * Exclude pages marked as key pages
 	 * @param startblk
 	 * @return The block with the available space or null if the reference block is full.
 	 * @throws IOException
 	 */
 	public synchronized BlockAccessIndex findfreeblock(long startblk) throws IOException {
 		BlockAccessIndex tblk = ioManager.findOrAddBlockAccess(startblk);
-		if( tblk.getBlk().getBytesinuse() >= DBPhysicalConstants.DATASIZE ) {
+		if( tblk.getBlk().getBytesinuse() >= DBPhysicalConstants.DATASIZE || tblk.getBlk().isKeypage() ) {
 			tblk.decrementAccesses();
 			return null;
 		}

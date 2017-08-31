@@ -44,16 +44,9 @@ public final class Optr implements Serializable {
 	public short getOffset() {
 		return offset;
 	}
-	public void setOffset(short offset) {
-		this.offset = offset;
-	}
 	public long getBlock() {
 		return block;
 	}
-	public void setBlock(long block) {
-		this.block = block;
-	}
-	
 	public boolean isEmptyPointer() { return ( this.block == -1 ); }
 	
 	@Override

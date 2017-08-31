@@ -24,16 +24,16 @@ package com.neocoretechs.bigsack;
 */
 /**
 * Defines physical constants for tablespaces, buckets, etc
+* block header size is diff of DBLOCKSIZ - DATASIZE
 * @author Groff
 */
 public interface DBPhysicalConstants {
-	//block header size is diff of DBLOCKSIZ - DATASIZE
 	/**
 	 * The size of payload data in a block (page).  Determined by BlockSize in properties file
 	 * - the size of the header portion
 	 */
 	public static final short DATASIZE =
-		(short) (Props.toInt("BlockSize") - 28);
+		(short) (Props.toInt("BlockSize") - 29);
 	/**
 	 * The total block (page) size.  Determined by BlockSize in properties file
 	 */

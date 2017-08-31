@@ -6,8 +6,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
-import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 /**
  * This is the primordial IO worker. It exists in standalone mode as the primary threaded worker accessing
@@ -240,6 +238,14 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 		}
 	}
 	@Override
+	public void Fwrite_byte(byte keypage) throws IOException {
+		if( DEBUG )
+			System.out.println("IOWorker Fwrite_byte @"+Ftell());
+		synchronized(ioUnit) {
+			ioUnit.Fwrite_byte(keypage);
+		}
+	}
+	@Override
 	public int Fread(byte[] b, int osiz) throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fread "+osiz+" @"+Ftell());
@@ -277,6 +283,14 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 			System.out.println("IOWorker fread_short @"+Ftell());
 		synchronized(ioUnit) {
 			return ioUnit.Fread_short();
+		}
+	}
+	@Override
+	public byte Fread_byte() throws IOException {
+		if( DEBUG )
+			System.out.println("IOWorker Fread_byte @"+Ftell());
+		synchronized(ioUnit) {
+			return ioUnit.Fread_byte();
 		}
 	}
 	@Override

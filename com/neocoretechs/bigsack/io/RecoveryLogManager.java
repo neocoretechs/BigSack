@@ -125,7 +125,7 @@ public final class RecoveryLogManager  {
 			fl.logAndDo(blockIO, undoBlk);
 		blk.getBlk().setInlog(true);
 		blk.getBlk().setIncore(false);
-		tblk.resetBlock();
+		tblk.resetBlock(true); // reset and clear access latch
 		if( DEBUG ) {
 			System.out.println("RecoveryLogManager.writeLog EXIT with "+blk.toString());
 		}

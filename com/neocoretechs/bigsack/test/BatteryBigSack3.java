@@ -5,11 +5,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.UUID;
 
-import com.neocoretechs.bigsack.iterator.KeyValuePair;
-import com.neocoretechs.bigsack.session.BigSackSession;
-import com.neocoretechs.bigsack.session.BufferedTreeMap;
-import com.neocoretechs.bigsack.session.BufferedTreeSet;
-import com.neocoretechs.bigsack.session.SessionManager;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
  * Yes, this should be a nice JUnit fixture someday
@@ -26,7 +21,7 @@ import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 public class BatteryBigSack3 {
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0;
-	static int max = 1000;
+	static int max = 1;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -41,11 +36,10 @@ public class BatteryBigSack3 {
 		TransactionalTreeSet session = new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
-		session.commit();
-		battery1A(session, argv);
-		battery1B(session, argv);
-		battery1D(session, argv);
-		battery1E(session, argv);
+		//battery1A(session, argv);
+		//battery1B(session, argv);
+		//battery1D(session, argv);
+		//battery1E(session, argv);
 	
 		//SessionManager.stopCheckpointDaemon(argv[0]);
 		session.commit();
@@ -68,7 +62,8 @@ public class BatteryBigSack3 {
 		 System.out.println("BATTERY1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
-	 * Does a simple 'get' of the elements inserted before
+	 * Does a headset from first element, headset retrieve from head to strictly less
+	 * then target of the elements inserted before, hence head from first should be 0
 	 * @param session
 	 * @param argv
 	 * @throws Exception
@@ -81,12 +76,32 @@ public class BatteryBigSack3 {
 			it.next();
 			++i;
 		}
-		
-		if( session.size() != i ) {
+		if( i != 0 ) {
 				System.out.println("BATTERY1A FAIL iterations:"+i+" reported size:"+session.size());
 				throw new Exception("BATTERY1A FAIL iterations:"+i+" reported size:"+session.size());
 		}
 		 System.out.println("BATTERY1A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	/**
+	 * Does a headset from last element, headset retrieve from head to strictly less
+	 * then target of the elements inserted before, hence head from last should be count
+	 * @param session
+	 * @param argv
+	 * @throws Exception
+	 */
+	public static void battery2A(TransactionalTreeSet session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		Iterator<?> it = session.headSet((Comparable) session.last());
+		int i = 0;
+		while(it.hasNext()) {
+			it.next();
+			++i;
+		}
+		if( session.size() != i ) {
+				System.out.println("BATTERY2A FAIL iterations:"+i+" reported size:"+session.size());
+				throw new Exception("BATTERY2A FAIL iterations:"+i+" reported size:"+session.size());
+		}
+		 System.out.println("BATTERY2A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * See if first/last key/val works this can have unintended results for this set so just check it does
@@ -99,7 +114,7 @@ public class BatteryBigSack3 {
 		long tims = System.currentTimeMillis();
 		bigtest f = (bigtest) session.first();
 		bigtest l = (bigtest) session.last();
-		 System.out.println("BATTERY1A SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
+		System.out.println("BATTERY1B SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 
 	public static void battery1D(TransactionalTreeSet session, String[] argv) throws Exception {
@@ -135,7 +150,7 @@ public class BatteryBigSack3 {
 	}
 
 }
-class bigtest implements Serializable, Comparable{
+class bigtest implements Serializable, Comparable {
 	private static final long serialVersionUID = 8890285185155972693L;
 	byte[] b = new byte[32767];
 	UUID uuid = null;

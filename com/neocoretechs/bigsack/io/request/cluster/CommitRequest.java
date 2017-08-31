@@ -70,8 +70,8 @@ public final class CommitRequest extends AbstractClusterWork implements Completi
 		// all buffers flushed, call commit
 		recoveryLog.commit();
 		// if we have local io manager that has file ops, call the close
-		if( ioManager != null )
-			ioManager.Fclose();
+		//if( ioManager != null )
+		//	ioManager.Fclose();
 		barrierCount.countDown();
 		if( DEBUG  )
 			System.out.println("CommitRequest.process "+blockManager);

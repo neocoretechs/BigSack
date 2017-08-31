@@ -82,8 +82,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	* then activate countdown latch to signal main. Result in placed in class level nextFree
 	* @exception IOException if IO problem
 	*/
-	@SuppressWarnings("unused")
-	private void getNextFreeBlocks() throws IOException {
+	public void getNextFreeBlocks() throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.getNextFreeBlocks ");
 		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
