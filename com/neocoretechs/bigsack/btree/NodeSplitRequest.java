@@ -8,7 +8,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
  * Request sent to NodeSplitThread operating on parent nodes. If another NodeSplitThread
  * request is also in progress with the same data and sharing, a synchronization lock on the former parent node is needed.
  * A CyclicBarrier with node split participants as waiters is used to determine a barrier synchronization point.
- * This barrier is set up in the main calling thread and awaited in the node split processors 
+ * This barrier is set up in the main calling thread and awaited in the node split processors. 
  * @author jg Copyright (c) NeoCoreTechs 2015
  *
  */
@@ -49,14 +49,13 @@ public final class NodeSplitRequest extends AbstractNodeSplitRequest {
 			//
 			newNode.setNumKeys(keysToMove);
 			// See if leaf node, simply, no pointers out
-			newNode.setmIsLeafNode(true);
+			newNode.setmIsLeafNode(true); // sets updated flag
 			for( int i = 0; i < newNode.getNumKeys(); i++) {
 				if( newNode.getPageId(i) != -1L ) {
-					newNode.setmIsLeafNode(false);
+					newNode.setmIsLeafNode(false); 
 					break;
 				}
 			}
-			newNode.setUpdated(true);
 			// set our new left/right pointers from root
 			if(nodeOffs == 0) { // left
 				oldRoot.setPageIdArray(BTreeMain.T-1, newNode.pageId); // sets updated
@@ -65,8 +64,6 @@ public final class NodeSplitRequest extends AbstractNodeSplitRequest {
 				oldRoot.setPageIdArray(BTreeMain.T, newNode.pageId);
 				oldRoot.pageArray[BTreeMain.T] = newNode;
 			}
-				
-			oldRoot.setUpdated(true);
 		}
 
 	}

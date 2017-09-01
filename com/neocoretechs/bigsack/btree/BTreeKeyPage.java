@@ -153,11 +153,12 @@ public final class BTreeKeyPage {
 		lbai = sdbio.getIOManager().findOrAddBlockAccess(pageId); // read in block headers etc from presumably freechain block
 	
 		if( lbai == null )
-			throw new IOException("BTreeKeyPage ctor1 retrieval for page "+pageId+" **FAIL**.");
+			throw new IOException("BTreeKeyPage ctor1 retrieval for page "+GlobalDBIO.valueOf(pageId)+" **FAIL**.");
 		else {
 			if( clear ) {
 				lbai.resetBlock(false); // set up headers without revoking access
 				lbai.getBlk().setKeypage((byte) 1); // mark it as keypage
+				setAllUpdated(true); // we cleared the block, so all must be written come write time
 			} else {
 				BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
 				DataInputStream dis = bs.getDBInput();
@@ -215,7 +216,6 @@ public final class BTreeKeyPage {
 			}
 		}
 		if( read ) {
-			assert(lbai.getBlk().getBytesused() != 0) : "Atempt to read block with zero used bytes "+lbai;	
 			BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
 			bs.setBlockAccessIndex(lbai);
 			DataInputStream dis = bs.getDBInput();
@@ -240,10 +240,17 @@ public final class BTreeKeyPage {
 			for(int i = 0; i <= MAXKEYS; i++) {	
 				pageIdArray[i] = dis.readLong();
 			}
+		} else {
+			// If we are not reading, we must be preparing the block for new key. Really no
+			// reason for a new block with unassigned and not updating keys conceptually.
+			// Set the appropriate flags to write to associated block when the time comes
+			lbai.resetBlock(false); // set up headers without revoking access
+			lbai.getBlk().setKeypage((byte) 1); // mark it as keypage
+			setAllUpdated(true); // we cleared the block, so all must be written come write time
 		}
 		
 		if( DEBUG )
-			System.out.println("BtreeKeyPage ctor2 retrieval for page "+pageId+" "+lbai);
+			System.out.println("BtreeKeyPage ctor2 retrieval for page "+GlobalDBIO.valueOf(pageId)+" "+lbai);
 	}
 	/**
 	 * Set the key Id array, and set the keyUpdatedArray for the key and the general updated flag
@@ -382,28 +389,31 @@ public final class BTreeKeyPage {
 	* we retrieve that virtual block to an entry in the pageArray at the index passed in the params
 	* location. If we retrieve an instance we also fill in the transient fields from our current data
 	* @param index The index to the page array on this page that contains the virtual record to deserialize.
-	* @return The deserialized page instance
+	* @return The constructed page instance of the page at 'index' on this page.
 	* @exception IOException If retrieval fails
 	*/
 	public synchronized BTreeKeyPage getPage(int index) throws IOException {
 		if(DEBUG) {
-			System.out.println("BTreeKeyPage.getPage Entering BTreeKeyPage to retrieve target index "+index);
+			System.out.println("BTreeKeyPage.getPage ENTER BTreeKeyPage to retrieve target index:["+index+"]");
 			for(int i = 0; i < pageIdArray.length; i++) {
-				System.out.println("BTreeKeyPage.getPage initial index "+i+"="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
+				System.out.println("BTreeKeyPage.getPage initial page index:["+i+"]="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
 			}
 		}
 		if (pageArray[index] == null && pageIdArray[index] != -1L) {
 			// eligible to retrieve page
 			if( DEBUG ) {
-				System.out.println("BTreeKeyPage.getPage about to retrieve index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index]));
+				System.out.println("BTreeKeyPage.getPage about to retrieve index:["+index+"] loc:"+GlobalDBIO.valueOf(pageIdArray[index]));
 			}
-			pageArray[index] = getPageFromPool(sdbio,pageIdArray[index]);
-			// set up all the transient fields
-			pageArray[index].initTransients();
+			pageArray[index] = getPageFromPool(sdbio, pageIdArray[index]);
 			pageArray[index].pageId = pageIdArray[index];
 			if( DEBUG ) {
-				System.out.println("BTreeKeyPage.getPage retrieved index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" page:"+pageArray[index]);
-				for(int i = 0; i < pageIdArray.length; i++)System.out.println(i+"="+GlobalDBIO.valueOf(pageIdArray[i]));
+				System.out.println("BTreeKeyPage.getPage RETRIEVED index:"+index+" loc:"+GlobalDBIO.valueOf(pageIdArray[index])+" page:"+pageArray[index]);
+			}
+		}
+		if(DEBUG) {
+			System.out.println("BTreeKeyPage.getPage EXIT BTreeKeyPage to retrieve target index:["+index+"]");
+			for(int i = 0; i < pageIdArray.length; i++) {
+				System.out.println("BTreeKeyPage.getPage final page index:["+i+"]="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
 			}
 		}
 		return pageArray[index];
@@ -463,7 +473,7 @@ public final class BTreeKeyPage {
 		return btk;
 	}
 	/**
-	 * Get a new page from the pool from a random tablespace. used for general inserts.
+	 * Get a new page from the pool from round robin tablespace. used for general inserts.
 	 * Call stealblk, create BTreeKeyPage with the page Id of stolen block, set the pageArray
 	 * to MAXKEYS+1, the dataArray to MAXKEYS, and the dataUpdatedArray to MAXKEYS
 	 * set updated to true, and return the newly formed  
@@ -472,15 +482,11 @@ public final class BTreeKeyPage {
 	 * @throws IOException
 	 */
 	static BTreeKeyPage getPageFromPool(ObjectDBIO sdbio) throws IOException {
+		// Get a fresh block
 		BlockAccessIndex lbai = sdbio.stealblk();
-		// extract tablespace since we steal blocks from any
-		//int tablespace = GlobalDBIO.getTablespace(pageId);
-		// initialize transients
+		// initialize transients, set page with this block, false=no read, set up for new block instead
+		// this will set updated since the block is new
 		BTreeKeyPage btk = new BTreeKeyPage(sdbio, lbai, false);
-		btk.setUpdated(true);
-		//for(int i = 0; i <= MAXKEYS; i++) {
-		//	btk.pageArray[i] = btk.getPage(sdbio,i);
-		//}
 		return btk;
 	}
 	/**
@@ -673,7 +679,34 @@ public final class BTreeKeyPage {
 		keyUpdatedArray[index] = true;
 		setUpdated(true);
 	}
-
+	/**
+	 * Copy a key from another page to a key index on this one, preserving the pointer.
+	 * Using souceKey, put this.keyArray[targetIndex] = sourceKey.keyArray[sourceIndex] and
+	 * this.keyIdArray[targetIndex] = sourceKey.keyIdArray[sourceIndex].
+	 * SO we copy key, preserving the Id, and set updated true for record and key
+	 * @param key
+	 * @param sourceIndex
+	 * @param targetIndex
+	 * @throws IOException 
+	 */
+	synchronized void copyKeyToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
+		keyArray[targetIndex] = sourceKey.getKey(sourceIndex); // get the key from pointer from source if not already
+		keyIdArray[targetIndex] = sourceKey.getKeyId(sourceIndex);
+		keyUpdatedArray[targetIndex] = true;
+		setUpdated(true);
+	}
+	
+	synchronized void copyDataToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
+		dataArray[targetIndex] = sourceKey.getDataFromArray(sourceIndex);
+		dataIdArray[targetIndex] = sourceKey.getDataId(sourceIndex); // takes care of updated fields
+		dataUpdatedArray[targetIndex] = true;
+		setUpdated(true);
+	}
+	
+	synchronized void copyKeyAndDataToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
+		copyKeyToArray(sourceKey, sourceIndex, targetIndex);
+		copyDataToArray(sourceKey, sourceIndex, targetIndex);
+	}
 	/**
 	 * Lazy initialization for off-index-page 'value' objects attached to our BTree keys.
 	 * Essentially guarantees that if a virtual pointer Id is present in dataIdArray at index, 
@@ -716,6 +749,20 @@ public final class BTreeKeyPage {
 		pageArray[index] = null;
 		pageIdArray[index] = -1L;
 		setUpdated(true);
+	}
+	/**
+	 * Set the keyArray and dataArray to null for this index. Set the keyIdArray and dataIdArray to empty locations.
+	 * Set the updated flag for the key and data fields, then set updated for the record.
+	 * @param index The target index we are updating for both key and data.
+	 */
+	synchronized void nullKeyAndData(int index) {
+        keyArray[index] = null;
+        keyIdArray[index] = Optr.emptyPointer;
+        keyUpdatedArray[index] = true;
+        dataArray[index] = null;
+        dataIdArray[index] = Optr.emptyPointer;
+        dataUpdatedArray[index] = true;
+        setUpdated(true);
 	}
 	
 	public synchronized String toString() {
@@ -836,14 +883,15 @@ public final class BTreeKeyPage {
 	}
 
 	/**
-	 * Force a full write of all records at write time.
+	 * Force a full write of all records at write time or turn it off.
 	 * @param b
 	 */
 	public synchronized void setAllUpdated(boolean b) {
 		for(int i = 0; i < MAXKEYS; i++) {
 			keyUpdatedArray[i] = b;
-			dataUpdatedArray[i] = true;
-		}	
+			dataUpdatedArray[i] = b;
+		}
+		setUpdated(true);
 	}
 
 	public synchronized Datablock getDatablock() {

@@ -248,6 +248,8 @@ public final class BTreeMain {
                 }
                 if (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) == 0) {
                 	if( object != null && OVERWRITE) {
+                		if(DEBUG)
+                			System.out.println("BTreeMain.update deleting and replacing data for index "+i+" in "+sourcePage);
             			sourcePage.deleteData(i);
                         sourcePage.putDataToArray(object,i);
                 	}
@@ -518,7 +520,7 @@ public final class BTreeMain {
     synchronized void splitChildNode(BTreeKeyPage parentNode, int keyIndex, int childIndex,  BTreeKeyPage node) throws IOException {
     	if( DEBUG )
     		System.out.println("BTreeMain.splitChildNode index:"+keyIndex+" childIndex:"+childIndex+"parent:"+parentNode+" target:"+node);
-            BTreeKeyPage newNode =  BTreeKeyPage.getPageFromPool(sdbio);
+            BTreeKeyPage newNode =  BTreeKeyPage.getPageFromPool(sdbio); // will set up blank page with updated set
             newNode.setmIsLeafNode(node.getmIsLeafNode());
             newNode.setNumKeys(T - 1);
             for (int j = 0; j < T - 1; j++) { // Copy the last T-1 elements of node into newNode
@@ -564,14 +566,18 @@ public final class BTreeMain {
             }  
             // insert the mid key (T-1, middle key number adjusted to index) data to the designated spot in the parent node
             // 
-            parentNode.setKey(keyIndex, node.getKey(T - 1));
-            parentNode.dataArray[keyIndex] = node.dataArray[T - 1];
-            parentNode.setDataIdArray(keyIndex, node.getDataId(T - 1)); // takes care of updated fields
-            parentNode.dataUpdatedArray[keyIndex] = node.dataUpdatedArray[T - 1];
+            //parentNode.setKey(keyIndex, node.getKey(T - 1));
+            //parentNode.dataArray[keyIndex] = node.dataArray[T - 1];
+            //parentNode.setDataIdArray(keyIndex, node.getDataId(T - 1)); // takes care of updated fields
+            //parentNode.dataUpdatedArray[keyIndex] = true,  NOT node.dataUpdatedArray[T - 1];
+            //
+            // copy the key from 'node' at T-1 to keyIndex of parentNode, getting key and preserving location
+            parentNode.copyKeyAndDataToArray(node, T-1, keyIndex);
             // zero the old node mid key, its moved
-            node.setKey(T - 1,  null);
-            node.dataArray[T - 1] = null;
-            node.setDataIdArray(T - 1, null); // sets node dataId update
+            node.nullKeyAndData(T-1);
+            //node.setKey(T - 1,  null);
+            //node.dataArray[T - 1] = null;
+            //node.setDataIdArray(T - 1, null); null was a bug, should be Optr.empty // sets node dataId update
             // bump the parent node key count
             parentNode.setNumKeys(parentNode.getNumKeys() + 1); // sets parent node updated
             // they both were updated
@@ -592,22 +598,25 @@ public final class BTreeMain {
      */
     public static void moveKeyData(BTreeKeyPage source, int sourceIndex, BTreeKeyPage target, int targetIndex, boolean nullify) {
         try {
-			target.setKey(targetIndex, source.getKey(sourceIndex));
+            target.copyKeyAndDataToArray(source, sourceIndex, targetIndex);
+			//target.setKey(targetIndex, source.getKey(sourceIndex));
+		    //target.setKeyIdArray(targetIndex, source.getKeyId(sourceIndex));
+		    //target.setKeyUpdatedArray(targetIndex, true); // move = updated
+		    //target.dataArray[targetIndex] = source.dataArray[sourceIndex];
+		    //target.setDataIdArray(targetIndex, source.getDataId(sourceIndex));
+		    //target.dataUpdatedArray[targetIndex] = source.dataUpdatedArray[sourceIndex];
+		    //target.setUpdated(true); // tell it the key in general is updated
 		} catch (IOException e) { e.printStackTrace();}
-        target.setKeyIdArray(targetIndex, source.getKeyId(sourceIndex));
-        target.setKeyUpdatedArray(targetIndex, true); // move = updated
-        target.dataArray[targetIndex] = source.dataArray[sourceIndex];
-        target.setDataIdArray(targetIndex, source.getDataId(sourceIndex));
-        target.dataUpdatedArray[targetIndex] = source.dataUpdatedArray[sourceIndex];
-        target.setUpdated(true); // tell it the key in general is updated
+
         // We have taken care of target, now if we need to null the source fields, do so.
         if( nullify ) {
-            	source.setKey(sourceIndex, null);
-            	target.setKeyIdArray(sourceIndex, Optr.emptyPointer);
-            	target.setKeyUpdatedArray(sourceIndex, false);
-            	source.dataArray[sourceIndex] = null;
-            	source.setDataIdArray(sourceIndex, Optr.emptyPointer);
-            	source.dataUpdatedArray[sourceIndex] = false; // have not updated off-page data, just moved its pointer
+            	//source.setKey(sourceIndex, null);
+            	//source.setKeyIdArray(sourceIndex, Optr.emptyPointer);
+            	//source.setKeyUpdatedArray(sourceIndex, false);
+            	//source.dataArray[sourceIndex] = null;
+            	//source.setDataIdArray(sourceIndex, Optr.emptyPointer);
+            	//source.dataUpdatedArray[sourceIndex] = false; // have not updated off-page data, just moved its pointer
+        	source.nullKeyAndData(sourceIndex);
         }
     }
     /**

@@ -299,8 +299,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public int findSmallestTablespace() throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.findSmallestTablespace ");
-		getNextFreeBlocks();
-		return bufferPool.getFreeBlockAllocator().findSmallestTablespace(Fsize(0));	
+		getNextFreeBlocks(); // sets blocks in feeeblockallocator
+		return bufferPool.getFreeBlockAllocator().nextTablespace();	
 	}
 
 	/**
