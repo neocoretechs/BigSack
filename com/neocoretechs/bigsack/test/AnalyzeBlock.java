@@ -17,7 +17,7 @@ public class AnalyzeBlock {
 		// should set up block access index in bufferpool and blockstream
 		gdb.getIOManager().objseek(GlobalDBIO.makeVblock(tablespace, blk));
 		System.out.println("Raw Block="+gdb.getIOManager().getBlockStream(tablespace).getBlockAccessIndex());
-		BTreeKeyPage btk = new BTreeKeyPage(gdb, gdb.getIOManager().getBlockStream(tablespace).getBlockAccessIndex());
+		BTreeKeyPage btk = new BTreeKeyPage(gdb, gdb.getIOManager().getBlockStream(tablespace).getBlockAccessIndex(), true);
 		System.out.println("Keypage from raw block ="+btk);
 		btk = new BTreeKeyPage(gdb,GlobalDBIO.makeVblock(tablespace, blk), false );
 		System.out.println("Keypage from location ="+btk);

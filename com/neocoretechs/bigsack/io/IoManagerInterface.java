@@ -168,10 +168,11 @@ public interface IoManagerInterface {
 	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) throws IOException;
 	public void deallocOutstanding(long pos) throws IOException;
 
-
 	public void writeDirect(int tablespace, long block, Datablock blk) throws IOException;
 
 	public void readDirect(int tablespace, long block, Datablock blk) throws IOException;
+
+	public FreeBlockAllocator getFreeBlockAllocator();
 
 
 }

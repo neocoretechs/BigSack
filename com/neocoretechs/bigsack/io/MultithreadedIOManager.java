@@ -165,15 +165,13 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, bufferPool.getNextFree(tblsp));
+		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, getFreeBlockAllocator().getNextFree(tblsp));
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
-		synchronized(bufferPool) {
-			bufferPool.setNextFree(tblsp, iori.getLongReturn());
-			return bufferPool.getNextFree(tblsp);
-		}
+		bufferPool.getFreeBlockAllocator().setNextFree(tblsp, iori.getLongReturn());
+		return iori.getLongReturn();
 	}
 	/**
 	* Return the reverse scan of the first free block of each tablespace
@@ -195,12 +193,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
-		synchronized(bufferPool) {
-			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				bufferPool.setNextFree(i, iori[i].getLongReturn());
-			}
+		long[] freeArray = new long[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				freeArray[i] = iori[i].getLongReturn();
 		}
-
+		bufferPool.getFreeBlockAllocator().setNextFree(freeArray);
 	}
 	
 	/* (non-Javadoc)
@@ -273,15 +270,18 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
 	}
-	/* (non-Javadoc)
+	
+	/**
+	 * Set the initial free blocks after a create of the tablespaces.
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#setNextFreeBlocks()
 	 */
 	@Override
 	public void setNextFreeBlocks() {
-		bufferPool.setNextFreeBlocks();
+		bufferPool.getFreeBlockAllocator().setNextFreeBlocks();
 	}
 
-	/* (non-Javadoc)
+	/**
+	 * Return that which is regarded as the first tablespace, usually 0, location of root node.
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#firstTableSpace()
 	 */
 	@Override
@@ -300,7 +300,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.findSmallestTablespace ");
 		getNextFreeBlocks();
-		return bufferPool.findSmallestTablespace(Fsize(0));	
+		return bufferPool.getFreeBlockAllocator().findSmallestTablespace(Fsize(0));	
 	}
 
 	/**
@@ -569,6 +569,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public BufferPool getBufferPool() {
 		return bufferPool;
+	}
+	@Override
+	public FreeBlockAllocator getFreeBlockAllocator() {
+		return bufferPool.getFreeBlockAllocator();
 	}
 
 }

@@ -198,8 +198,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	public synchronized Optr getNewNodePosition(BlockAccessIndex lbai) throws IOException {
 		long blockNum = lbai.getBlockNum();
 		short bytesUsed = lbai.getBlk().getBytesused();
-		// ok, 5 bytes is rather arbitrary but seems a waste to start a big ole object so close to the end of a block
-		if (blockNum == -1L || lbai.getBlk().getBytesused()+5 >= DBPhysicalConstants.DATASIZE) {
+		if (blockNum == -1L) {
 			BlockAccessIndex tbai = stealblk(lbai);
 			blockNum = tbai.getBlockNum();
 			bytesUsed = tbai.getBlk().getBytesused();

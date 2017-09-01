@@ -66,15 +66,15 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, bufferPool.getNextFree(tblsp));
+		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, bufferPool.getFreeBlockAllocator().getNextFree(tblsp));
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
 		// remove old request
 		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
-		bufferPool.setNextFree(tblsp, iori.getLongReturn());
-		return bufferPool.getNextFree(tblsp);
+		bufferPool.getFreeBlockAllocator().setNextFree(tblsp, iori.getLongReturn());
+		return bufferPool.getFreeBlockAllocator().getNextFree(tblsp);
 	}
 	/**
 	* Return the reverse scan of the first free block of each tablespace
@@ -97,7 +97,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			bufferPool.setNextFree(i, iori[i].getLongReturn());
+			bufferPool.getFreeBlockAllocator().setNextFree(i, iori[i].getLongReturn());
 			// remove old requests
 			((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
 		}
@@ -195,7 +195,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			System.out.println("ClusterIOManager.findSmallestTablespace ");
 		synchronized(bufferPool) {
 			getNextFreeBlocks();
-			return bufferPool.findSmallestTablespace(Fsize(0));
+			return bufferPool.getFreeBlockAllocator().findSmallestTablespace(Fsize(0));
 		}
 	}
 	

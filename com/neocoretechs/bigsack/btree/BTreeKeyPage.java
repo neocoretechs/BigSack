@@ -189,10 +189,11 @@ public final class BTreeKeyPage {
 	}
 	/**
 	 * This is called from getPageFromPool get set up a new clean node
-	 * @param sdbio
-	 * @param lbai
+	 * @param sdbio The database IO main class
+	 * @param lbai The BlockAcceesIndex page block holding page data
+	 * @param read true to read the contents of the btree key from page, otherwise a new page to be filled
 	 */
-	public BTreeKeyPage(ObjectDBIO sdbio, BlockAccessIndex lbai) throws IOException {
+	public BTreeKeyPage(ObjectDBIO sdbio, BlockAccessIndex lbai, boolean read) throws IOException {
 		this.sdbio = sdbio;
 		this.lbai = lbai;
 		this.pageId = lbai.getBlockNum();
@@ -213,31 +214,32 @@ public final class BTreeKeyPage {
 				dataUpdatedArray[i] = false;
 			}
 		}
-		assert(lbai.getBlk().getBytesused() != 0) : "Atempt to read block with zero used bytes "+lbai;
-		
-		BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
-		bs.setBlockAccessIndex(lbai);
-		DataInputStream dis = bs.getDBInput();
-		setmIsLeafNode(dis.readByte() == 0 ? false : true);
-		setNumKeys(dis.readInt());
-		for(int i = 0; i < MAXKEYS; i++) {
-			long sblk = dis.readLong();
-			short shblk = dis.readShort();
-			//if( DEBUG ) { 
-			//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
-			//}
-			keyIdArray[i] = new Optr(sblk, shblk);
-			// data array
-			sblk = dis.readLong();
-			shblk = dis.readShort();
-			//if( DEBUG ) { 
-			//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
-			//}
-			dataIdArray[i] = new Optr(sblk, shblk);
-		}
-		// pageId
-		for(int i = 0; i <= MAXKEYS; i++) {	
-			pageIdArray[i] = dis.readLong();
+		if( read ) {
+			assert(lbai.getBlk().getBytesused() != 0) : "Atempt to read block with zero used bytes "+lbai;	
+			BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
+			bs.setBlockAccessIndex(lbai);
+			DataInputStream dis = bs.getDBInput();
+			setmIsLeafNode(dis.readByte() == 0 ? false : true);
+			setNumKeys(dis.readInt());
+			for(int i = 0; i < MAXKEYS; i++) {
+				long sblk = dis.readLong();
+				short shblk = dis.readShort();
+				//if( DEBUG ) { 
+				//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
+				//}
+				keyIdArray[i] = new Optr(sblk, shblk);
+				// data array
+				sblk = dis.readLong();
+				shblk = dis.readShort();
+				//if( DEBUG ) { 
+				//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
+				//}
+				dataIdArray[i] = new Optr(sblk, shblk);
+			}
+			// pageId
+			for(int i = 0; i <= MAXKEYS; i++) {	
+				pageIdArray[i] = dis.readLong();
+			}
 		}
 		
 		if( DEBUG )
@@ -452,7 +454,7 @@ public final class BTreeKeyPage {
 	static BTreeKeyPage getPageFromPool(ObjectDBIO sdbio, long pos) throws IOException {
 		assert(pos != -1L) : "Page index invalid in getPage "+sdbio.getDBName();
 		BlockAccessIndex bai = sdbio.findOrAddBlock(pos);
-		BTreeKeyPage btk = new BTreeKeyPage(sdbio, bai);
+		BTreeKeyPage btk = new BTreeKeyPage(sdbio, bai, true);
 		if( DEBUG ) 
 			System.out.println("BTreeKeyPage.getPageFromPool "+btk+" from block "+bai);
 		//for(int i = 0; i <= MAXKEYS; i++) {
@@ -474,7 +476,7 @@ public final class BTreeKeyPage {
 		// extract tablespace since we steal blocks from any
 		//int tablespace = GlobalDBIO.getTablespace(pageId);
 		// initialize transients
-		BTreeKeyPage btk = new BTreeKeyPage(sdbio, lbai);
+		BTreeKeyPage btk = new BTreeKeyPage(sdbio, lbai, false);
 		btk.setUpdated(true);
 		//for(int i = 0; i <= MAXKEYS; i++) {
 		//	btk.pageArray[i] = btk.getPage(sdbio,i);

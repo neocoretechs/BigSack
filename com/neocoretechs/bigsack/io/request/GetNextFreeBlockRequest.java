@@ -45,19 +45,20 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 			tsize = ioUnit.Fsize();
 			if( DEBUG )
 				System.out.println("GetNextFreeBlockRequest CURRENT block:"+this);
+			// nextFreeBlock set to previous free block in ctor
 			if( nextFreeBlock != -1L) {
-				// we have a good previous 'next block', so attempt to move forward form that
+				// we have a good previous 'next block', so attempt to move forward from that
 				long tblock = GlobalDBIO.getBlock(nextFreeBlock) + (long) DBPhysicalConstants.DBLOCKSIZ;
 				nextFreeBlock = GlobalDBIO.makeVblock(tablespace, tblock);
-				if( DEBUG )
-					System.out.println("GetNextFreeBlockRequest FOUND:"+this+" size:"+tsize);
 				// If the new address exceeds the end, extend, otherwise we are done
 				if(GlobalDBIO.getBlock(nextFreeBlock) >= tsize) {
 					// extend tablespace in pool-size increments
 					newLen = tsize + (long) (DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS);
+					if( DEBUG )
+						System.out.println("GetNextFreeBlockRequest next free block to EXTEND:"+this+" from size:"+tsize+" to "+newLen);
 				} else {
 					if( DEBUG )
-						System.out.println("GetNextFreeBlockRequest exiting with:"+this);
+						System.out.println("GetNextFreeBlockRequest EXIT with:"+this);
 					return;
 				}
 			// We never had a good block here, do a rearward scan to find end of data
@@ -76,7 +77,11 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 						break;
 					}
 				}
-				// If we came out with a valid block, we have only to make it a Vblock and we are finished
+				// If we came out with a valid block, we have only to make it a Vblock and we are finished.
+				// If we made it back to the beginning, there is no data so set to our endblock
+				if( endBl == endBlock) {
+					nextFreeBlock = endBlock;
+				}
 				if(nextFreeBlock != -1L) {
 					nextFreeBlock = GlobalDBIO.makeVblock(tablespace, nextFreeBlock);
 					if( DEBUG )
@@ -93,6 +98,7 @@ public final class GetNextFreeBlockRequest implements IoRequestInterface {
 			ioUnit.Fset_length(newLen);
 			// set next free right after end of old, in the first of our new space
 			nextFreeBlock = GlobalDBIO.makeVblock(tablespace, tsize + DBPhysicalConstants.DBLOCKSIZ);
+			// write new extended buffer blocks
 			while (tsize < newLen) {
 				ioUnit.Fseek(tsize);
 				d.write(ioUnit);

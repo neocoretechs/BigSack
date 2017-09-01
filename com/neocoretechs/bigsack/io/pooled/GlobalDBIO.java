@@ -499,7 +499,7 @@ public class GlobalDBIO {
 		ioManager.deallocOutstanding(pos);	
 	}
 	/**
-	 * Selects a random tablespace to prepare call the ioManager.
+	 * Selects a tablespace to prepare call the ioManager.
 	 * (ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface), in order to acquire the
 	 * blockbuffer for that tablespace to steal a block from the freechain or acquire it into the 
 	 * BlockAccessIndex buffer for that tablespace.
@@ -508,7 +508,7 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */
 	public synchronized BlockAccessIndex stealblk() throws IOException {
-		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
+		int tbsp = ioManager.getFreeBlockAllocator().nextTablespace();
 		// ioManager = ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface
 		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getBlockAccessIndex());
 	}
