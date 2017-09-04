@@ -37,7 +37,7 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 */
 @SuppressWarnings("rawtypes")
 public final class BlockAccessIndex implements Comparable, Serializable {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private static final long serialVersionUID = -7046561350843262757L;
 	private Datablock blk;
 	private transient int accesses = 0;

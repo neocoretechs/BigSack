@@ -9,7 +9,6 @@ import java.util.concurrent.CyclicBarrier;
 import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
-import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -62,9 +61,10 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff Copyright (C) NeoCoreTechs 2015,2017
 */
 public final class BTreeMain {
-	private static boolean DEBUG = true; // General debug, overrides other levels
+	private static boolean DEBUG = false; // General debug, overrides other levels
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of BTreeKeyPage
 	private static boolean DEBUGSEARCH = false; // traversal debug
+	private static boolean DEBUGCOUNT = false;
 	private static boolean TEST = false; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = false; // flag to determine whether value data is overwritten for a key or its ignored
@@ -113,13 +113,11 @@ public final class BTreeMain {
 			// Attempt to retrieve last good key count
 			long numKeys = 0;
 			long tim = System.currentTimeMillis();
-			//if( sdbio.getDBName().contains("MapDomainRange") || sdbio.getDBName().contains("MapRangeDomain"))
-				//printBTree(getRoot());
 			numKeys = count();
 			System.out.println("Consistency check for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		}
 		if( ALERT )
-			System.out.println("Database "+sdbio.getDBName()+" ready.");
+			System.out.println("Database "+sdbio.getDBName()+" ready with "+BTreeKeyPage.MAXKEYS+" keys per page.");
 
 	}
 	/**
@@ -134,13 +132,13 @@ public final class BTreeMain {
 		if( currentPage != null ) {
 			++numKeys;
 			while ((i = gotoNextKey()) == 0) {
-			if( DEBUG )
+			if( DEBUG || DEBUGCOUNT)
 				System.out.println("gotoNextKey returned: "+currentPage.getKey(currentIndex));
 				++numKeys;
 			}
 		}
-		//if( DEBUG )
-		System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
+		if( DEBUG || DEBUGCOUNT )
+			System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		// deallocate outstanding blocks in all tablespaces
 		sdbio.deallocOutstanding();
 		clearStack();
@@ -249,7 +247,7 @@ public final class BTreeMain {
                 if (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) == 0) {
                 	if( object != null && OVERWRITE) {
                 		if(DEBUG)
-                			System.out.println("BTreeMain.update deleting and replacing data for index "+i+" in "+sourcePage);
+                			System.out.println("BTreeMain.update DELETING and REPLACING object data for index "+i+" in "+sourcePage);
             			sourcePage.deleteData(i);
                         sourcePage.putDataToArray(object,i);
                 	}
@@ -263,7 +261,7 @@ public final class BTreeMain {
                 	BTreeKeyPage targetPage  = sourcePage.getPage(i);// get the page at the index of the given page
                 	if( targetPage == null )
                 		break;
-                	sdbio.deallocOutstanding(node.pageId);
+                	sdbio.deallocOutstanding(sourcePage.pageId);
                 	sourcePage = targetPage;
                 }
         }
@@ -322,7 +320,7 @@ public final class BTreeMain {
                 	BTreeKeyPage targetPage  = sourcePage.getPage(i);// get the page at the index of the given page
                 	if( targetPage == null )
                 		break;
-                	sdbio.deallocOutstanding(node.pageId);
+                	sdbio.deallocOutstanding(sourcePage.pageId);
                 	sourcePage = targetPage;
                 }
         }
@@ -893,11 +891,8 @@ public final class BTreeMain {
 	 * @exception IOException If read fails
 	 */
 	public synchronized void toEnd() throws IOException {
-		currentPage = getRoot();
-		currentIndex = currentPage.getNumKeys()-1;
-		currentChild = currentPage.getNumKeys();
-		clearStack();
-		seekRightTree();
+		rewind();
+		while (gotoNextKey() == 0);
 	}
 	/**
 	 * Same as reposition but we populate the stack 
@@ -1070,10 +1065,11 @@ public final class BTreeMain {
 	/**
 	 * Pop the stack until we reach a valid spot in traversal.
 	 * The currentPage, currentChild are used, setCurrent() is called on exit;
-	 * @return EOF if we reach root and cannot traverse right
+	 * @param next Pop 'previous', or 'next' key. true for 'next'
+	 * @return EOF If we reach root and cannot traverse right
 	 * @throws IOException
 	 */
-	public synchronized int popUntilValid(boolean next) throws IOException {
+	private synchronized int popUntilValid(boolean next) throws IOException {
 		// If we are here we are at the end of the key range
 		// cant move left, are we at root? If so, we must end
 		if( currentPage.pageId == 0L)
@@ -1084,34 +1080,33 @@ public final class BTreeMain {
 		// go up 1 and right to the next key, if no right continue to pop until we have a right key
 		// if we hit the root, protocol right. in any case we have to reassert
 		// if there is a subtree follow it, else return the key
-		//Comparable key = currentPage.keyArray[currentIndex];
+		Comparable key = currentPage.getKey(currentIndex);
 		while( pop() ) {
 			if(DEBUG || DEBUGSEARCH) {
 				System.out.println("BTreeMain.popUntilValid POP index:"+currentIndex+" child:"+currentChild+" page:"+currentPage);
 			}
 			// we know its not a leaf, we popped to it
 			// If we pop, and we are at the end of key range, and our key is not valid, pop
-			
 			if( next ) {
-				if(currentIndex >= currentPage.getNumKeys() ) 
-					continue; // on a non-leaf, at an index heading right (ascending), break from pop
+				if(currentIndex >= currentPage.getNumKeys() || currentPage.getKey(currentIndex).compareTo(key) < 0) {	
+					continue; // on a non-leaf, at an index heading right (ascending)
+				}
 			} else {
-				if(currentIndex <= 0 /* && currentPage.keyArray[currentIndex].compareTo(key) > 0*/ ) 
-					continue; // on a non-leaf, at an index heading left (descending), break from pop			
+				if(currentIndex <= 0 || currentPage.getKey(currentIndex).compareTo(key) > 0) {
+					continue; // on a non-leaf, at an index heading left (descending)
+				}
 			}
-			
-			// no pointer move, are we at root?
-			//if( currentPage.pageId == 0L) {
-			//	setCurrent();
-			//	return EOF;
-			//}
-			//
-			break;
+			// appears that a valid key is encountered
+			//break;
+			setCurrent();
+			return 0;
 		}
 		// should be at position where we return key from which we previously descended
 		// pop sets current indexes
-		setCurrent();
-		return 0;
+		//setCurrent();
+		//return 0;
+		// popped to the top and have to stop
+		return EOF;
 	}
 	/**
 	* Set the current object and key based on value of currentPage.
@@ -1119,7 +1114,7 @@ public final class BTreeMain {
 	*/
 	public synchronized void setCurrent() throws IOException {
 		if( DEBUG || DEBUGCURRENT)
-			System.out.println("BTreeMain.setCurrent page:"+currentPage+" index:"+currentIndex);
+			System.out.println("BTreeMain.setCurrent page:["+ currentIndex +"] "+currentPage);
 		setCurrentKey(currentPage.getKey(currentIndex));
 		setCurrentObject(currentPage.getDataFromArray(currentIndex));
 

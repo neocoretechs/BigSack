@@ -40,7 +40,7 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  *
  */
 public class MultithreadedIOManager implements IoManagerInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final boolean DEBUG2 = false;
 	private static final boolean DEBUGWRITE = false; // view blocks written to log and store
 	public ObjectDBIO globalIO;

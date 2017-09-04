@@ -38,7 +38,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  */
 public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex> implements Runnable {
 	private static final long serialVersionUID = -5744666991433173620L;
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final boolean NEWNODEPOSITIONDEBUG = false;
 	private boolean shouldRun = true;
 	private BlockingQueue<BlockAccessIndex> freeBL; // free block list

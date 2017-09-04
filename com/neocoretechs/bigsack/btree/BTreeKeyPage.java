@@ -71,11 +71,15 @@ import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 * @author Groff Copyright (C) NeoCoreTechs 2014,2015,2017
 */
 public final class BTreeKeyPage {
-	static final boolean DEBUG = true;
+	static final boolean DEBUG = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block
 	// Can be overridden by properties element. the number of maximum children is MAXKEYS+1 per node
-	public static int MAXKEYS = 5; 
+	// Calculate the maximum number of odd keys that can fit per block
+	public static int MAXKEYS = (
+			(((DBPhysicalConstants.DATASIZE-13)/28) % 2) == 0 ? 
+			((DBPhysicalConstants.DATASIZE-13)/28)-1 : // even, subtract 1 from total
+			((DBPhysicalConstants.DATASIZE-13)/28) );//5; 
 	// Non transient number of keys on this page. Adjusted as necessary when inserting/deleting.
 	private int numKeys = 0;
 	// Transient. The 'id' is really the location this page was retrieved from deep store.
@@ -766,6 +770,7 @@ public final class BTreeKeyPage {
 	}
 	
 	public synchronized String toString() {
+		int endd;
 		StringBuffer sb = new StringBuffer();
 		//sb.append("Page ");
 		//sb.append(hashCode());
@@ -782,7 +787,7 @@ public final class BTreeKeyPage {
 		if( keyArray == null ) {
 			sb.append("Key ARRAY IS NULL\r\n");
 		} else {
-			for (int i = 0; i < keyArray.length; i++) {
+			for (int i = 0; i < numKeys /*keyArray.length*/; i++) {
 				sb.append(i+"=");
 				sb.append(keyIdArray[i]);
 				sb.append(",");
@@ -796,7 +801,7 @@ public final class BTreeKeyPage {
 			sb.append("PAGE ARRAY IS NULL\r\n");
 		} else {
 			int j = 0;
-			for (int i = 0 ; i < pageArray.length; i++) {
+			for (int i = 0 ; i < numKeys /*pageArray.length*/; i++) {
 			//	sb.append(i+"=");
 			//	sb.append(pageArray[i]+"\r\n");
 				if(pageArray[i] != null) ++j;
@@ -808,35 +813,47 @@ public final class BTreeKeyPage {
 			sb.append(" PAGE ID ARRAY IS NULL\r\n ");
 		} else {
 			sb.append(" ");
-			for (int i = 0; i < pageIdArray.length; i++) {
+			endd = pageIdArray.length-1;
+			for(; endd > 0; endd--)
+				if( pageIdArray[endd] != -1) break; // nacs for end
+			for (int i = 0; i < endd; i++) {
 				sb.append(i+" id=");
 				//sb.append(pageArray[i] == null ? null : String.valueOf(pageArray[i].hashCode()));
 				sb.append(GlobalDBIO.valueOf(pageIdArray[i]));
 				sb.append("\r\n");
 			}
+			sb.append((pageIdArray.length-endd)+" blank page Ids\r\n");
 		}
 		
 		sb.append("Data Array:\r\n");
 		if(dataArray==null) {
 			sb.append(" DATA ARRAY NULL\r\n");
 		} else {
-			for(int i = 0; i < dataArray.length; i++) {
+			endd = dataArray.length-1;
+			for(; endd > 0; endd--)
+				if( dataArray[endd] != null) break; // nacs for end
+			for(int i = 0; i < endd /*dataArray.length*/; i++) {
 				sb.append(i+"=");
 				sb.append(dataArray[i]+" ");
 				sb.append("updated=");
 				sb.append(dataUpdatedArray[i]);
 				sb.append("\r\n");
 			}
+			sb.append((dataArray.length-endd)+" blank value data\r\n");
 		}
 		sb.append("Data IDs:\r\n");
 		if(dataIdArray==null) {
 			sb.append(" DATA ID ARRAY NULL\r\n");
 		} else {
-			for(int i = 0; i < dataIdArray.length; i++) {
+			endd = dataIdArray.length-1;
+			for(; endd > 0; endd--)
+				if( !dataIdArray[endd].isEmptyPointer()) break; // nacs for end
+			for(int i = 0; i < endd/*dataIdArray.length*/; i++) {
 				sb.append(i+" id=");
 				sb.append(dataIdArray[i]);
 				sb.append("\r\n");
 			}
+			sb.append((dataIdArray.length-endd)+" blank value data Ids\r\n");
 		}
 		
 		sb.append(GlobalDBIO.valueOf(pageId));

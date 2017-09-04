@@ -10,9 +10,13 @@ import com.neocoretechs.bigsack.session.SessionManager;
  */
 public class AnalyzeDB {
 	public static void main(String[] args) throws Exception {
+		if( args.length < 2) {
+			System.out.println("analyzedb <database> <true | false verbose>");
+			System.exit(1);
+		}
 		// init with no recovery
 		BigSackSession bss = SessionManager.ConnectNoRecovery(args[0], null);
 		System.out.println("Proceeding to analyze "+args[0]);
-		bss.analyze(true);
+		bss.analyze(args[1].equals("true") ? true : false);
 	}
 }

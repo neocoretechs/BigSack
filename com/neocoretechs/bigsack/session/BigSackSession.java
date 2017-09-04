@@ -346,29 +346,25 @@ public final class BigSackSession {
 		float totutil = 0;
 		Datablock db = new Datablock(DBPhysicalConstants.DBLOCKSIZ);
 		int numberBlks = 1;
-		long minBlock = bTree.getIO().firstTableSpace();
+		long minBlock = 0;
 		int itab = 0;
-		bTree.getIO();
 		do {
 			int tnumberBlks = 1;
 			float ttotutil = 0;
 			int zeroBlocks = 0;
-			long fsiz = bTree.getIO().getIOManager().Fsize(itab);
+			long fsiz = bTree.getIO().getIOManager().Fsize(itab)-DBPhysicalConstants.DBLOCKSIZ;
+			minBlock =0;
 			//long maxBlock = GlobalDBIO.makeVblock(itab, fsiz);
 			
 			System.out.println("<<BigSack Analysis|Tablespace number "+itab+" File size bytes: " + fsiz+">>");
 			while (minBlock < fsiz) {
-				bTree.getIO().getIOManager().FseekAndReadFully(minBlock, db);
+				bTree.getIO().getIOManager().FseekAndReadFully(GlobalDBIO.makeVblock(itab, minBlock), db);
 				if( db.getBytesused() == 0 || db.getBytesinuse() == 0 ) {		
 					++zeroBlocks;
 				} else {
-					if(db.getData()[0] == 0xAC && db.getData()[1] == 0xED && db.getData()[2] == 0x00 && db.getData()[3] == 0x05) 
-						System.out.println("Detected object stream header for tablespace"+itab+" pos:"+minBlock);
-					else
-						System.out.println("Detected NO object stream header for tablespace"+itab+" pos:"+minBlock);
+					//if(db.getData()[0] == 0xAC && db.getData()[1] == 0xED && db.getData()[2] == 0x00 && db.getData()[3] == 0x05) 
+					//	System.out.println("Detected object stream header for tablespace"+itab+" pos:"+minBlock);
 				}
-				
-				//if( Props.DEBUG ) 
 				//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toBriefString());
 				if( verbose ) {
 						System.out.println("BigSack Block tablespace "+itab+". Current zero blocks:"+zeroBlocks+". Pos:"+minBlock+". Data:"+db.blockdump());

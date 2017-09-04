@@ -47,7 +47,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private int MAXKEYS = 5; // Number of keys per page max
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc

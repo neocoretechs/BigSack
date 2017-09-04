@@ -30,7 +30,7 @@ import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
  *
  */
 public class BufferPool {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	protected final CyclicBarrier forceBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
