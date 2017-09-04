@@ -75,6 +75,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 		bufferPool.getFreeBlockAllocator().setNextFree(tblsp, iori.getLongReturn());
 		return bufferPool.getFreeBlockAllocator().getNextFree(tblsp);
+		
 	}
 	/**
 	* Return the reverse scan of the first free block of each tablespace
@@ -96,11 +97,14 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
+	
+		long[] freeArray = new long[DBPhysicalConstants.DTABLESPACES];
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			bufferPool.getFreeBlockAllocator().setNextFree(i, iori[i].getLongReturn());
-			// remove old requests
-			((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
+				freeArray[i] = iori[i].getLongReturn();
+				// remove old requests
+				((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
 		}
+		bufferPool.getFreeBlockAllocator().setNextFree(freeArray);
 	}
 	/**
 	 * Send the request to write the given block at the given location, with
@@ -183,21 +187,6 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
 	}
 
-
-	/**
-	* Find the smallest tablespace for storage balance, we will always favor creating one
-	* over extending an old one
-	* @return tablespace
-	* @exception IOException if seeking new tablespace or creating fails
-	*/
-	public int findSmallestTablespace() throws IOException {
-		if( DEBUG )
-			System.out.println("ClusterIOManager.findSmallestTablespace ");
-		synchronized(bufferPool) {
-			getNextFreeBlocks();
-			return bufferPool.getFreeBlockAllocator().findSmallestTablespace(Fsize(0));
-		}
-	}
 	
 	public long Fsize(int tblsp) throws IOException {
 		if( DEBUG )
@@ -438,7 +427,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	@Override
 	public void directBufferWrite() throws IOException {
 		if( DEBUG )
-			System.out.println("MultithreadedIOManager.directBufferWrite invoked.");
+			System.out.println("ClusterIOManager.directBufferWrite invoked.");
 		bufferPool.directBufferWrite();
 	}
 	

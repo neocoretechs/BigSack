@@ -6,15 +6,20 @@ import com.neocoretechs.bigsack.iterator.KeyValuePair;
 import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.SessionManager;
 /**
- * Session level testing. A map and a set are only distinguished by the value part of key/value being null
- * at the session level.
- * Set the database name as the first argument "C:/users/you/Relatrix/TestDB1" 
- * Set the name of the properties file in the VM -DBigSack.properties="c:/users/you/Relatrix/BigSack.properties"
- * Yes, this should be a nice JUnit fixture someday
- * The static constant fields in the class control the key generation for the tests
+ * Test battery for Key/Value pairs using session level constructs.
+ * At the session level we leave out the level 3 cache (in memory object table cache) and
+ * test to the metal of the session. The higher level Buffered and Transactional TreeMaps and TreeSets
+ * all use the base session object under test here.
+ * Parameters: Set the database name as the first argument "/users/you/TestDB1" where
+ * the directory  "/users/you" must exist and a series of tablespaces and a log directory
+ * are created under that. The database files will be named "TestDB1" under "/users/you/log and 
+ * /users/you/tablespace0" to "/users/you/tablespace7".
+ * Set the name of the properties file in the VM -DBigSack.properties="/users/you/Relatrix/BigSack.properties"
+ * Yes, this should be a nice JUnit fixture someday.
+ * The static constant fields in the class control the key generation for the tests.
  * In general, the keys and values are formatted according to uniqKeyFmt to produce
- * a series of canonically correct sort order strings for the DB in the range of min to max vals
- * In general most of the battery1 testing relies on checking order against expected values hence the importance of
+ * a series of canonically correct sort order strings for the DB in the range of min to max vals.
+ * In general most of the testing relies on checking order against expected values hence the importance of
  * canonical ordering in the sample strings.
  * Of course, you can substitute any class for the Strings here providing it implements Comparable 
  * @author jg
@@ -24,38 +29,36 @@ public class BatteryBigSack {
 	static String key = "This is a test"; // holds the base random key string for tests
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
-	static int min = 0;
-	static int max = 2000;
+	static int min = 0; // controls minimum range of test
+	static int max = 2000; // controls maximum range of tests
 	static int numDelete = 100; // for delete test
 	/**
 	* Analysis test fixture
 	*/
 	public static void main(String[] argv) throws Exception {
 		if (argv.length == 0 || argv[0].length() == 0) {
-			 System.out.println("usage: java BatteryBigSack <database>");
+			System.out.println("usage: java BatteryBigSack <database>");
 			System.exit(1);
 		}
 		BigSackSession session = SessionManager.Connect(argv[0], null, true);
-		// System.out.println("Analysis of all");
-		//session.analyze(false); // true for more and more stuff
-		//battery1(session, argv);
+		battery1(session, argv);
 		battery1A(session, argv);
-		//battery1B(session, argv);
-		//battery1C(session, argv);
-		//battery1D(session, argv);
-		//battery1D1(session, argv);
-		//battery1E(session, argv);
-		//battery1E1(session, argv);
-		//battery1F(session, argv);
-		//battery1F1(session, argv);
-		//battery1G(session, argv);
-		//battery2(session, argv);
-		//battery3(session, argv);
-		//battery4(session, argv);
-		//battery5(session, argv);
+		battery1B(session, argv);
+		battery1C(session, argv);
+		battery1D(session, argv);
+		battery1D1(session, argv);
+		battery1E(session, argv);
+		battery1E1(session, argv);
+		battery1F(session, argv);
+		battery1F1(session, argv);
+		battery1G(session, argv);
+		battery2(session, argv);
+		battery2A(session, argv);
+		battery3(session, argv);
+	
 		
-		session.Close(BigSackSession.COMMIT);
-		 System.out.println("TEST BATTERY COMPLETE.");
+		session.Commit();
+		System.out.println("TEST BATTERY COMPLETE.");
 		
 	}
 	/**
@@ -70,7 +73,7 @@ public class BatteryBigSack {
 			session.put(key + String.format(uniqKeyFmt, i), val+String.format(uniqKeyFmt, i));
 		}
 		session.Commit();
-		 System.out.println("BATTERY1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+		System.out.println("BATTERY1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * Does a simple 'get' of the elements inserted before
@@ -87,7 +90,7 @@ public class BatteryBigSack {
 				throw new Exception("B1A Fail on get with "+o);
 			}
 		}
-		 System.out.println("BATTERY1A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+		System.out.println("BATTERY1A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * See if first/last key/val works
@@ -102,7 +105,7 @@ public class BatteryBigSack {
 		String minval = val + String.format(uniqKeyFmt, min);
 		String maxval = val + String.format(uniqKeyFmt, (max-1));
 		if( !f.equals(minval) || !l.equals(maxval) ) { // max-1 cause we looped it in
-				 System.out.println("BATTERY1B FAIL "+f+" -- "+l);
+				System.out.println("BATTERY1B FAIL "+f+" -- "+l);
 				throw new Exception("B1B Fail on Value get with "+f+" -- "+l);
 		}
 		String fk = (String) session.firstKey();
@@ -110,7 +113,7 @@ public class BatteryBigSack {
 		minval = key + String.format(uniqKeyFmt, min);
 		maxval = key + String.format(uniqKeyFmt, (max-1));
 		if( !(fk.equals(minval)) || !(lk.equals(maxval)) ) { // looped in so max-1
-			 System.out.println("BATTERY1B FAIL "+fk+" -- "+lk);
+			System.out.println("BATTERY1B FAIL "+fk+" -- "+lk);
 			throw new Exception("B1B Fail on Key get with "+fk+" -- "+lk);
 		}
 		 System.out.println("BATTERY1B SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");

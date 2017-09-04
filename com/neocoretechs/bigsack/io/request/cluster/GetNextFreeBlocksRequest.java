@@ -8,6 +8,7 @@ import java.util.concurrent.CyclicBarrier;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 /**
  * This is a cluster parallel computation component of a tablespace wide request.
  * We forego the cyclicbarrier in favor of a countdownlatch that waits for responses from the
@@ -39,23 +40,24 @@ public final class GetNextFreeBlocksRequest extends AbstractClusterWork implemen
 	* @exception IOException if seek or size fails
 	*/
 	private void getNextFreeBlocks() throws IOException {
-		long endBlock = 0L;
-		long endBl = ioUnit.Fsize();
-		nextFreeBlock = -1L; // assume there are none
-		while (endBl > endBlock) {
+		synchronized(ioUnit) {
+			// tablespace 0 end of rearward scan is block 2 otherwise 0, tablespace 0 has root node
+			long endBlock = tablespace == 0 ? DBPhysicalConstants.DBLOCKSIZ : 0L;
+			long endBl = ioUnit.Fsize();
+			nextFreeBlock = -1L;
+			while (endBl > endBlock) {
 				ioUnit.Fseek(endBl - (long) DBPhysicalConstants.DBLOCKSIZ);
 				d.read(ioUnit);
-				if (d.getPrevblk() == -1L
-					&& d.getNextblk() == -1L
-					&& d.getBytesused() == 0
-					&& d.getBytesinuse() == 0) {
+				if (d.getPrevblk() == -1L && d.getNextblk() == -1L && d.getBytesinuse() == 0) {
 					endBl -= (long) DBPhysicalConstants.DBLOCKSIZ;
-					continue;
 				} else {
-					// this is it
-					nextFreeBlock = ioUnit.Ftell();// the read position at the end of the block that is used, the new block
+					nextFreeBlock = endBl - DBPhysicalConstants.DBLOCKSIZ;
 					break;
 				}
+			}
+			if(nextFreeBlock != -1L) {
+				nextFreeBlock = GlobalDBIO.makeVblock(tablespace, endBl);
+			}
 		}
 	}
 	@Override

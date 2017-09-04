@@ -3,26 +3,26 @@ package com.neocoretechs.bigsack.test;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.UUID;
+
 
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
+ * Testing of TransactionalTreeSet with large payload key object.
+ * The key itself is a monotonically increasing integer controlled by the min and max 
+ * range values fields in the class, but the key class also contains a 32k byte array
+ * which must be serialized as part of the storage of the key, so it spans multiple database pages.
+ * Parameters: Set the database name as the first argument "/users/you/TestDB1" where
+ * the directory  "/users/you" must exist and a series of tablespaces and a log directory
+ * are created under that. The database files will be named "TestDB1" under "/users/you/log and 
+ * /users/you/tablespace0" to "/users/you/tablespace7".
  * Yes, this should be a nice JUnit fixture someday
- * The static constant fields in the class control the key generation for the tests
- * In general, the keys and values are formatted according to uniqKeyFmt to produce
- * a series of canonically correct sort order strings for the DB in the range of min to max vals
- * In general most of the battery1 testing relies on checking order against expected values hence the importance of
- * canonical ordering in the sample strings.
- * Of course, you can substitute any class for the Strings here providing its Comparable 
- * This module hammers the L3 cache thread safe wrappers BufferedTreeSet and BufferedTreeMap
  * @author jg
  *
  */
 public class BatteryBigSack3 {
-	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
-	static int min = 1000;
-	static int max = 10000;
-	static int numDelete = 100; // for delete test
+	static int min = 10000; // controls minimum range for the test
+	static int max = 50000; // sets maximum range for the tests
+	//static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
 	* Analysis test fixture
@@ -32,7 +32,6 @@ public class BatteryBigSack3 {
 			 System.out.println("usage: java BatteryBigSack3 <database>");
 			System.exit(1);
 		}
-		//BufferedTreeSet session = new BufferedTreeSet(argv[0],l3CacheSize);
 		TransactionalTreeSet session = new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
@@ -41,8 +40,8 @@ public class BatteryBigSack3 {
 		battery2A(session, argv);
 		battery3A(session, argv);
 		battery3B(session, argv);
-		//battery1D(session, argv);
-		//battery1E(session, argv);
+		battery1D(session, argv);
+		battery1E(session, argv);
 	
 		//SessionManager.stopCheckpointDaemon(argv[0]);
 		session.commit();

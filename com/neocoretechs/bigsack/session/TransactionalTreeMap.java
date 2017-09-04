@@ -28,11 +28,10 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 *
 */
 /**
-* TransactionalTreeMap.
-* Java TreeMap backed by pooled serialized objects. It is the users responsibility to commit/rollback/checkpoint
-* UNLESS READ_ONLY Use these one-to-one with a database
-* DON'T use multiple instances for writing the same db - unpredictable results.
-* @author Groff (C) NeoCoreTechs 2003,2014
+* TransactionalTreeMap. The same underlying session objects are used here but the user has access to the transactional
+* Semantics underlying the ARIES recovery protocol. Thread safety is enforced on the session at this level.
+* Java TreeMap backed by pooled serialized objects. It is the users responsibility to commit/rollback/checkpoint.
+* @author Groff (C) NeoCoreTechs 2003,2014,2017
 */
 public class TransactionalTreeMap {
 	@SuppressWarnings({ "unchecked", "rawtypes" })

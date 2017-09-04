@@ -13,7 +13,11 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.SessionManager;
-
+/**
+ * Perform a backward scan of log files.
+ * @author jg
+ *
+ */
 public class AnalyzeLogs {
 	public static void main(String[] args) throws Exception {
 		// init with no recovery

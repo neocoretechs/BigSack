@@ -28,11 +28,13 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 *
 */
 /**
-* BufferedTreeMap.
+* BufferedTreeMap.We use the BigSackSession object here and add a L3 cache java TreeMap.
+* The user is not concerned with semantics of recovery when using this construct. The commit
+* operations are performed after each insert and recovery takes place if a failure occurs during
+* runtime writes. If transparency with existing code is paramount this class is a good choice.
+* Thread safety is with the session object using session.getMutexObject().
 * Java TreeMap backed by pooled serialized objects.
-* UNLESS READ_ONLY Use these one-to-one with a database
-* DON'T use multiple instances for writing the same db - unpredictable results.
-* @author Groff (C) NeoCoreTechs 2003
+* @author Groff (C) NeoCoreTechs 2003, 2017
 */
 public class BufferedTreeMap {
 	@SuppressWarnings({ "unchecked", "rawtypes" })

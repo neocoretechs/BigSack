@@ -13,11 +13,9 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.io.request.CommitRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
-import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.FindOrAddBlockAccessRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
-import com.neocoretechs.bigsack.io.request.iomanager.GetUsedBlockRequest;
+
 /**
  * This class provides encapsulation and management of the database block page pool, the block cursor class,
  * and the recovery manager. Since the MappedBlockBuffers for each tablespace and the cursor class are
@@ -310,7 +308,7 @@ public class BufferPool {
 		
 	}
 	/**
-	 * Create a request to send to each block buffer of each tablepsace to write the outstanding blocks
+	 * Create a request to send to each block buffer of each tablespace to write the outstanding blocks
 	 * in each of their buffers. Use a countdownlatch to await each tablespace completion.
 	 */
 	public synchronized void directBufferWrite() {

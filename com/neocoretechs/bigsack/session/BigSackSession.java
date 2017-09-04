@@ -44,7 +44,7 @@ import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
 * specific collection types can obtain their functionality.  Operations include
 * handing out iterators, inserting and deleting objects, size, navigation, clearing,
 * and handling commit and rollback.
-* @author Groff
+* @author Groff (C) 2003, 2017
 */
 public final class BigSackSession {
 	private boolean DEBUG = false;
@@ -54,7 +54,8 @@ public final class BigSackSession {
 	private int gid;
 	private BTreeMain bTree;
 	/**
-	* Create new session
+	* Create a new session
+	* @param bTree The BTreeMain object than handles the BTree key pages indexing the objects in the deep store.
 	* @param tuid The user
 	* @param tgis The group
 	* @exception IOException If global IO problem

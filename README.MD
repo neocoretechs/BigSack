@@ -4,8 +4,20 @@ with a small footprint and exabyte object serialization capability. Serializable
 Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache.
 Multiple memory mapped tablespace files facilitate high throughput to disk.
 Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
+The disk structure for a 'database' is specified as follows from the example path "/home/db/TestDB":
+/home/db/log - Contains the ARIES log files; control and mirror and log TestDB<tablespace>.log.
+/home/db/tablespace0/TestDB.0 - Contains the tablespace files for tablespace 0 for databases
+/home/db/tablespace0/TestDB.1 - Contains the tablespace files for tablespace 1 for databases
+/home/db/tablespace0/TestDB.2 - Contains the tablespace files for tablespace 2 for databases
+/home/db/tablespace0/TestDB.3 - Contains the tablespace files for tablespace 3 for databases
+/home/db/tablespace0/TestDB.4 - Contains the tablespace files for tablespace 4 for databases
+/home/db/tablespace0/TestDB.5 - Contains the tablespace files for tablespace 5 for databases
+/home/db/tablespace0/TestDB.6 - Contains the tablespace files for tablespace 6 for databases
+/home/db/tablespace0/TestDB.7 - Contains the tablespace files for tablespace 7 for databases
+In a cluster configuration the tablespaces are resident on remote or local nodes connected by TCP sockets.
+The tablespace structure is the same on nodes under Cluster configuration.
 
-See java.util.TreeMap and java.util.TreeSet for further details.
+For further information see java.util.TreeMap and java.util.TreeSet for specific details of the API.
 See the documentation for the ARIES protocol standard for further information on that subsystem.
 
 ```

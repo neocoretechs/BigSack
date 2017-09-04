@@ -32,13 +32,13 @@ public final class FSeekAndWriteRequest extends AbstractClusterWork implements C
 	public void process() throws IOException {
 		// see if its buffered, set incore to latch it for write
 		synchronized(ioUnit) {
-		dblk.setIncore(true);
-		blockBuffer.put(offset, dblk);
-		ioUnit.Fseek(offset);
-		dblk.writeUsed(ioUnit);
-		dblk.setIncore(false);
-		// Flip the latch and continue
-		barrierCount.countDown();
+			dblk.setIncore(true);
+			blockBuffer.put(offset, dblk);
+			ioUnit.Fseek(offset);
+			dblk.writeUsed(ioUnit);
+			dblk.setIncore(false);
+			// Flip the latch and continue
+			barrierCount.countDown();
 		}
 	}
 	@Override

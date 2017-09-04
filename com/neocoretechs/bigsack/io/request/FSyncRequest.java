@@ -6,9 +6,8 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
-import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.pooled.Datablock;
+
 /**
  * This is an intent parallel computation component of a tablespace wide request.
  * We are using a CyclicBarrier set up with the number of tablespaces and after each thread

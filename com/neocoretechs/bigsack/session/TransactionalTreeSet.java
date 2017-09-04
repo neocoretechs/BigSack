@@ -28,12 +28,11 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 *
 */
 /**
-* Wrapper for TransactionalTreeSet.
-* Java TreeSet backed by pooled serialized objects.<br>
-* The user has the responsibility here for commit/rollback
-* UNLESS READ_ONLY Use these one-to-one with a database
-* DON'T use multiple instances for writing the same db - unpredictable results.
-* @author Groff
+* TransactionalTreeSet. The same underlying session objects are used here but the user has access to the transactional
+* Semantics underlying the ARIES recovery protocol.
+* Java TreeSet backed by pooled serialized objects. Thread safety is enforced on the session at this level.<br>
+* The user has the responsibility here for commit/rollback.
+* @author Groff (C) NeoCoreTechs 2003,2014,2017
 */
 public class TransactionalTreeSet {
 	@SuppressWarnings({ "unchecked", "rawtypes" })

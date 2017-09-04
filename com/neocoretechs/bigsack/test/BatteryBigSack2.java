@@ -7,14 +7,18 @@ import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.BufferedTreeMap;
 import com.neocoretechs.bigsack.session.SessionManager;
 /**
- * Yes, this should be a nice JUnit fixture someday
+ * This simple test battery tests the BufferedTreeMap and uses small to medium string K/V pairs
+ * with insertion, deletion and retrieval.
+ * Parameters: Set the database name as the first argument "/users/you/TestDB1" where
+ * the directory  "/users/you" must exist and a series of tablespaces and a log directory
+ * are created under that. The database files will be named "TestDB1" under "/users/you/log and 
+ * /users/you/tablespace0" to "/users/you/tablespace7".
  * The static constant fields in the class control the key generation for the tests
  * In general, the keys and values are formatted according to uniqKeyFmt to produce
- * a series of canonically correct sort order strings for the DB in the range of min to max vals
+ * a series of canonically correct sort order strings for the DB in the range of min to max vals.
  * In general most of the battery1 testing relies on checking order against expected values hence the importance of
  * canonical ordering in the sample strings.
  * Of course, you can substitute any class for the Strings here providing its Comparable 
- * This module hammers the L3 cache thread safe wrappers BufferedTreeSet and BufferedTreeMap
  * @author jg
  *
  */
@@ -22,7 +26,7 @@ public class BatteryBigSack2 {
 	static String key = "This is a test"; // holds the base random key string for tests
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
-	static int min = 0;
+	static int min = 0; // controls range of testing
 	static int max = 2000;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
@@ -48,9 +52,7 @@ public class BatteryBigSack2 {
 		battery1F1(session, argv);
 		battery1G(session, argv);
 		battery2(session, argv);
-		//battery3(session, argv);
-		//battery4(session, argv);
-		//battery5(session, argv);
+		battery2A(session, argv);
 		
 		 System.out.println("TEST BATTERY 2 COMPLETE.");
 		
@@ -355,7 +357,7 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery2A(BigSackSession session, String[] argv) throws Exception {
+	public static void battery2A(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = 0; i < numDelete; i++) {
 			int item = min + (int)(Math.random() * ((max - min) + 1));
@@ -370,15 +372,6 @@ public class BatteryBigSack2 {
 		}
 		 System.out.println("BATTERY2 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
-	public static void battery3(BigSackSession session, String[] argv) throws Exception {
-		String key = "Lets try this";
-		session.put(key, "A BigSack Rollback!");
-		session.Rollback();
-		Object o = session.get(key);
-		if( o == null )
-			 System.out.println("BATTERY2 SUCCESS ");
-		else
-			 System.out.println("BATTERY2 FAIL");
-	}
+
 
 }

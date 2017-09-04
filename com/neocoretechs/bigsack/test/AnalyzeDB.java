@@ -4,7 +4,7 @@ import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.SessionManager;
 /**
  * Perform an analysis on the database, tablespace by tablespace, acquiring stats
- * on block utilization and checking for strangeness to a degree
+ * on block utilization and checking for strangeness to a degree.
  * @author jg
  *
  */

@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
@@ -40,9 +41,9 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public final class SessionManager {
 	private static boolean DEBUG = false;
-	private static Hashtable<String, BigSackSession> SessionTable = new Hashtable<String, BigSackSession>();
+	private static ConcurrentHashMap<String, BigSackSession> SessionTable = new ConcurrentHashMap<String, BigSackSession>();
 	@SuppressWarnings("rawtypes")
-	private static Hashtable<?, ?> AdminSessionTable = new Hashtable();
+	private static ConcurrentHashMap<?, ?> AdminSessionTable = new ConcurrentHashMap();
 	private static Vector<String> OfflineDBs = new Vector<String>();
 	private static long globalTransId = System.currentTimeMillis();
 	//
@@ -201,8 +202,7 @@ public final class SessionManager {
 	* @param dbname The database to offline
 	* @exception IOException if we can't force the close
 	*/
-	protected static synchronized void setDBOffline(String dbname)
-		throws IOException {
+	protected static synchronized void setDBOffline(String dbname) throws IOException {
 		OfflineDBs.addElement(dbname);
 		// look for session instance, then signal close
 		BigSackSession hps = (SessionTable.get(dbname));
@@ -213,14 +213,14 @@ public final class SessionManager {
 	protected static synchronized void setDBOnline(String name) {
 		OfflineDBs.removeElement(name);
 	}
-	public static boolean isDBOffline(String dbname) {
+	public static synchronized boolean isDBOffline(String dbname) {
 		return OfflineDBs.contains(dbname);
 	}
 	protected static synchronized void releaseSession(BigSackSession DS) {
 		SessionTable.remove(DS);
 	}
 
-	public static Hashtable<String, BigSackSession> getSessionTable() {
+	public static ConcurrentHashMap<String, BigSackSession> getSessionTable() {
 		return SessionTable;
 	}
 	
@@ -238,7 +238,7 @@ public final class SessionManager {
 	 * For those that wish to maintain admin tables
 	 * @return The Hashtable of Admin sessions - you define
 	 */
-	protected static Hashtable<?, ?> getAdminSessionTable() {
+	protected static ConcurrentHashMap<?, ?> getAdminSessionTable() {
 		return AdminSessionTable;
 	}
 
