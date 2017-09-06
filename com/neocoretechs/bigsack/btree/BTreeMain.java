@@ -209,6 +209,8 @@ public final class BTreeMain {
         	if(DEBUG)
     			System.out.println("BTreeMain.update page "+rootNode+" has NO keys, returning with insert point 0");
         }
+        // If we are not at a key, if key was not present on search, then we insert
+        // and possibly split
         if (!usr.atKey) {
         		BTreeKeyPage targetNode = usr.page;
                 if (rootNode.getNumKeys() == (2 * T - 1)) {
@@ -221,6 +223,7 @@ public final class BTreeMain {
                 } 
                 insertIntoNode(targetNode, key, object); // Insert the key into the B-Tree with root rootNode.
         }
+        // If 'update' method returned an atKey true, it has performed the replacement of data element for key
         return (usr.atKey ? 1 : 0);
 	}
 
@@ -245,12 +248,11 @@ public final class BTreeMain {
                         i++;
                 }
                 if (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) == 0) {
-                	if( object != null && OVERWRITE) {
-                		if(DEBUG)
-                			System.out.println("BTreeMain.update DELETING and REPLACING object data for index "+i+" in "+sourcePage);
-            			sourcePage.deleteData(i);
-                        sourcePage.putDataToArray(object,i);
-                	}
+                	if(DEBUG)
+                		System.out.println("BTreeMain.update DELETING and REPLACING object data for index "+i+" in "+sourcePage);
+                	// dataArray at index not null and dataIdArray Optr at index not empty for delete to fire
+            		sourcePage.deleteData(i);
+                    sourcePage.putDataToArray(object,i);
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
                 if (sourcePage.getmIsLeafNode()) {
@@ -443,12 +445,10 @@ public final class BTreeMain {
                         i--;
                 }
                 i++;
+                
                 node.setKey(i, key);
-                // leaf, no child data
-                if( object != null ) {
-                    	node.dataArray[i] = object;
-                    	node.setDataIdArray(i, Optr.emptyPointer); // sets dataUpdatedArray true
-                }
+                node.putDataToArray(object, i);
+                
                 node.setNumKeys(node.getNumKeys() + 1); // sets 'updated' for node
                 node.putPage();
             } else {
@@ -817,7 +817,7 @@ public final class BTreeMain {
 				// Replace key/data with successor/predecessor
 				tpage.putKeyToArray(currentPage.getKey(currentIndex), tindex);
 				tpage.putDataToArray(
-					currentPage.getDataFromArray(currentIndex),
+					currentPage.getData(currentIndex),
 					tindex);
 				if( DEBUG ) System.out.println("Delete re-entring loop to delete key on leaf of tpage "+tpage);
 				// Reenter loop to delete key on leaf
@@ -847,14 +847,14 @@ public final class BTreeMain {
 
 		// Append the parent key to the end of the left key page
 		left.putKeyToArray(parent.getKey(index), left.getNumKeys());
-		left.putDataToArray(parent.getDataFromArray(index), left.getNumKeys());
+		left.putDataToArray(parent.getData(index), left.getNumKeys());
 
 		// Append the contents of the right
 		// page onto the left key page
 		j = left.getNumKeys() + 1;
 		for (i = 0; i < right.getNumKeys(); i++) {
 			left.putPageToArray(right.getPage(i), j);
-			left.putDataToArray(right.getDataFromArray(i), j);
+			left.putDataToArray(right.getData(i), j);
 			left.setKey(j, right.getKey(i));
 			j++;
 		}
@@ -883,6 +883,8 @@ public final class BTreeMain {
 		currentChild = 0;
 		clearStack();
 		seekLeftTree();
+		if( DEBUG )
+			System.out.println("BTreeMain.rewind positioned at "+currentPage+" "+currentIndex+" "+currentChild);
 	}
 
 	/**
@@ -1116,7 +1118,7 @@ public final class BTreeMain {
 		if( DEBUG || DEBUGCURRENT)
 			System.out.println("BTreeMain.setCurrent page:["+ currentIndex +"] "+currentPage);
 		setCurrentKey(currentPage.getKey(currentIndex));
-		setCurrentObject(currentPage.getDataFromArray(currentIndex));
+		setCurrentObject(currentPage.getData(currentIndex));
 
 	}
 	/**
@@ -1129,6 +1131,37 @@ public final class BTreeMain {
 		setCurrentKey(currentPage.getKey(currentIndex));
 		return currentPage.getKey(currentIndex);
 	}
+	/**
+	 * Set the currentPage, currentIndex, currentChild to TreeSearchResult values.
+	 * then calls setCurrent() to populate current key and Object data values.
+	 * @param tsr
+	 * @throws IOException
+	 */
+	public synchronized void setCurrent(TreeSearchResult tsr) throws IOException {
+		currentPage = tsr.page;
+		currentIndex = tsr.insertPoint;
+		currentChild = tsr.insertPoint;
+		setCurrent(); // sets up currenKey and currentObject;
+	}
+	
+	public synchronized Object getCurrentObject() {
+		return currentObject;
+	}
+
+	public synchronized void setCurrentObject(Object currentObject) {
+		this.currentObject = currentObject;
+	}
+
+	@SuppressWarnings("rawtypes")
+	public synchronized Comparable getCurrentKey() {
+		return currentKey;
+	}
+
+	@SuppressWarnings("rawtypes")
+	public synchronized void setCurrentKey(Comparable currentKey) {
+		this.currentKey = currentKey;
+	}
+
 	/**
 	 * Utilize reposition to locate key. Set currentPage, currentIndex, currentKey, and currentChild.
 	 * deallocOutstanding is called before exit.
@@ -1260,37 +1293,7 @@ public final class BTreeMain {
 		stack.clear();
 	}
 
-	/**
-	 * Set the currentPage, currentIndex, currentChild to TreeSearchResult values.
-	 * then calls setCurrent() to populate current key and Object data values.
-	 * @param tsr
-	 * @throws IOException
-	 */
-	public synchronized void setCurrent(TreeSearchResult tsr) throws IOException {
-		currentPage = tsr.page;
-		currentIndex = tsr.insertPoint;
-		currentChild = tsr.insertPoint;
-		setCurrent(); // sets up currenKey and currentObject;
-	}
 	
-	public synchronized Object getCurrentObject() {
-		return currentObject;
-	}
-
-	public synchronized void setCurrentObject(Object currentObject) {
-		this.currentObject = currentObject;
-	}
-
-	@SuppressWarnings("rawtypes")
-	public synchronized Comparable getCurrentKey() {
-		return currentKey;
-	}
-
-	@SuppressWarnings("rawtypes")
-	public synchronized void setCurrentKey(Comparable currentKey) {
-		this.currentKey = currentKey;
-	}
-
 	public synchronized ObjectDBIO getIO() {
 		return sdbio;
 	}

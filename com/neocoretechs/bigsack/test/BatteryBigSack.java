@@ -374,11 +374,11 @@ public class BatteryBigSack {
 			session.remove(nkey);
 			Object o = session.get(nkey);
 			if( o != null ) {
-				 System.out.println("BATTERY2 FAIL, found "+o+" after delete on iteration "+i+" for target "+nkey);
-				throw new Exception("BATTERY2 FAIL, found "+o+" after delete on iteration "+i+" for target "+nkey);
+				 System.out.println("BATTERY2A FAIL, found "+o+" after delete on iteration "+i+" for target "+nkey);
+				throw new Exception("BATTERY2A FAIL, found "+o+" after delete on iteration "+i+" for target "+nkey);
 			}
 		}
-		 System.out.println("BATTERY2 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+		 System.out.println("BATTERY2A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	public static void battery3(BigSackSession session, String[] argv) throws Exception {
 		String key = "Lets try this";
@@ -386,9 +386,9 @@ public class BatteryBigSack {
 		session.Rollback();
 		Object o = session.get(key);
 		if( o == null )
-			 System.out.println("BATTERY2 SUCCESS ");
+			 System.out.println("BATTERY3 SUCCESS ");
 		else
-			 System.out.println("BATTERY2 FAIL");
+			 System.out.println("BATTERY3 FAIL");
 	}
 
 }

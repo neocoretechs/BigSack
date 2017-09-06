@@ -143,18 +143,18 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	}
 
 	/**
-	* Get the new node position for clustered entries. If we have values associated with keys we store
-	* the values in alternate blocks from the BTree page. This method delivers the block to pack
-	* For sets vs maps, we store only the serialized keys clustered on the page
-	* determine location of new node, store in new_node_pos.
-	* Attempts to cluster entries in used blocks near insertion point
-	* @return The Optr pointing to the new node position
-	* @exception IOException If we cannot get block for new node
+	* Get the new position for clustered entries. If we have values associated with 'keys' we store
+	* these 'values' in alternate blocks from the BTree page. This method delivers the block to pack
+	* For sets vs maps, we store only the serialized keys clustered on the page.
+	* We determine location of new node, store in new_node_pos.
+	* Attempts to cluster entries in used blocks near insertion point.
+	* @return The Optr block plus offset in the block pointing to the new node position
+	* @exception IOException If we cannot get block for new item
 	*/
-	public Optr getNewNodePosition(int tblsp) throws IOException {
+	public Optr getNewInsertPosition(int tblsp) throws IOException {
 		if( DEBUG2 )
 			System.out.println("MultithreadedIOManager.getNewNodePosition "+tblsp+" "+bufferPool.getBlockStream(tblsp));
-		return bufferPool.getNewNodePosition(tblsp);
+		return bufferPool.getNewInsertPosition(tblsp);
 	}
 
 	/* (non-Javadoc)
@@ -319,9 +319,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	public synchronized void deallocOutstandingRollback() throws IOException {
 			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-					if( bufferPool.rollback(i) )
-						// TODO: Do we really wan this Fclose?
-						((IoInterface)ioWorker[i]).Fclose();
+					//if(
+						bufferPool.rollback(i); 
+					//)
+					// TODO: Do we really wan this Fclose?
+					//((IoInterface)ioWorker[i]).Fclose();
 			}
 	}
 	/**

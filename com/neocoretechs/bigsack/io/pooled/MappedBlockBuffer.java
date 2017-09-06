@@ -195,7 +195,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public synchronized Optr getNewNodePosition(BlockAccessIndex lbai) throws IOException {
+	public synchronized Optr getNewInsertPosition(BlockAccessIndex lbai) throws IOException {
 		long blockNum = lbai.getBlockNum();
 		short bytesUsed = lbai.getBlk().getBytesused();
 		if (blockNum == -1L) {

@@ -20,8 +20,8 @@ import com.neocoretechs.bigsack.session.TransactionalTreeSet;
  *
  */
 public class BatteryBigSack3 {
-	static int min = 10000; // controls minimum range for the test
-	static int max = 50000; // sets maximum range for the tests
+	static int min = 0; // controls minimum range for the test
+	static int max = 1000; // sets maximum range for the tests
 	//static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**

@@ -147,7 +147,7 @@ public interface IoManagerInterface {
 	
 	public ObjectDBIO getIO();
 
-	public Optr getNewNodePosition(int tablespace) throws IOException;
+	public Optr getNewInsertPosition(int tablespace) throws IOException;
 	
 	public MappedBlockBuffer getBlockBuffer(int tablespace);
 

@@ -227,8 +227,7 @@ public final class BigSackSession {
 	
 	public Object first() throws IOException {
 		bTree.rewind();
-		//if (bTree.gotoNextKey() > 0)
-		//	throw new IOException("BigSackSession.first: next key fault");
+		bTree.setCurrent();
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -237,8 +236,7 @@ public final class BigSackSession {
 	@SuppressWarnings("rawtypes")
 	public Comparable firstKey() throws IOException {
 		bTree.rewind();
-		//if (bTree.gotoNextKey() > 0)
-		//	throw new IOException("BigSackSession.firstKey: next key fault");
+		bTree.setCurrent();
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -246,8 +244,7 @@ public final class BigSackSession {
 	
 	public Object last() throws IOException {
 		bTree.toEnd();
-		//if (bTree.gotoPrevKey() > 0)
-		//	throw new IOException("BigSackSession.last: prev key fault");
+		bTree.setCurrent();
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
 		return retVal;
@@ -256,8 +253,7 @@ public final class BigSackSession {
 	@SuppressWarnings("rawtypes")
 	public Comparable lastKey() throws IOException {
 		bTree.toEnd();
-		//if (bTree.gotoPrevKey() > 0)
-		//	throw new IOException("BigSackSession.lastKey: prev key fault");
+		bTree.setCurrent();
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
 		return retVal;

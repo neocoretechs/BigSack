@@ -1,0 +1,1 @@
+java -ea -DBigSack.properties="c:/users/jg/relatrix/BigSack.properties" -cp \Progra~1\apache\apache-tomcat\lib\BigSack.jar;. com.neocoretechs.bigsack.test.BatteryBigSack2 "C:/users/jg/Relatrix/TESTBigSack"

@@ -150,13 +150,13 @@ public class BufferPool {
 		return tblsp;
 	}
 	/**
-	 * Determine the block position of a new node
+	 * Determine the block and offset position of a new data item. 
 	 * @param tblsp The tablespace target
 	 * @return The block and offset of the new node position in the block
 	 * @throws IOException
 	 */
-	public synchronized Optr getNewNodePosition(int tblsp) throws IOException {
-		return blockBuffer[tblsp].getNewNodePosition(blks[tblsp].getBlockAccessIndex());	
+	public synchronized Optr getNewInsertPosition(int tblsp) throws IOException {
+		return blockBuffer[tblsp].getNewInsertPosition(blks[tblsp].getBlockAccessIndex());	
 	}
 	
 	/**

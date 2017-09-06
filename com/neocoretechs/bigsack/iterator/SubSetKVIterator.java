@@ -44,7 +44,7 @@ public class SubSetKVIterator extends AbstractIterator {
 		synchronized (bTree) {
 			TreeSearchResult tsr = bTree.seekKey(fromKey);
 			nextKey = tsr.page.getKey(tsr.insertPoint);
-			nextElem = tsr.page.getDataFromArray(tsr.insertPoint);
+			nextElem = tsr.page.getData(tsr.insertPoint);
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
 					bTree.clearStack();

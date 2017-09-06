@@ -369,7 +369,11 @@ public final class BTreeKeyPage {
 		dataUpdatedArray[getNumKeys()] = false; // we took care of it
 		setUpdated(true);
 	}
-
+	/**
+	 * For a delete to fire, the dataArray at index cant be null and the dtaIdArray Optr at index cant be Empty.
+	 * @param index the key position whose data will be deleted
+	 * @throws IOException
+	 */
 	synchronized void deleteData(int index) throws IOException {
 		if (dataArray[index] != null && !dataIdArray[index].isEmptyPointer()) {
 			if( DEBUG ) {
@@ -399,7 +403,7 @@ public final class BTreeKeyPage {
 	public synchronized BTreeKeyPage getPage(int index) throws IOException {
 		if(DEBUG) {
 			System.out.println("BTreeKeyPage.getPage ENTER BTreeKeyPage to retrieve target index:["+index+"]");
-			for(int i = 0; i < pageIdArray.length; i++) {
+			for(int i = 0; i <= numKeys; i++) {
 				System.out.println("BTreeKeyPage.getPage initial page index:["+i+"]="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
 			}
 		}
@@ -416,7 +420,7 @@ public final class BTreeKeyPage {
 		}
 		if(DEBUG) {
 			System.out.println("BTreeKeyPage.getPage EXIT BTreeKeyPage to retrieve target index:["+index+"]");
-			for(int i = 0; i < pageIdArray.length; i++) {
+			for(int i = 0; i <= numKeys; i++) {
 				System.out.println("BTreeKeyPage.getPage final page index:["+i+"]="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
 			}
 		}
@@ -447,10 +451,40 @@ public final class BTreeKeyPage {
 				(Comparable) (sdbio.deserializeObject(keyIdArray[index]));
 			if( DEBUG ) {
 				System.out.println("BTreeKeyPage.getKey retrieved index:"+index+" loc:"+keyIdArray[index]+" retrieved:"+keyArray[index]);
-				for(int i = 0; i < keyIdArray.length; i++)System.out.println(i+"="+keyIdArray[i]);
+				for(int i = 0; i < numKeys; i++)System.out.println(i+"="+keyIdArray[i]);
 			}
 		}
 		return keyArray[index];
+	}
+
+	/**
+	* Retrieve value for key based on an index to this page.
+	* In effect, this is our lazy initialization of the 'dataArray' and we strictly
+	* work in dataArray in this method. If the dataIdArray contains a valid non Optr.Empty entry, then
+	* we retrieve and deserialize that block,offset to an entry in the dataArray at the index passed in the params
+	* location.
+	* @param sdbio The session database io instance
+	* @param index The index to the data array on this page that contains the offset to deserialize.
+	* @return The deserialized Object instance
+	* @exception IOException If retrieval fails
+	*/
+	public synchronized Object getData(int index) throws IOException {
+		if(DEBUG) {
+			System.out.println("BTreeKeyPage.getData Entering BTreeKeyPage to retrieve target index "+index+" loc:"+dataIdArray[index]+" "+dataArray[index]);
+		}
+		if (dataArray[index] == null && !dataIdArray[index].isEmptyPointer()) {
+			// eligible to retrieve page
+			if( DEBUG ) {
+				System.out.println("BTreeKeyPage.getData about to retrieve index:"+index+" loc:"+dataIdArray[index]);
+			}
+			dataArray[index] =
+				(Comparable) (sdbio.deserializeObject(dataIdArray[index]));
+			if( DEBUG ) {
+				System.out.println("BTreeKeyPage.getData retrieved index:"+index+" loc:"+dataIdArray[index]+" retrieved:"+dataArray[index]);
+			}
+			dataUpdatedArray[index] = false;
+		}
+		return dataArray[index];
 	}
 
 	/**
@@ -553,19 +587,26 @@ public final class BTreeKeyPage {
 			}
 			// data array
 			if( dataUpdatedArray[i] ) {
+				// if it gets nulled or overwritten, delete old data
+				if( dataArray[i] != null) {
+					pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
+					// pack the page into this tablespace and within blocks the same tablespace as key
+					// the new insert position will attempt to find a block with space relative to tablespace of passed block
+					dataIdArray[i] = sdbio.getIOManager().getNewInsertPosition(GlobalDBIO.getTablespace(keyIdArray[i].getBlock()));		
+					if( DEBUG )
+						System.out.println("BTreeKeyPage.putPage ADDING NON NULL value "+dataArray[i]+" for key index "+i+" at "+GlobalDBIO.valueOf(dataIdArray[i].getBlock())+","+dataIdArray[i].getOffset());
+					sdbio.add_object(dataIdArray[i], pb, pb.length);
+				} else {
+					// null this with an empty Optr.
+					dataIdArray[i] = Optr.emptyPointer;
+					if( DEBUG )
+						System.out.println("BTreeKeyPage.putPage ADDING NULL value for key index "+i);
+				}
 				bs.writeLong(dataIdArray[i].getBlock());
 				bs.writeShort(dataIdArray[i].getOffset());
-				// if it gets nulled, should probably delete
-				if( !dataIdArray[i].equals(Optr.emptyPointer) && dataArray[i] != null) {
-					// pack the page into this tablespace and within blocks the same tablespace as key
-					dataIdArray[i] = sdbio.getIOManager().getNewNodePosition(GlobalDBIO.getTablespace(pageIdArray[i]));
-					pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
-					if( DEBUG )
-						System.out.println("BTreeKeyPage.putPage ADDING value "+dataArray[i]+" for key index "+i);
-					sdbio.add_object(dataIdArray[i], pb, pb.length);
-				}
 				dataUpdatedArray[i] = false;
 			} else {
+				// skip the data Id for this index as it was not updated, so no need to write anything
 				bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
 			}
 		}
@@ -701,7 +742,7 @@ public final class BTreeKeyPage {
 	}
 	
 	synchronized void copyDataToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
-		dataArray[targetIndex] = sourceKey.getDataFromArray(sourceIndex);
+		dataArray[targetIndex] = sourceKey.getData(sourceIndex);
 		dataIdArray[targetIndex] = sourceKey.getDataId(sourceIndex); // takes care of updated fields
 		dataUpdatedArray[targetIndex] = true;
 		setUpdated(true);
@@ -710,26 +751,6 @@ public final class BTreeKeyPage {
 	synchronized void copyKeyAndDataToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
 		copyKeyToArray(sourceKey, sourceIndex, targetIndex);
 		copyDataToArray(sourceKey, sourceIndex, targetIndex);
-	}
-	/**
-	 * Lazy initialization for off-index-page 'value' objects attached to our BTree keys.
-	 * Essentially guarantees that if a virtual pointer Id is present in dataIdArray at index, 
-	 * you get a valid instance back.
-	 * If dataArray[index] is null and dataIdArray[index] is NOT an empty pointer,
-	 * set the dataArray[index] to the deserialized object retrieved from deep store via dataIdArray[index].
-	 * Set dataUpdatedArray[index] to false since we just retrieved an instance.
-	 * return the dataArray[index].
-	 * @param sdbio The IO manager
-	 * @param index The index to populate if its possible to do so
-	 * @return dataArray[index] filled with deep store object
-	 * @throws IOException
-	 */
-	public synchronized Object getDataFromArray(int index) throws IOException {
-		if (dataArray[index] == null && dataIdArray[index] != null && !dataIdArray[index].isEmptyPointer() ) {
-			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
-			dataUpdatedArray[index] = false;
-		}
-		return dataArray[index];
 	}
 
 	/**
@@ -795,67 +816,36 @@ public final class BTreeKeyPage {
 				sb.append(keyUpdatedArray[i]+"\r\n");
 			}
 		}
-		
 		sb.append("BTree Page Array:\r\n");
 		if( pageArray == null ) {
 			sb.append("PAGE ARRAY IS NULL\r\n");
 		} else {
 			int j = 0;
-			for (int i = 0 ; i < numKeys /*pageArray.length*/; i++) {
+			for (int i = 0 ; i <= numKeys /*pageArray.length*/; i++) {
 			//	sb.append(i+"=");
 			//	sb.append(pageArray[i]+"\r\n");
-				if(pageArray[i] != null) ++j;
-			}
-			sb.append("Page Array Non null for "+j+" members\r\n");
-		}
-		sb.append("BTree Page IDs:\r\n");
-		if( pageIdArray == null ) {
-			sb.append(" PAGE ID ARRAY IS NULL\r\n ");
-		} else {
-			sb.append(" ");
-			endd = pageIdArray.length-1;
-			for(; endd > 0; endd--)
-				if( pageIdArray[endd] != -1) break; // nacs for end
-			for (int i = 0; i < endd; i++) {
-				sb.append(i+" id=");
-				//sb.append(pageArray[i] == null ? null : String.valueOf(pageArray[i].hashCode()));
-				sb.append(GlobalDBIO.valueOf(pageIdArray[i]));
+				sb.append(i+"=");
+				sb.append(pageIdArray[i]);
+				sb.append(",");
+				sb.append(pageArray[i]);
 				sb.append("\r\n");
+				if(pageIdArray[i] != -1) ++j;
 			}
-			sb.append((pageIdArray.length-endd)+" blank page Ids\r\n");
+			sb.append("Page ID Array Non null for "+j+" members\r\n");
 		}
-		
 		sb.append("Data Array:\r\n");
 		if(dataArray==null) {
 			sb.append(" DATA ARRAY NULL\r\n");
 		} else {
-			endd = dataArray.length-1;
-			for(; endd > 0; endd--)
-				if( dataArray[endd] != null) break; // nacs for end
-			for(int i = 0; i < endd /*dataArray.length*/; i++) {
+			for(int i = 0; i < numKeys; i++) {
 				sb.append(i+"=");
+				sb.append(dataIdArray[i]+",");
 				sb.append(dataArray[i]+" ");
 				sb.append("updated=");
 				sb.append(dataUpdatedArray[i]);
 				sb.append("\r\n");
 			}
-			sb.append((dataArray.length-endd)+" blank value data\r\n");
 		}
-		sb.append("Data IDs:\r\n");
-		if(dataIdArray==null) {
-			sb.append(" DATA ID ARRAY NULL\r\n");
-		} else {
-			endd = dataIdArray.length-1;
-			for(; endd > 0; endd--)
-				if( !dataIdArray[endd].isEmptyPointer()) break; // nacs for end
-			for(int i = 0; i < endd/*dataIdArray.length*/; i++) {
-				sb.append(i+" id=");
-				sb.append(dataIdArray[i]);
-				sb.append("\r\n");
-			}
-			sb.append((dataIdArray.length-endd)+" blank value data Ids\r\n");
-		}
-		
 		sb.append(GlobalDBIO.valueOf(pageId));
 		sb.append(" >>>>>>>>>>>>>>End ");
 		sb.append("\r\n");
