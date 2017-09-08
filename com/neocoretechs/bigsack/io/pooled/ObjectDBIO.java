@@ -178,21 +178,5 @@ public final class ObjectDBIO extends GlobalDBIO {
 	public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
 		this.customClassLoader = customClassLoader;
 	}
-	/**
-	 * Find a block with some available space starting at the given position.
-	 * Exclude pages marked as key pages
-	 * @param startblk
-	 * @return The block with the available space or null if the reference block is full.
-	 * @throws IOException
-	 */
-	public synchronized BlockAccessIndex findfreeblock(long startblk) throws IOException {
-		BlockAccessIndex tblk = ioManager.findOrAddBlockAccess(startblk);
-		if( tblk.getBlk().getBytesinuse() >= DBPhysicalConstants.DATASIZE || tblk.getBlk().isKeypage() ) {
-			tblk.decrementAccesses();
-			return null;
-		}
-		return tblk;
-	}
 	
-
 }

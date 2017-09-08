@@ -27,7 +27,7 @@ public class BatteryBigSack2 {
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0; // controls range of testing
-	static int max = 2;
+	static int max = 1000;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -42,6 +42,7 @@ public class BatteryBigSack2 {
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
 		battery1A(session, argv);
+		battery1A1(session, argv);
 		battery1B(session, argv);
 		battery1C(session, argv);
 		battery1D(session, argv);
@@ -67,7 +68,9 @@ public class BatteryBigSack2 {
 	public static void battery1(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
+			long ms = System.currentTimeMillis();
 			session.put(key + String.format(uniqKeyFmt, i), val+String.format(uniqKeyFmt, i));
+			System.out.println("Added "+i+" in "+(System.currentTimeMillis()-ms)+"ms.");
 		}
 		 System.out.println("BATTERY1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -87,6 +90,22 @@ public class BatteryBigSack2 {
 			}
 		}
 		 System.out.println("BATTERY1A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	/**
+	 * Does a simple count of elements, compare to max
+	 * @param session
+	 * @param argv
+	 * @throws Exception
+	 */
+	public static void battery1A1(BufferedTreeMap session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		
+			int o = (int) session.size();
+			if( o != max) {
+				System.out.println("BATTERY1A1 FAIL count should be "+max+" but came back "+o);
+				throw new Exception("BATTERY1A1 FAIL count should be "+max+" but came back "+o);
+			}
+		 System.out.println("BATTERY1A1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * See if first/last key/val works

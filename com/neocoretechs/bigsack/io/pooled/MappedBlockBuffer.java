@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -98,29 +99,34 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	 * acquireblk - get block from unused chunk or create a new blockchain. this method links a previous block<br>
 	 * return acquired block
 	 * Add a block to table of blocknums and block access index.
+	 * THERE IS NO CROSS TABLESPACE BLOCK LINKING, the prev and next of a block always refer to 
+	 * blocks relative to the file in the same tablespace. All other addresses are Vblocks, such as PageLSN.
 	 * No setting of block in BlockAccessIndex, no initial read reading through ioManager.addBlockAccessnoRead
-	 * @param lastGoodBlk The block for us to link to
+	 * @param lastGoodBlk The block for us to link to, relative to beginning of tablespace, NOT a Vblock
 	 * @return The BlockAccessIndex
 	 * @exception IOException if db not open or can't get block
 	 */
 	public synchronized BlockAccessIndex acquireblk(BlockAccessIndex lastGoodBlk) throws IOException {
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.acquireblk, last good is "+lastGoodBlk);
-		long newblock;
+		long newblock, newVblock;
 		BlockAccessIndex ablk = lastGoodBlk;
 		// this way puts it all in one tablespace
 		//int tbsp = getTablespace(lastGoodBlk.getBlockNum());
 		//int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
-		newblock = GlobalDBIO.makeVblock(tablespace, ioManager.getNextFreeBlock(tablespace));
-		// update old block
+		// this uses a round robin approach
+		newblock = ioManager.getNextFreeBlock(tablespace);
+		newVblock = GlobalDBIO.makeVblock(tablespace, newblock);
+		// update old block, set it to relative, NOT Vblock
 		ablk.getBlk().setNextblk(newblock);
 		ablk.getBlk().setIncore(true);
 		ablk.getBlk().setInlog(false);
-		//ablk.decrementAccesses();
 		// new block number for BlockAccessIndex set in addBlockAccessNoRead
-		BlockAccessIndex dblk =  addBlockAccessNoRead(new Long(newblock));
+		// it expects a Vblock
+		BlockAccessIndex dblk =  addBlockAccessNoRead(new Long(newVblock));
 		dblk.getBlk().resetBlock();
-		dblk.getBlk().setPrevblk(lastGoodBlk.getBlockNum());
+		// Set previous to relative block of last good
+		dblk.getBlk().setPrevblk(GlobalDBIO.getBlock(lastGoodBlk.getBlockNum()));
 		dblk.getBlk().setIncore(true);
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.acquireblk returning from:"+ablk+" to:"+dblk);
@@ -145,6 +151,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		// new block number for BlockAccessIndex set in addBlockAccessNoRead
 		// calls setBlockNumber, which should up the access
 		BlockAccessIndex dblk = addBlockAccessNoRead(new Long(newblock));
+		// set prev, next to -1, reset bytesused, byteinuse to 0
 		dblk.getBlk().resetBlock();
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.stealblk, returning "+dblk);
@@ -189,20 +196,42 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	
 	}
 	/**
-	* new_node_position<br>
-	* determine location of new node, store in new_node_pos.
-	* Attempts to cluster entries in used blocks near insertion point
+	* Determine location of new node, store in new_node_pos.
+	* Attempts to cluster entries in used blocks near insertion point relative to other entries.
+	* Choose a random tablespace, then find a key that has that tablespace, then cluster there.
+	* @param locs The array of previous entries to check for block space
+	* @param index The index of the target in array, such that we dont check that
+	* @param nkeys The total keys in use to check in array
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public synchronized Optr getNewInsertPosition(BlockAccessIndex lbai) throws IOException {
-		long blockNum = lbai.getBlockNum();
-		short bytesUsed = lbai.getBlk().getBytesused();
-		if (blockNum == -1L) {
-			BlockAccessIndex tbai = stealblk(lbai);
-			blockNum = tbai.getBlockNum();
-			bytesUsed = tbai.getBlk().getBytesused();
+	public static Optr getNewInsertPosition(ObjectDBIO sdbio, Optr[] locs, int index, int nkeys) throws IOException {
+		long blockNum = -1L;
+		BlockAccessIndex ablk = null;
+		short bytesUsed = DBPhysicalConstants.DATASIZE;
+		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
+		for(int i = 0; i < nkeys; i++) {
+			if(i == index) continue;
+			if( !locs[i].equals(Optr.emptyPointer) && GlobalDBIO.getTablespace(locs[i].getBlock()) == tbsp ) {
+				ablk = sdbio.findOrAddBlock(locs[i].getBlock());
+				assert(!ablk.getBlk().isKeypage()) : "Attempt to insert to keyPage "+ablk;
+				short xbytesUsed = ablk.getBlk().getBytesused();
+				if( xbytesUsed < bytesUsed ) {
+					// eligible
+					blockNum = ablk.getBlockNum();
+					bytesUsed = xbytesUsed;
+					break;
+				}
+				ablk.decrementAccesses();
+			}
 		}
+		// come up empty?
+		if (blockNum == -1L) {
+			ablk = sdbio.stealblk();
+			blockNum = ablk.getBlockNum();
+			bytesUsed = ablk.getBlk().getBytesused();
+		}
+		assert( !ablk.getBlk().isKeypage() ) : "Attempt to obtain new insert position on key page:"+ablk+" "+ablk.getBlk();
 		if( NEWNODEPOSITIONDEBUG )
 			System.out.println("MappedBlockBuffer.getNewNodePosition "+blockNum+" "+bytesUsed);
 		return new Optr(blockNum, bytesUsed);
@@ -359,7 +388,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	/**
 	* Find or add the block to in-mem cache. If we dont get a cache hit we go to 
 	* deep store to bring it in.
-	* @param tbn The virtual block to retrieve
+	* @param bn The virtual block to retrieve
+	* @return The BlockAccessIndex of the retrieved block, latched
 	* @exception IOException If low-level access fails
 	*/
 	public synchronized BlockAccessIndex findOrAddBlock(long bn) throws IOException {
@@ -454,7 +484,9 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	
 	/**
 	* getnextblk - read the next chained Datablock based on the next block value of passed, previous block.
-	* We will notify all observers of BlockChangeEvent when that happens. 
+	* We will notify all observers of BlockChangeEvent when that happens.
+	* THERE IS NO CROSS TABLESPACE BLOCK CHAINING, so the next block address pointed to is NOT a Vblock.
+	* We construct one, then call the findOrAddBlock.
 	* @param labi The BlockAccessIndex that contains next block pointer
 	* @return The BlockAccessIndex of the next block in the chain, or null if there is no more
 	* @exception IOException If a low level read fail occurs
@@ -468,7 +500,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		}
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.getnextblk next block fetch:"+lbai);
-		BlockAccessIndex nextBlk = findOrAddBlock(lbai.getBlk().getNextblk());
+		BlockAccessIndex nextBlk = findOrAddBlock(GlobalDBIO.makeVblock(tablespace, lbai.getBlk().getNextblk()));
 		if( nextBlk != null )
 			notifyObservers(nextBlk);
 		return nextBlk;

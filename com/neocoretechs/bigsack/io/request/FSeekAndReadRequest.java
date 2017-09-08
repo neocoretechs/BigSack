@@ -8,7 +8,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 
 
 public final class FSeekAndReadRequest implements IoRequestInterface {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;
@@ -31,22 +31,18 @@ public final class FSeekAndReadRequest implements IoRequestInterface {
 	public void process() throws IOException {
 	
 		assert(ioUnit != null) : "FseekAndReadRequest ioUnit is not initialized";
-		//if(DEBUG)
-		//	System.out.println("FSeekAndReadRequest ioUnit:"+ioUnit);
 		assert(!dblk.isIncore()) : "FseekAndReadRequest block incore preempts read " + offset + " "+ dblk;
-			//if( tablespace ==1 && offset== 114688) {
-			//	System.out.println("FSeekAndReadRequest.process1 pos:"+ioUnit.Ftell()+" open "+ioUnit.isopen()+" write "+ioUnit.iswriteable()+" chan "+ioUnit.getChannel().isOpen());
-			//}
+	
+		if( DEBUG ) 
+			System.out.println("FseekAndRead in "+this.toString()+" ENTER");
+		
 		ioUnit.Fseek(offset);
-			//if( tablespace ==1 && offset== 114688) {
-			//		System.out.println("FSeekAndReadRequest.process2 pos:"+ioUnit.Ftell()+" DATA:"+dblk.blockdump()+" open "+ioUnit.isopen()+" write "+ioUnit.iswriteable()+" chan "+ioUnit.getChannel().isOpen());
-			//}
 		dblk.readUsed(ioUnit);
 			
 		//assert(dblk.getBytesused() > 0 ) : "FseekAndReadRequest block read bad for "+this+" "+dblk.blockdump();
 			
-		//if( DEBUG ) 
-		//	System.out.println("FseekAndRead in "+this.toString()+" exiting");
+		if( DEBUG ) 
+			System.out.println("FseekAndRead in "+this.toString()+" EXIT");
 		//if( tablespace ==1 && offset== 114688)
 		//	System.out.println("MultithreadedIOManager.FseekAndReadRequest processing Tablespace_1_114688 "+dblk.blockdump());
 	
@@ -66,7 +62,7 @@ public final class FSeekAndReadRequest implements IoRequestInterface {
 	 */
 	@Override
 	public void setIoInterface(IoInterface ioi) {
-		this.ioUnit = ioi;		
+		this.ioUnit = ioi;
 	}
 	@Override
 	public void setTablespace(int tablespace) {
@@ -74,7 +70,12 @@ public final class FSeekAndReadRequest implements IoRequestInterface {
 	}
 	
 	public String toString() {
-		return "FSeekAndReadRequest for tablespace "+tablespace+" offset "+offset+" "+ioUnit.Fname();
+		try {
+			return "FSeekAndReadRequest for tablespace "+tablespace+" offset "+offset+" "+ioUnit.Fname()+" size:"+ioUnit.Fsize()+" pos:"+ioUnit.Ftell()+" open:"+ioUnit.isopen();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return "FSeekAndReadRequest encountered error with underlying IO subsystem for tablespace "+tablespace+" offset "+offset+" "+ioUnit.Fname()+" open:"+ioUnit.isopen();
 	}
 
 }

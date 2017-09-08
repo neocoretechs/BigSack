@@ -38,6 +38,7 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 */
 public final class MmapIO implements IoInterface {
 	private static boolean DEBUG = false;
+	private static boolean DEBUGSEEK = false;
 	private boolean fisopen, fisnew;
 	private File WO;
 	private FileOutputStream FO;
@@ -128,7 +129,7 @@ public final class MmapIO implements IoInterface {
 	}
 	
 	public synchronized void Fseek(long offset) throws IOException {
-		if( DEBUG )
+		if( DEBUG || DEBUGSEEK)
 			System.out.println("MMapIO.Fseek "+offset+" from pos:"+linkedMappedByteBuff.position());
 		linkedMappedByteBuff.position((int) offset);
 	}

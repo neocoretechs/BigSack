@@ -149,15 +149,6 @@ public class BufferPool {
 			System.out.println("BufferPool.findOrAddBlock2 RETURN tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+blks[tblsp]);
 		return tblsp;
 	}
-	/**
-	 * Determine the block and offset position of a new data item. 
-	 * @param tblsp The tablespace target
-	 * @return The block and offset of the new node position in the block
-	 * @throws IOException
-	 */
-	public synchronized Optr getNewInsertPosition(int tblsp) throws IOException {
-		return blockBuffer[tblsp].getNewInsertPosition(blks[tblsp].getBlockAccessIndex());	
-	}
 	
 	/**
 	 * Roll back the transactions for the given tablespace to the last checkpoint or commit.
@@ -260,7 +251,7 @@ public class BufferPool {
 	}
 	/**
 	 * Add a block, take it from freechain and set its block number, which latches it, then put it in main buffer.
-	 * @param Lbn The target block number, which might be a template for a future write.
+	 * @param Lbn The target block number, as Vblock, which might be a template for a future write.
 	 * @return
 	 * @throws IOException 
 	 */

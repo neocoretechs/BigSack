@@ -227,35 +227,35 @@ public final class BigSackSession {
 	
 	public Object first() throws IOException {
 		bTree.rewind();
-		bTree.setCurrent();
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
+		bTree.clearStack();
 		return retVal;
 	}
 	
 	@SuppressWarnings("rawtypes")
 	public Comparable firstKey() throws IOException {
 		bTree.rewind();
-		bTree.setCurrent();
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
+		bTree.clearStack();
 		return retVal;
 	}
 	
 	public Object last() throws IOException {
 		bTree.toEnd();
-		bTree.setCurrent();
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
+		bTree.clearStack();
 		return retVal;
 	}
 	
 	@SuppressWarnings("rawtypes")
 	public Comparable lastKey() throws IOException {
 		bTree.toEnd();
-		bTree.setCurrent();
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
+		bTree.clearStack();
 		return retVal;
 	}
 	

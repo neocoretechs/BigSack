@@ -126,12 +126,11 @@ public final class BTreeMain {
 	 */
 	public synchronized long count() throws IOException {
 		rewind();
-		int i;
 		long numKeys = 0;
 		long tim = System.currentTimeMillis();
 		if( currentPage != null ) {
 			++numKeys;
-			while ((i = gotoNextKey()) == 0) {
+			while (gotoNextKey() == 0) {
 			if( DEBUG || DEBUGCOUNT)
 				System.out.println("gotoNextKey returned: "+currentPage.getKey(currentIndex));
 				++numKeys;
@@ -248,11 +247,32 @@ public final class BTreeMain {
                         i++;
                 }
                 if (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) == 0) {
-                	if(DEBUG)
-                		System.out.println("BTreeMain.update DELETING and REPLACING object data for index "+i+" in "+sourcePage);
-                	// dataArray at index not null and dataIdArray Optr at index not empty for delete to fire
-            		sourcePage.deleteData(i);
-                    sourcePage.putDataToArray(object,i);
+                	// If its a set instead of map the the value data comes back null, else we
+                	// deserialize, check to make sure we dont needlessly delete a value to replace it with its equal.
+                	Object keyValue = sourcePage.getData(i);
+                	if( keyValue != null ) {
+                		if(object != null ) {
+                			if( !object.equals(keyValue) ) {	
+                				// dataArray at index not null and dataIdArray Optr at index not empty for delete to fire.
+                				// So if you are using Sets vs Maps it should not happen.
+                				if( OVERWRITE ) {
+                     				// TODO: 
+                    				//sourcePage.deleteData(i);
+                					sourcePage.putDataToArray(object,i);
+                				} else {
+                					if(ALERT)
+                						System.out.println("OVERWRITE flag set to false, so attempt to update existing value is ignored for key "+key);
+                				}
+                			}
+                			// wont put the data if here, object = keyValue, both not null
+                		} else {
+                			sourcePage.putDataToArray(object,i);
+                		}
+                		// If we had a value already, and it wasnt null and not equal to previous we put the new data
+                		// If it was null or the value equal to previous we bypassed and are here
+                	} else {
+                		sourcePage.putDataToArray(object,i);
+                	}
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
                 if (sourcePage.getmIsLeafNode()) {
@@ -1099,7 +1119,6 @@ public final class BTreeMain {
 				}
 			}
 			// appears that a valid key is encountered
-			//break;
 			setCurrent();
 			return 0;
 		}
@@ -1107,6 +1126,7 @@ public final class BTreeMain {
 		// pop sets current indexes
 		//setCurrent();
 		//return 0;
+		//
 		// popped to the top and have to stop
 		return EOF;
 	}
@@ -1115,21 +1135,21 @@ public final class BTreeMain {
 	* and currentIndex
 	*/
 	public synchronized void setCurrent() throws IOException {
-		if( DEBUG || DEBUGCURRENT)
-			System.out.println("BTreeMain.setCurrent page:["+ currentIndex +"] "+currentPage);
 		setCurrentKey(currentPage.getKey(currentIndex));
 		setCurrentObject(currentPage.getData(currentIndex));
-
+		if( DEBUG || DEBUGCURRENT)
+			System.out.println("BTreeMain.setCurrent page:["+ currentIndex +"] "+getCurrentKey()+" "+getCurrentObject());
 	}
 	/**
 	* Set the current object and key based on value of currentPage.
 	* and currentIndex
 	*/
 	public synchronized Comparable setCurrentKey() throws IOException {
-		if( DEBUG || DEBUGCURRENT)
-			System.out.println("BTreeMain.setCurrentKey page:"+currentPage+" index:"+currentIndex);
 		setCurrentKey(currentPage.getKey(currentIndex));
-		return currentPage.getKey(currentIndex);
+		if( DEBUG || DEBUGCURRENT)
+			//System.out.println("BTreeMain.setCurrentKey page:"+currentPage+" index:"+currentIndex);
+			System.out.println("BTreeMain.setCurrentKey page:["+ currentIndex +"] "+getCurrentKey()+" "+getCurrentObject());
+		return getCurrentKey();
 	}
 	/**
 	 * Set the currentPage, currentIndex, currentChild to TreeSearchResult values.
@@ -1143,6 +1163,7 @@ public final class BTreeMain {
 		currentChild = tsr.insertPoint;
 		setCurrent(); // sets up currenKey and currentObject;
 	}
+	
 	
 	public synchronized Object getCurrentObject() {
 		return currentObject;

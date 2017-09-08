@@ -29,13 +29,15 @@ import java.nio.channels.*;
 * Memory mapped file I/O.
 * We can only map 2 gig at a time due to mmap, so we keep track of ranges
 * currently mapped and remap when necessary.
-* For pool, there are one of these per tablespace and pointers use the
+* For pool, there are one of these per tablespace and pointers. Use the
 * first 3 bits for tablespace so our theoretical max per tablespace is
-* 2,305,843,009,213,693,952 bytes * 8 tablespaces
+* 2,305,843,009,213,693,952 bytes * 8 tablespaces.
+* A MappedByteBuffer is the underlying core object, and thread synchronization is on that.
 * @see IoInterface
 * @author Groff
 */
 final class LinkedMappedByteBuffer {
+	private static boolean DEBUG = false;
 	private FileChannel FC;
 	private MappedByteBuffer bb;
 	private static int rangeSize = Integer.MAX_VALUE;
@@ -63,19 +65,27 @@ final class LinkedMappedByteBuffer {
 	}
 	
 	MappedByteBuffer force() {
-		return bb.force();
+		synchronized(bb) {
+			return bb.force();
+		}
 	}
 	
 	boolean isLoaded() {
-		return bb.isLoaded();
+		synchronized(bb) {
+			return bb.isLoaded();
+		}
 	}
 	
 	MappedByteBuffer load() {
-		return bb.load();
+		synchronized(bb) {
+			return bb.load();
+		}
 	}
 	
 	long position() throws IOException {
-		return rangeMin + bb.position();
+		synchronized(bb) {
+			return rangeMin + bb.position();
+		}
 	}
 	
 	void position(long offset) throws IOException {
@@ -83,7 +93,9 @@ final class LinkedMappedByteBuffer {
 	}
 	
 	long capacity() throws IOException {
-		return FC.size();
+		synchronized(bb) {
+			return FC.size();
+		}
 	}
 	/**
 	* Compute the range we are determined to map<br>
@@ -95,27 +107,35 @@ final class LinkedMappedByteBuffer {
 	* @exception IOException if filechannel position or size ops fail
 	*/
 	private void checkRange(long rangeTarg) throws IOException {
-		if (rangeTarg >= rangeMin && rangeTarg <= rangeMax) {
-			// within range but exceeding capacity of buffer
-			// we must have extended the file so remap if necessary
-			int rPos = (int) (rangeTarg - rangeMin);
-			if (rPos < bb.capacity()) {
-				bb.position(rPos);
-				return;
+		synchronized(bb) {
+			if (rangeTarg >= rangeMin && rangeTarg <= rangeMax) {
+				// within range but exceeding capacity of buffer
+				// we must have extended the file so remap if necessary
+				int rPos = (int) (rangeTarg - rangeMin);
+				if (rPos < bb.capacity()) {
+					if( DEBUG ) {
+						System.out.println("LinkedMappedByteBuffer.checkRange 1 range:"+rangeTarg+" min:"+rangeMin+" max:"+rangeMax+" try pos:"+rPos+" max:"+bb.capacity());
+					}
+					bb.position(rPos);
+					return;
+				}
 			}
+			long r1 = rangeTarg / rangeSize;
+			rangeMin = r1 * rangeSize;
+			rangeMax = (rangeMin + rangeSize) - 1L;
+			// remap new range
+			bb.force();
+			bb = null;
+			System.gc();
+			long iSize = FC.size();
+			if (iSize > rangeSize)
+				iSize = rangeSize;
+			bb = FC.map(FileChannel.MapMode.READ_WRITE, rangeMin, iSize);
+			if( DEBUG ) {
+				System.out.println("LinkedMappedByteBuffer.checkRange 2 range:"+rangeTarg+" min:"+rangeMin+" max:"+rangeMax+" try pos:"+(rangeTarg-rangeMin)+" max:"+bb.capacity());
+			}
+			bb.position((int) (rangeTarg - rangeMin));
 		}
-		long r1 = rangeTarg / rangeSize;
-		rangeMin = r1 * rangeSize;
-		rangeMax = (rangeMin + rangeSize) - 1L;
-		// remap new range
-		bb.force();
-		bb = null;
-		System.gc();
-		long iSize = FC.size();
-		if (iSize > rangeSize)
-			iSize = rangeSize;
-		bb = FC.map(FileChannel.MapMode.READ_WRITE, rangeMin, iSize);
-		bb.position((int) (rangeTarg - rangeMin));
 	}
 	/**
 	* Set the range we are determined to map<br>
@@ -127,6 +147,7 @@ final class LinkedMappedByteBuffer {
 	* @exception IOException if FileChannel.map fails, or position fails
 	*/
 	private void setRange(long rangeTarg, long iSize) throws IOException {
+
 		long r1 = rangeTarg / rangeSize;
 		rangeMin = r1 * rangeSize;
 		rangeMax = (rangeMin + rangeSize) - 1L;
@@ -134,15 +155,18 @@ final class LinkedMappedByteBuffer {
 		if (iSize > rangeSize)
 			iSize = rangeSize;
 		bb = FC.map(FileChannel.MapMode.READ_WRITE, rangeMin, iSize);
-		bb.position((int) (rangeTarg - rangeMin));
+		synchronized(bb) {
+			bb.position((int) (rangeTarg - rangeMin));
+		}
 	}
 	
 	// writing..
 	void put(byte[] buf) throws IOException {
-			put(buf, 0, buf.length);
+		put(buf, 0, buf.length);
 	}
 	
 	void put(byte[] buf, int ioffs, int numbyte) throws IOException {
+		synchronized(bb) {
 			int i = ioffs, runcount = numbyte, blkbytes;
 			// assume our position is set and we have space
 			if (bb.position() == (rangeSize - 1))
@@ -161,45 +185,25 @@ final class LinkedMappedByteBuffer {
 				}
 			}
 			//bb.put(obuf, 0, osiz);
+		}
 	}
 	
 	void putInt(int obuf) throws IOException {
-			//ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			//DataOutputStream daos = new DataOutputStream(baos);
-			//daos.writeInt(obuf);
-			//daos.flush();
-			//daos.close();
-			//put(baos.toByteArray());
-			ByteBuffer tbb = ByteBuffer.allocate(4);
-			tbb.putInt(obuf);
-			put(tbb.array());
-			//bb.putInt(obuf);
+		ByteBuffer tbb = ByteBuffer.allocate(4);
+		tbb.putInt(obuf);
+		put(tbb.array());
 	}
 	
 	void putLong(long obuf) throws IOException {
-			//ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			//DataOutputStream daos = new DataOutputStream(baos);
-			//daos.writeLong(obuf);
-			//daos.flush();
-			//daos.close();
-			//put(baos.toByteArray());
-			ByteBuffer tbb = ByteBuffer.allocate(8);
-			tbb.putLong(obuf);
-			put(tbb.array());
-			//bb.putLong(obuf);
+		ByteBuffer tbb = ByteBuffer.allocate(8);
+		tbb.putLong(obuf);
+		put(tbb.array());
 	}
 	
 	void putShort(short obuf) throws IOException {
-			//ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			//DataOutputStream daos = new DataOutputStream(baos);
-			//daos.writeShort(obuf);
-			//daos.flush();
-			//daos.close();
-			//put(baos.toByteArray());
-			ByteBuffer tbb = ByteBuffer.allocate(2);
-			tbb.putShort(obuf);
-			put(tbb.array());
-			//bb.putShort(obuf);
+		ByteBuffer tbb = ByteBuffer.allocate(2);
+		tbb.putShort(obuf);
+		put(tbb.array());
 	}
 	
 	void putByte(byte obuf) throws IOException {
@@ -209,7 +213,8 @@ final class LinkedMappedByteBuffer {
 	}
 	
 	// reading...
-	int get(byte[] buf, int ioffs, int numbyte) throws IOException {	
+	int get(byte[] buf, int ioffs, int numbyte) throws IOException {
+		synchronized(bb) {
 			int i = ioffs, runcount = numbyte, blkbytes;
 			// assume our position is set and we have space
 			if (bb.position() == (rangeSize - 1L))
@@ -230,55 +235,38 @@ final class LinkedMappedByteBuffer {
 			}
 			//bb.get(b, 0, osiz);
 			return i;
+		}
 	}
 	
 	int get(byte[] b) throws IOException {
-			//bb.get(b);
-			return get(b, 0, b.length);
-			//return b.length;
+		return get(b, 0, b.length);
 	}
 	
 	int getInt() throws IOException {
-			byte[] b = new byte[4];
-			get(b);
-			//ByteArrayInputStream bais = new ByteArrayInputStream(b);
-			//DataInputStream dais = new DataInputStream(bais);
-			//return dais.readInt();
-			ByteBuffer tbb = ByteBuffer.wrap(b);
-			return tbb.getInt();
-			//return bb.getInt();
+		byte[] b = new byte[4];
+		get(b);
+		ByteBuffer tbb = ByteBuffer.wrap(b);
+		return tbb.getInt();
 	}
 	
 	long getLong() throws IOException {
-			byte[] b = new byte[8];
-			get(b);
-			//ByteArrayInputStream bais = new ByteArrayInputStream(b);
-			//DataInputStream dais = new DataInputStream(bais);
-			//return dais.readLong();
-			ByteBuffer tbb = ByteBuffer.wrap(b);
-			return tbb.getLong();
-			//return bb.getLong();
+		byte[] b = new byte[8];
+		get(b);
+		ByteBuffer tbb = ByteBuffer.wrap(b);
+		return tbb.getLong();
 	}
 	
 	short getShort() throws IOException {
-			byte[] b = new byte[2];
-			get(b);
-			//ByteArrayInputStream bais = new ByteArrayInputStream(b);
-			//DataInputStream dais = new DataInputStream(bais);
-			//return dais.readShort();
-			ByteBuffer tbb = ByteBuffer.wrap(b);
-			return tbb.getShort();
-			//return bb.getShort();
+		byte[] b = new byte[2];
+		get(b);
+		ByteBuffer tbb = ByteBuffer.wrap(b);
+		return tbb.getShort();
 	}
 	
 	byte get() throws IOException {
 		byte[] b = new byte[1];
 		get(b);
-		//ByteArrayInputStream bais = new ByteArrayInputStream(b);
-		//DataInputStream dais = new DataInputStream(bais);
-		//return dais.readShort();
-		ByteBuffer tbb = ByteBuffer.wrap(b);
-		return tbb.get();
+		return b[0];
 	}
 
 }

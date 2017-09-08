@@ -345,7 +345,7 @@ public final class Datablock implements Externalizable {
 	public synchronized void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
-	public boolean isKeypage() { return (isKeypage == 0 ? true : false); }
+	public boolean isKeypage() { return (isKeypage == 0 ? false : true); }
 	
 	public void setKeypage(byte b) { isKeypage = b; }
 	

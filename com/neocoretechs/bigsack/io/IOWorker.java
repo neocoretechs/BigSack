@@ -22,6 +22,7 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  */
 public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	private static final boolean DEBUG = false;
+	private static final boolean DEBUGSEEK = false;
 	private static final int QUEUEMAX = 1024;
 	private IoInterface ioUnit;
 	private long nextFreeBlock = -1L;
@@ -154,190 +155,140 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	}
 	
 	@Override
-	public void Fclose() throws IOException {
-		synchronized(ioUnit) {
+	public synchronized void Fclose() throws IOException {
 			ioUnit.Fclose();
-		}
 	}
 	/**
 	 * Return the position as a real block number
 	 */
 	@Override
-	public long Ftell() throws IOException {
-		synchronized(ioUnit) {
+	public synchronized long Ftell() throws IOException {
 				return ioUnit.Ftell();
-		}
 	}
 	/**
 	 * Seek the real offset, not virtual
 	 */
 	@Override
-	public void Fseek(long offset) throws IOException {
-		if( DEBUG )
+	public synchronized void Fseek(long offset) throws IOException {
+		if( DEBUG || DEBUGSEEK)
 			System.out.println("IOWorker Fseek "+offset);
-		synchronized(ioUnit) {
-			ioUnit.Fseek(offset);
-		}
+		ioUnit.Fseek(offset);
 	}
 	@Override
-	public long Fsize() throws IOException {
+	public synchronized long Fsize() throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fsize "+ioUnit.Fsize());
-		synchronized(ioUnit) {
-			return ioUnit.Fsize();
-		}
+		return ioUnit.Fsize();
 	}
 	@Override
-	public void Fset_length(long newlen) throws IOException {
+	public synchronized void Fset_length(long newlen) throws IOException {
 		if( DEBUG )
 			System.out.println("IOUnit Fset_length "+newlen);
-		synchronized(ioUnit) {
-			ioUnit.Fset_length(newlen);	
-		}
+		ioUnit.Fset_length(newlen);	
 	}
 	@Override
-	public void Fforce() throws IOException {
+	public synchronized void Fforce() throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker force ");
-		synchronized(ioUnit) {
-			ioUnit.Fforce();
-		}
+		ioUnit.Fforce();
 	}
 	@Override
-	public void Fwrite(byte[] obuf) throws IOException {
+	public synchronized void Fwrite(byte[] obuf) throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
-		synchronized(ioUnit) {
-			ioUnit.Fwrite(obuf);
-		}
+		ioUnit.Fwrite(obuf);
 	}
 	@Override
-	public void Fwrite(byte[] obuf, int osiz) throws IOException {
+	public synchronized void Fwrite(byte[] obuf, int osiz) throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fwrite "+obuf.length+" @"+Ftell());
-		synchronized(ioUnit) {
-			ioUnit.Fwrite(obuf, osiz);
-		}
+		ioUnit.Fwrite(obuf, osiz);
 	}
 	@Override
-	public void Fwrite_int(int obuf) throws IOException {
-		synchronized(ioUnit) {
-			ioUnit.Fwrite_int(obuf);
-		}
+	public synchronized void Fwrite_int(int obuf) throws IOException {
+		ioUnit.Fwrite_int(obuf);
 	}
 	@Override
-	public void Fwrite_long(long obuf) throws IOException {
-		synchronized(ioUnit) {
+	public synchronized void Fwrite_long(long obuf) throws IOException {
 			ioUnit.Fwrite_long(obuf);
-		}
 	}
 	@Override
-	public void Fwrite_short(short obuf) throws IOException {
-		synchronized(ioUnit) {
-			ioUnit.Fwrite_short(obuf);
-		}
+	public synchronized void Fwrite_short(short obuf) throws IOException {
+		ioUnit.Fwrite_short(obuf);
 	}
 	@Override
-	public void Fwrite_byte(byte keypage) throws IOException {
+	public synchronized void Fwrite_byte(byte keypage) throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker Fwrite_byte @"+Ftell());
-		synchronized(ioUnit) {
-			ioUnit.Fwrite_byte(keypage);
-		}
+		ioUnit.Fwrite_byte(keypage);
 	}
 	@Override
-	public int Fread(byte[] b, int osiz) throws IOException {
+	public synchronized int Fread(byte[] b, int osiz) throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fread "+osiz+" @"+Ftell());
-		synchronized(ioUnit) {
-			return ioUnit.Fread(b, osiz);
-		}
+		return ioUnit.Fread(b, osiz);
 	}
 	@Override
-	public int Fread(byte[] b) throws IOException {
+	public synchronized int Fread(byte[] b) throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fread "+b.length+" @"+Ftell());
-		synchronized(ioUnit) {
-			return ioUnit.Fread(b);
-		}
+		return ioUnit.Fread(b);
 	}
 	@Override
-	public long Fread_long() throws IOException {
+	public synchronized long Fread_long() throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fread_long @"+Ftell());
-		synchronized(ioUnit) {
-			return ioUnit.Fread_long();
-		}
+		return ioUnit.Fread_long();
 	}
 	@Override
-	public int Fread_int() throws IOException {
+	public synchronized int Fread_int() throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fread_int @"+Ftell());
-		synchronized(ioUnit) {
-			return ioUnit.Fread_int();
-		}
+		return ioUnit.Fread_int();
 	}
 	@Override
-	public short Fread_short() throws IOException {
+	public synchronized short Fread_short() throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker fread_short @"+Ftell());
-		synchronized(ioUnit) {
-			return ioUnit.Fread_short();
-		}
+		return ioUnit.Fread_short();
 	}
 	@Override
-	public byte Fread_byte() throws IOException {
+	public synchronized byte Fread_byte() throws IOException {
 		if( DEBUG )
 			System.out.println("IOWorker Fread_byte @"+Ftell());
-		synchronized(ioUnit) {
-			return ioUnit.Fread_byte();
-		}
+		return ioUnit.Fread_byte();
 	}
 	@Override
 	public synchronized String FTread() throws IOException {
-		synchronized(ioUnit) {
 			return ioUnit.FTread();
-		}
 	}
 	@Override
-	public void FTwrite(String ins) throws IOException {
-		synchronized(ioUnit) {
+	public synchronized void FTwrite(String ins) throws IOException {
 			ioUnit.FTwrite(ins);
-		}
 	}
 	@Override
-	public void Fdelete() {
-		synchronized(ioUnit) {
-			ioUnit.Fdelete();
-		}
+	public synchronized void Fdelete() {
+		ioUnit.Fdelete();
 	}
 	@Override
 	public synchronized String Fname() {
 		return DBName;
 	}
 	@Override
-	public boolean isopen() {
-		synchronized(ioUnit) {
+	public synchronized boolean isopen() {
 			return ioUnit.isopen();
-		}
 	}
 	@Override
-	public boolean iswriteable() {
-		synchronized(ioUnit) {
+	public synchronized boolean iswriteable() {
 			return ioUnit.iswriteable();
-		}
 	}
 	@Override
-	public boolean isnew() {
-		synchronized(ioUnit) {
+	public synchronized boolean isnew() {
 			return ioUnit.isnew();
-		}
 	}
 	@Override
 	public synchronized Channel getChannel() {
-		synchronized(ioUnit) {
-			return ioUnit.getChannel();
-		}
+		return ioUnit.getChannel();
 	}
 
 }

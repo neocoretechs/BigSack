@@ -151,13 +151,15 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @return The Optr block plus offset in the block pointing to the new node position
 	* @exception IOException If we cannot get block for new item
 	*/
-	public Optr getNewInsertPosition(int tblsp) throws IOException {
+	public Optr getNewInsertPosition(Optr[] locs, int index, int nkeys) throws IOException {
 		if( DEBUG2 )
-			System.out.println("MultithreadedIOManager.getNewNodePosition "+tblsp+" "+bufferPool.getBlockStream(tblsp));
-		return bufferPool.getNewInsertPosition(tblsp);
+			System.out.println("MultithreadedIOManager.getNewNodePosition for index "+index);
+		return MappedBlockBuffer.getNewInsertPosition(this.globalIO, locs, index, nkeys);
 	}
 
-	/* (non-Javadoc)
+	/**
+	 * Queues a request to the IOWorker to acquire the next free block from the stated tablespace
+	 * @param tblsp The target tablespace
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#getNextFreeBlock(int)
 	 */
 	@Override

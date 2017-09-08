@@ -1,12 +1,7 @@
 package com.neocoretechs.bigsack.btree;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.Externalizable;
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
-import java.io.Serializable;
-import java.nio.ByteBuffer;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.Optr;
@@ -14,8 +9,9 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
-import com.neocoretechs.bigsack.io.stream.DBOutputStream;
+
 /*
 * Copyright (c) 2003,2014 NeoCoreTechs
 * All rights reserved.
@@ -41,13 +37,12 @@ import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 */
 /**
 * A key page in the bTree.  Performs operations on its set of keys and
-* persistent object locations/data.  Persists itself to the buffer pool as
-* serialized instance when necessary.
-* MAXKEYS are the maximum keys without spanning page boundaries
-*
-* Important to note that the data is stored as externalized primitives in this class with linear lists of items
-* represented sometimes as arrays. Related to that is the concept of element 0 of those arrays being 'this', 
-* hence the special treatment in CRUD.
+* persistent object locations/data.  Persists itself to the buffer pool as as block stream that appears
+* as input and output streams connected to pages in the backing store.
+* MAXKEYS are the odd maximum keys without spanning page boundaries, calculated by block payload divided by keysize.
+* The 'transient' keyword designations in the class fields are an artifact leftover from serialization, retained to 
+* illustrate the items that are not persisted via block streams, as direct stream to backing store is far more efficient.
+* 
 * Unlike a binary search tree, each node of a B-tree may have a variable number of keys and children.
 * The keys are stored in non-decreasing order. Each node either is a leaf node or
 * it has some associated children that are the root nodes of subtrees.
@@ -72,10 +67,11 @@ import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 */
 public final class BTreeKeyPage {
 	static final boolean DEBUG = false;
+	static final boolean DEBUGPUTKEY = true;
 	static final long serialVersionUID = -2441425588886011772L;
-	// number of keys per page; number of instances of the non transient fields of 'this' per DB block
-	// Can be overridden by properties element. the number of maximum children is MAXKEYS+1 per node
-	// Calculate the maximum number of odd keys that can fit per block
+	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
+	// The number of maximum children is MAXKEYS+1 per node.
+	// Calculate the maximum number of odd keys that can fit per block.
 	public static int MAXKEYS = (
 			(((DBPhysicalConstants.DATASIZE-13)/28) % 2) == 0 ? 
 			((DBPhysicalConstants.DATASIZE-13)/28)-1 : // even, subtract 1 from total
@@ -477,8 +473,7 @@ public final class BTreeKeyPage {
 			if( DEBUG ) {
 				System.out.println("BTreeKeyPage.getData about to retrieve index:"+index+" loc:"+dataIdArray[index]);
 			}
-			dataArray[index] =
-				(Comparable) (sdbio.deserializeObject(dataIdArray[index]));
+			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
 			if( DEBUG ) {
 				System.out.println("BTreeKeyPage.getData retrieved index:"+index+" loc:"+dataIdArray[index]+" retrieved:"+dataArray[index]);
 			}
@@ -537,7 +532,6 @@ public final class BTreeKeyPage {
 	 * @exception IOException If write fails
 	 */
 	public synchronized void putPage() throws IOException {
-		byte[] pb = null;
 		if (!isUpdated()) {
 			if( DEBUG ) 
 				System.out.println("BTreeKeyPage.putPage page NOT updated:"+this);
@@ -548,22 +542,17 @@ public final class BTreeKeyPage {
 		// Persist each key that is updated to fill the keyIds in the current page
 		// Once this is complete we write the page contiguously
 		// Write the object serialized keys out to deep store, we want to do this out of band of writing key page
-		for(int i = 0; i < MAXKEYS; i++)
+		for(int i = 0; i < MAXKEYS; i++) {
 			if( keyUpdatedArray[i] ) {
 				// put the key to a block via serialization and assign KeyIdArray the position of stored key
 				putKey(i, false); // do not reset the update flag yet
 			}
-		// now acquire block for the page itself
-		if (pageId == -1L) {
-			if( DEBUG ) 
-				System.out.println("BTreeKeyPage.putPage prepare to steal block:"+this);
-			lbai = sdbio.stealblk();
-			if( DEBUG )
-				System.out.println("BTreeKeyPage.putPage Stole block "+lbai);
-			pageId = lbai.getBlockNum();	
-		} else {
-			lbai = sdbio.findOrAddBlock(pageId);
+			if( dataUpdatedArray[i]) {
+				putData(i, false);
+			}
 		}
+		//
+		assert (pageId != -1L) : " BTreeKeyPage unlinked from page pool:"+this;
 		// write the page to the current block
 		lbai.getBlk().setIncore(true);
 		lbai.setByteindex((short) 0);
@@ -587,21 +576,6 @@ public final class BTreeKeyPage {
 			}
 			// data array
 			if( dataUpdatedArray[i] ) {
-				// if it gets nulled or overwritten, delete old data
-				if( dataArray[i] != null) {
-					pb = GlobalDBIO.getObjectAsBytes(dataArray[i]);
-					// pack the page into this tablespace and within blocks the same tablespace as key
-					// the new insert position will attempt to find a block with space relative to tablespace of passed block
-					dataIdArray[i] = sdbio.getIOManager().getNewInsertPosition(GlobalDBIO.getTablespace(keyIdArray[i].getBlock()));		
-					if( DEBUG )
-						System.out.println("BTreeKeyPage.putPage ADDING NON NULL value "+dataArray[i]+" for key index "+i+" at "+GlobalDBIO.valueOf(dataIdArray[i].getBlock())+","+dataIdArray[i].getOffset());
-					sdbio.add_object(dataIdArray[i], pb, pb.length);
-				} else {
-					// null this with an empty Optr.
-					dataIdArray[i] = Optr.emptyPointer;
-					if( DEBUG )
-						System.out.println("BTreeKeyPage.putPage ADDING NULL value for key index "+i);
-				}
 				bs.writeLong(dataIdArray[i].getBlock());
 				bs.writeShort(dataIdArray[i].getOffset());
 				dataUpdatedArray[i] = false;
@@ -621,6 +595,33 @@ public final class BTreeKeyPage {
 			System.out.println("BTreeKeyPage.putPage Added Keypage @"+GlobalDBIO.valueOf(pageId)+" block for keypage:"+lbai+" page:"+this);
 		}
 		setUpdated(false);
+	}
+	/**
+	 * At BTreeKeyPage putPage time, we resolve the lazy elements to actual VBlock,offset
+	 * This method puts the values associated with a key/value pair, if using maps vs sets
+	 * @param index Index of BTreeKeyPage key and data value array
+	 * @param resetUpdate true to reset the update flag for this key, causing a push
+	 * @throws IOException
+	 */
+	private synchronized void putData(int index, boolean resetUpdate) throws IOException {
+		// if it gets nulled or overwritten, delete old data
+		if( dataArray[index] != null) {
+				byte[] pb = GlobalDBIO.getObjectAsBytes(dataArray[index]);
+				// pack the page into this tablespace and within blocks the same tablespace as key
+				// the new insert position will attempt to find a block with space relative to established positions
+				dataIdArray[index] = sdbio.getIOManager().getNewInsertPosition(dataIdArray, index, getNumKeys());		
+				if( DEBUG )
+					System.out.println("BTreeKeyPage.putPage ADDING NON NULL value "+dataArray[index]+" for key index "+index+" at "+
+										GlobalDBIO.valueOf(dataIdArray[index].getBlock())+","+dataIdArray[index].getOffset());
+				sdbio.add_object(dataIdArray[index], pb, pb.length);
+		} else {
+				// null this with an empty Optr.
+				dataIdArray[index] = Optr.emptyPointer;
+				if( DEBUG )
+					System.out.println("BTreeKeyPage.putPage ADDING NULL value for key index "+index);
+		}
+		if(resetUpdate)
+			dataUpdatedArray[index] = false;
 	}
 	/**
 	* Recursively put the pages to deep store.  
@@ -662,52 +663,26 @@ public final class BTreeKeyPage {
 	 * @exception IOException If write fails
 	 */
 	private synchronized void putKey(int index, boolean resetUpdate) throws IOException {
-		int lastGoodBlockIndex = -1;
-		// keep track of active records to add to end of last used block on insert
-		for(int i = 0; i < getNumKeys(); i++) {
-			if( !keyIdArray[i].isEmptyPointer() ) {
-				lastGoodBlockIndex = i;
-			}
-		}
-		if (!keyUpdatedArray[index] || keyArray[index] == null) {
-			if( DEBUG ) 
-				System.out.println("BTreeKeyPage.putKeys key "+index+" not updated:"+keyArray[index]);
+		if (keyArray[index] == null) {
+			if(DEBUG || DEBUGPUTKEY) 
+				System.out.println("BTreeKeyPage.putKeys key "+index+" key is null");
 			return;
 		}
-		// get first block to write contiguous records for keys
-		BlockAccessIndex lbai = null;
-		if( lastGoodBlockIndex == -1 ) {
-			lbai = sdbio.stealblk();
-			if( DEBUG )
-				System.out.println("BTreeKeyPage.putKeys, no keys in use yet, Stole block "+lbai);
-		} else {
-			lbai = sdbio.findfreeblock(keyIdArray[lastGoodBlockIndex].getBlock());
-			if( lbai == null) {
-				lbai = sdbio.stealblk();
-				if( DEBUG )
-					System.out.println("BTreeKeyPage.putKeys could not find free space at "+keyIdArray[lastGoodBlockIndex]+" Stole block "+lbai);
-			} else {
-				if( DEBUG )
-					System.out.println("BTreeKeyPage.putKeys found freespace block "+lbai);
-			}
+		// If it already has a key, it has to stay
+		if(!keyIdArray[index].equals(Optr.emptyPointer)) {
+			if(DEBUG || DEBUGPUTKEY) 
+				System.out.println("BTreeKeyPage.putKeys **IGNORE OVERWRITE** at index "+index+" id:"+keyArray[index]);
+			return;
 		}
+		keyIdArray[index] = MappedBlockBuffer.getNewInsertPosition(sdbio, keyIdArray, index, getNumKeys());
+		// get first block to write contiguous records for keys
+		if(DEBUG || DEBUGPUTKEY)
+				System.out.println("BTreeKeyPage.putKeys found insert block "+keyIdArray[index]);
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(keyArray[index]);
-		long keyi = lbai.getBlockNum();
-		// extract tablespace since we steal blocks from any
-		int tablespace = GlobalDBIO.getTablespace(keyi);
-		if( DEBUG ) {
-				if(keyIdArray[index].equals(Optr.emptyPointer)) {				
-					System.out.println("BTreeKeyPage.putKeys ADD at index "+index+" id:"+keyArray[index]);
-				} else {
-					System.out.println("BTreeKeyPage.putKeys **OVERWRITE** at index "+index+" id:"+keyArray[index]);
-					// TODO: reclaim space abandoned by pointer, store byte length of entry
-				}
-		}
-		keyIdArray[index] = new Optr(keyi, lbai.getBlk().getBytesused());
-		sdbio.add_object(tablespace, lbai, pb, pb.length);
-		if( DEBUG ) 
-				System.out.println("BTreeKeyPage.putKeys Added object @"+lbai+" bytes:"+pb.length+" page:"+this);
+		sdbio.add_object(keyIdArray[index], pb, pb.length);
+		if(DEBUG || DEBUGPUTKEY) 
+				System.out.println("BTreeKeyPage.putKeys Added object @"+keyIdArray[index]+" bytes:"+pb.length+" page:"+this);
 		if(resetUpdate)
 			keyUpdatedArray[index] = false;
 	}
@@ -825,7 +800,7 @@ public final class BTreeKeyPage {
 			//	sb.append(i+"=");
 			//	sb.append(pageArray[i]+"\r\n");
 				sb.append(i+"=");
-				sb.append(pageIdArray[i]);
+				sb.append(pageIdArray[i] == -1 ? "Empty" : GlobalDBIO.valueOf(pageIdArray[i]));
 				sb.append(",");
 				sb.append(pageArray[i]);
 				sb.append("\r\n");
