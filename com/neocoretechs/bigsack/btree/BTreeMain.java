@@ -6,9 +6,10 @@ import java.util.Stack;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -65,6 +66,7 @@ public final class BTreeMain {
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of BTreeKeyPage
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;
+	private static boolean DEBUGDELETE = false;
 	private static boolean TEST = false; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = false; // flag to determine whether value data is overwritten for a key or its ignored
@@ -257,7 +259,7 @@ public final class BTreeMain {
                 				// So if you are using Sets vs Maps it should not happen.
                 				if( OVERWRITE ) {
                      				// TODO: 
-                    				//sourcePage.deleteData(i);
+                    				sourcePage.deleteData(i);
                 					sourcePage.putDataToArray(object,i);
                 				} else {
                 					if(ALERT)
@@ -608,7 +610,7 @@ public final class BTreeMain {
     
     /**
      * Move the data from source and source index to target and targetIndex for the two pages.
-     * Optionally null the source.
+     * Optionally null the source at sourceIndex.
      * @param source
      * @param sourceIndex
      * @param target
@@ -655,194 +657,79 @@ public final class BTreeMain {
 	
 	/**
 	* Remove key/data object.
+	* Deletion from a B-tree is more complicated than insertion, because we can delete a key from any node, not 
+	* just a leaf, and when we delete a key from an internal node, we will have to rearrange the nodes children.
+	* As in insertion, we must make sure the deletion doesnt violate the B-tree properties. 
+	* Just as we had to ensure that a node didnt get too big due to insertion, we must ensure that a node 
+	* doesnt get too small during deletion (except that the root is allowed to have fewer than the minimum number t-1 of keys). 
+	* Just as a simple insertion algorithm might have to back up if a node on the path to where the key was to be inserted was full, 
+	* a simple approach to deletion might have to back up if a node (other than the root) along the path to where the key is to be 
+	* deleted has the minimum number of keys.
+	* The deletion procedure deletes the key k from the subtree rooted at x. 
+	* This procedure guarantees that whenever it calls itself recursively on a node x, the number of keys in x is at least the minimum degree T.
+	* Note that this condition requires one more key than the minimum required by the usual B-tree conditions, 
+	* so that sometimes a key may have to be moved into a child node before recursion descends to that child. 
+	* This strengthened condition allows us to delete a key from the tree in one downward pass without having to back up
+	* (with one exception, to be explained). You should interpret the following specification for deletion from a B-tree 
+	* with the understanding that if the root node x ever becomes an internal node having no keys 
+	* (this situation can occur when we delete x, and x only child x.c1 becomes the new root of the tree), 
+	* we decrease the height of the tree by one and preserve the property that the root of the tree contains at least one key. 
+	* (unless the tree is empty).
+	* Various cases of deleting keys from a B-tree:
+	* 1. If the key k is in node x and x is a leaf, delete the key k from x.
+	* 2. If the key k is in node x and x is an internal node, do the following:
+    * a) If the child y that precedes k in node x has at least t keys, then find the predecessor k0 of k in the sub-tree rooted at y. 
+    * Recursively delete k0, and replace k by k0 in x. (We can find k0 and delete it in a single downward pass.)
+	* b) If y has fewer than t keys, then, symmetrically, examine the child z that follows k in node x. If z has at least t keys, 
+	* then find the successor k0 of k in the subtree rooted at z. Recursively delete k0, and replace k by k0 in x. 
+	* (We can find k0 and delete it in a single downward pass.)
+    * c) Otherwise, if both y and z have only t-1 keys, merge k and all of z into y, so that x loses both k and the pointer to z, and y 
+    * now contains 2t-1 keys. Then free z and recursively delete k from y.
+	* 3. If the key k is not present in internal node x, determine the root x.c(i) of the appropriate subtree that must contain k, 
+	* if k is in the tree at all. If x.c(i) has only t-1 keys, execute step 3a or 3b as necessary to guarantee that we descend to a 
+	* node containing at least t keys. Then finish by recursing on the appropriate child of x.
+	* a) If x.c(i) has only t-1 keys but has an immediate sibling with at least t keys, give x.c(i) an extra key by moving a key 
+	* from x down into x.c(i), moving a key from x.c(i) immediate left or right sibling up into x, and moving the appropriate 
+	* child pointer from the sibling into x.c(i).
+    * b) If x.c(i) and both of x.c(i) immediate siblings have t-1 keys, merge x.c(i) with one sibling, which involves moving a key 
+    * from x down into the new merged node to become the median key for that node.
+	* Since most of the keys in a B-tree are in the leaves, deletion operations are most often used to delete keys from leaves. 
+	* The recursive delete procedure then acts in one downward pass through the tree, without having to back up. 
+	* When deleting a key in an internal node, however, the procedure makes a downward pass through the tree but may have to 
+	* return to the node from which the key was deleted to replace the key with its predecessor or successor.
+	* The BTreeKeyPage contains most of the functionality and the following methods are unique to the deletion process:
+	* 1) remove
+    * 2) removeFromNonLeaf
+    * 3) getPred
+    * 4) getSucc
+    * 5) borrowFromPrev
+    * 6) borrowFromNext
+    * 7) merge
 	* @param newKey The key to delete
-	* @return 0 if ok, <>0 if error
+	* @return 0 if ok, <> 0 if error
 	* @exception IOException if seek or write failure
 	*/
 	@SuppressWarnings("rawtypes")
 	public synchronized int delete(Comparable newKey) throws IOException {
-		BTreeKeyPage tpage;
-		int tindex;
-		BTreeKeyPage leftPage;
-		BTreeKeyPage rightPage;
-
-		// Is the key there?
-		if(!(search(newKey)).atKey)
-			return (NOTFOUND);
-		if( DEBUG ) System.out.println("--ENTERING DELETE LOOP FOR "+newKey+" with currentPage "+currentPage);
-		while (true) {
-			// If either left or right pointer
-			// is null, we're at a leaf or a
-			// delete is percolating up the tree
-			// Collapse the page at the key
-			// location
-			if ((currentPage.getPage(currentIndex) == null) || 
-				(currentPage.getPage(currentIndex + 1) == null)) {
-				if( Props.DEBUG ) System.out.println("Delete loop No left/right pointer on "+currentPage);
-				// Save non-null pointer
-				if (currentPage.pageArray[currentIndex] == null)
-					tpage = currentPage.getPage(currentIndex + 1);
-				else
-					tpage = currentPage.getPage(currentIndex);
-				if( Props.DEBUG ) System.out.println("Delete selected non-null page is "+tpage);
-				// At leaf - delete the key/data
-				currentPage.deleteData(currentIndex);
-				currentPage.delete(currentIndex);
-				if( Props.DEBUG ) System.out.println("Just deleted "+currentPage+" @ "+currentIndex);
-				// Rewrite non-null pointer
-				currentPage.putPageToArray(tpage, currentIndex);
-				// If we've deleted the last key from the page, eliminate the
-				// page and pop up a level. Null the page pointer
-				// at the index we've popped to.
-				// If we can't pop, all the keys have been eliminated (or, they should have).
-				// Null the root, clear the keycount
-				if (currentPage.getNumKeys() == 0) {
-					// Following guards against leaks
-					if( DEBUG ) System.out.println("Delete found numKeys 0");
-					currentPage.nullPageArray(0);
-					if (pop()) { // Null pointer to node
-						// just deleted
-						if( DEBUG ) System.out.println("Delete popped "+currentPage+" nulling and decrementing key count");
-						currentPage.nullPageArray(currentIndex);
-						//--numKeys;
-						//if( DEBUG ) System.out.println("Key count now "+numKeys+" returning");
-						// Perform re-seek to re-establish location
-						//search(newKey);
-						return (0);
-					}
-					if( DEBUG ) System.out.println("Cant pop, clear root");
-					// Can't pop -- clear the root
-					// if root had pointer make new root
-					if (tpage != null) {
-						if( DEBUG ) System.out.println("Delete tpage not null, setting page Id/current page root "+tpage);
-						tpage.pageId = 0L;
-						setRoot(tpage);
-						currentPage = tpage;
-					} else {
-						// no more keys
-						if( DEBUG ) System.out.println("Delete No more keys, setting new root page");
-						setRoot(new BTreeKeyPage(sdbio, 0L, true));
-						getRoot().setUpdated(true);
-						currentPage = null;
-						//numKeys = 0;
-					}
-					//atKey = false;
-					if( DEBUG ) System.out.println("Delete returning");
-					return (0);
-				}
-				// If we haven't deleted the last key, see if we have few enough
-				// keys on a sibling node to coalesce the two. If the
-				// keycount is even, look at the sibling to the left first;
-				// if the keycount is odd, look at the sibling to the right first.
-				if( DEBUG ) System.out.println("Have not deleted last key");
-				if (stack.size() == 0) { // At root - no siblings
-					if( DEBUG ) System.out.println("Delete @ root w/no siblings");
-					//--numKeys;
-					//search(newKey);
-					//if( DEBUG ) System.out.println("Delete returning after numKeys set to "+numKeys);
-					return (0);
-				}
-				// Get parent page and index
-				if( DEBUG ) System.out.println("Delete get parent page and index");
-				tpage = (stack.get(stack.size() - 1)).keyPage;
-				tindex =(stack.get(stack.size() - 1)).index;
-				if( DEBUG ) System.out.println("Delete tpage now "+tpage+" and index now "+tindex+" with stack depth "+stack.size());
-				// Get sibling pages
-				if( DEBUG ) System.out.println("Delete Getting sibling pages");
-				if (tindex > 0) {
-					leftPage = tpage.getPage(tindex - 1);
-					if( DEBUG ) System.out.println("Delete tindex > 0 @ "+tindex+" left page "+leftPage);
-				} else {
-					leftPage = null;
-					if( DEBUG ) System.out.println("Delete tindex not > 0 @ "+tindex+" left page "+leftPage);
-				}
-				if (tindex < tpage.getNumKeys()) {
-					rightPage = tpage.getPage(tindex + 1);
-				} else {
-					rightPage = null;
-				}
-				if( DEBUG ) System.out.println("Delete tindex "+tindex+" tpage.numKeys "+tpage.getNumKeys()+" right page "+rightPage);
-				// Decide which sibling
-				if( DEBUG ) System.out.println("Delete find sibling from "+leftPage+" -- " + rightPage);
-				//if (numKeys % 2 == 0)
-				if( new Random().nextInt(2) == 0 )
-					if (leftPage == null)
-						leftPage = currentPage;
-					else
-						rightPage = currentPage;
-				else 
-					if (rightPage == null)
-						rightPage = currentPage;
-					else
-						leftPage = currentPage;
-				if( DEBUG ) System.out.println("Delete found sibling from "+leftPage+" -- " + rightPage);
-
-				// assertion check
-				if (leftPage == null || rightPage == null) {
-					if( DEBUG ) System.out.println("ASSERTION CHECK FAILED, left/right page null in delete");
-					return (TREEERROR);
-				}
-				// Are the siblings small enough to coalesce
-				// address coalesce later
-				//if (leftPage.numKeys + rightPage.numKeys + 1 > BTreeKeyPage.MAXKEYS) {
-					// Coalescing not possible, exit
-					//--numKeys;
-					//search(newKey);
-					//if( DEBUG ) System.out.println("Cant coalesce, returning with keys="+numKeys);
-					return (0);
-				/*	
-				} else {
-					// Coalescing is possible. Grab the parent key, build a new
-					// node. Discard the old node.
-					// (If sibling is left page, then the new page is left page,
-					// plus parent key, plus original page. New page is old left
-					// page. If sibling is right page, then the new page
-					// is the original page, the parent key, plus the right
-					// page.
-					// Once the new page is created, delete the key on the
-					// parent page. Then cycle back up and delete the parent key.)
-					coalesce(tpage, tindex, leftPage, rightPage);
-					if( Props.DEBUG ) System.out.println("Coalesced "+tpage+" -- "+tindex+" -- "+leftPage+" -- "+rightPage);
-					// Null right page of parent
-					tpage.nullPageArray(tindex + 1);
-					// Pop up and delete parent
-					pop();
-					if( Props.DEBUG ) System.out.println("Delete Popped, now continuing loop");
-					continue;
-				}
-				*/
-			} else {
-				// Not at a leaf. Get a successor or predecessor key.
-				// Copy the predecessor/successor key into the deleted key's slot, then "move
-				// down" to the leaf and do a delete there.
-				// Note that doing the delete could cause a "percolation" up the tree.
-				// Save current page and  and index
-				if( Props.DEBUG ) System.out.println("Delete Not a leaf, find next key");
-				tpage = currentPage;
-				tindex = currentIndex;
-				if (currentPage.getPage(currentIndex) != null) {
-					// Get predecessor if possible
-					if( DEBUG ) System.out.println("Delete Seeking right tree");
-					seekRightTree();	
-				} else { // Get successor
-					if (currentPage.getPage(currentIndex + 1) == null) {
-						if( DEBUG ) System.out.println("Delete cant get successor, returning");
-						return (TREEERROR);
-					}
-					currentIndex++;
-					seekLeftTree();
-					if( DEBUG ) System.out.println("Delete cant seek left tree, returning");
-					return (STACKERROR);	
-				}
-				// Replace key/data with successor/predecessor
-				tpage.putKeyToArray(currentPage.getKey(currentIndex), tindex);
-				tpage.putDataToArray(
-					currentPage.getData(currentIndex),
-					tindex);
-				if( DEBUG ) System.out.println("Delete re-entring loop to delete key on leaf of tpage "+tpage);
-				// Reenter loop to delete key on leaf
-			}
+		if( DEBUG || DEBUGDELETE ) System.out.println("--ENTERING DELETE FOR "+newKey);
+		// Call the remove function starting at the root node
+		// make sure it has some keys
+		BTreeKeyPage root = getRoot();
+		if( root.getNumKeys() == 0) {
+			if( DEBUG || DEBUGDELETE ) System.out.println("Root Keypage has no keys when attempting DELETE FOR "+newKey);
+			return NOTFOUND;
 		}
+	    root.remove(newKey);
+	    // If the root node now has 0 keys, make its first child as the new root
+	    // if it has a child
+	    if (root.getNumKeys() == 0 && !root.getmIsLeafNode()) {
+			if( DEBUG || DEBUGDELETE ) System.out.println("Root non leaf Keypage has no keys when attempting DELETE FOR "+newKey);
+			BTreeKeyPage newRoot = root.getPage(0);  // get child of root keypage object
+			root.replacePage(newRoot); // read the childs data into old root, replacing it
+	        if( DEBUG || DEBUGDELETE ) System.out.println("Root RESET with first child "+getRoot());
+	    }
+		if( DEBUG || DEBUGDELETE ) System.out.println("BTreeMain.delete Just deleted "+newKey);
+		return 0;
 	}
 
 	/** 

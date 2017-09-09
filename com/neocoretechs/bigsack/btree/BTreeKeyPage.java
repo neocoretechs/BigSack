@@ -66,8 +66,9 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff Copyright (C) NeoCoreTechs 2014,2015,2017
 */
 public final class BTreeKeyPage {
-	static final boolean DEBUG = false;
-	static final boolean DEBUGPUTKEY = true;
+	private static final boolean DEBUG = false;
+	private static final boolean DEBUGPUTKEY = true;
+	private static final boolean DEBUGREMOVE = true;
 	static final long serialVersionUID = -2441425588886011772L;
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
 	// The number of maximum children is MAXKEYS+1 per node.
@@ -108,10 +109,11 @@ public final class BTreeKeyPage {
 	private transient boolean updated = false; // has the node been updated for purposes of write
 	private transient ObjectDBIO sdbio;
 	private transient BlockAccessIndex lbai = null; // The page is tied to a block
-	/**
-	 * No - arg cons to initialize pageArray to MAXKEYS + 1, this is called on deserialization
-	 */
 	
+	/**
+	 * Initialize the transient arrays, the ones that hold the deserialized instances of those objects
+	 * pointed to by the non transient block and offset locations read from backing store
+	 */
 	public void initTransients() {
 		keyArray = new Comparable[MAXKEYS];
 		keyUpdatedArray = new boolean[MAXKEYS];
@@ -136,19 +138,7 @@ public final class BTreeKeyPage {
 		}
 		this.sdbio = sdbio;
 		initTransients();
-		// Pre-allocate the arrays that hold persistent data
-		keyIdArray = new Optr[MAXKEYS];
-		pageIdArray= new long[MAXKEYS + 1];
-		dataIdArray= new Optr[MAXKEYS];
-		for (int i = 0; i <= MAXKEYS; i++) {
-			pageIdArray[i] = -1L;
-			if( i != MAXKEYS ) {
-				keyIdArray[i] = Optr.emptyPointer;
-				keyUpdatedArray[i] = false;
-				dataIdArray[i] = Optr.emptyPointer;
-				dataUpdatedArray[i] = false;
-			}
-		}
+		setupKeyArrays();
 		pageId = ppos;
 		lbai = sdbio.getIOManager().findOrAddBlockAccess(pageId); // read in block headers etc from presumably freechain block
 	
@@ -162,32 +152,13 @@ public final class BTreeKeyPage {
 			} else {
 				BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
 				DataInputStream dis = bs.getDBInput();
-				setmIsLeafNode(dis.readByte() == 0 ? false : true);
-				setNumKeys(dis.readInt());
-				for(int i = 0; i < MAXKEYS; i++) {
-					long sblk = dis.readLong();
-					short shblk = dis.readShort();
-					//if( DEBUG ) { 
-					//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
-					//}
-					keyIdArray[i] = new Optr(sblk, shblk);
-					// data array
-					sblk = dis.readLong();
-					shblk = dis.readShort();
-					//if( DEBUG ) { 
-					//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
-					//}
-					dataIdArray[i] = new Optr(sblk, shblk);
-				}
-				// pageId
-				for(int i = 0; i <= MAXKEYS; i++) {	
-					pageIdArray[i] = dis.readLong();
-				}	
+				readFromDBStream(dis);
 			}
 			if( DEBUG )
 				System.out.println("BTreeKeyPage ctor1 retrieval for page "+pageId+" "+lbai);
 		}
 	}
+	
 	/**
 	 * This is called from getPageFromPool get set up a new clean node
 	 * @param sdbio The database IO main class
@@ -203,6 +174,28 @@ public final class BTreeKeyPage {
 		}
 		initTransients();
 		// Pre-allocate the arrays that hold persistent data
+		setupKeyArrays();
+		if( read ) {
+			BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
+			DataInputStream dis = bs.getDBInput();
+			readFromDBStream(dis);
+		} else {
+			// If we are not reading, we must be preparing the block for new key. Really no
+			// reason for a new block with unassigned and not updating keys conceptually.
+			// Set the appropriate flags to write to associated block when the time comes
+			lbai.resetBlock(false); // set up headers without revoking access
+			lbai.getBlk().setKeypage((byte) 1); // mark it as keypage
+			setAllUpdated(true); // we cleared the block, so all must be written come write time
+		}
+		
+		if( DEBUG )
+			System.out.println("BtreeKeyPage ctor2 retrieval for page "+GlobalDBIO.valueOf(pageId)+" "+lbai);
+	}
+	/**
+	 * Initialize the key page NON-TRANSIENT arrays, the part that actually gets written to backing store.
+	 */
+	public synchronized void setupKeyArrays() {
+		// Pre-allocate the arrays that hold persistent data
 		keyIdArray = new Optr[MAXKEYS];
 		pageIdArray= new long[MAXKEYS + 1];
 		dataIdArray= new Optr[MAXKEYS];
@@ -215,42 +208,56 @@ public final class BTreeKeyPage {
 				dataUpdatedArray[i] = false;
 			}
 		}
-		if( read ) {
-			BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
-			bs.setBlockAccessIndex(lbai);
-			DataInputStream dis = bs.getDBInput();
-			setmIsLeafNode(dis.readByte() == 0 ? false : true);
-			setNumKeys(dis.readInt());
-			for(int i = 0; i < MAXKEYS; i++) {
-				long sblk = dis.readLong();
-				short shblk = dis.readShort();
-				//if( DEBUG ) { 
-				//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
-				//}
-				keyIdArray[i] = new Optr(sblk, shblk);
-				// data array
-				sblk = dis.readLong();
-				shblk = dis.readShort();
-				//if( DEBUG ) { 
-				//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
-				//}
-				dataIdArray[i] = new Optr(sblk, shblk);
-			}
-			// pageId
-			for(int i = 0; i <= MAXKEYS; i++) {	
-				pageIdArray[i] = dis.readLong();
-			}
-		} else {
-			// If we are not reading, we must be preparing the block for new key. Really no
-			// reason for a new block with unassigned and not updating keys conceptually.
-			// Set the appropriate flags to write to associated block when the time comes
-			lbai.resetBlock(false); // set up headers without revoking access
-			lbai.getBlk().setKeypage((byte) 1); // mark it as keypage
-			setAllUpdated(true); // we cleared the block, so all must be written come write time
+	}
+	/**
+	 * Read the keypage using the given DataInputStream
+	 * @throws IOException
+	 */
+	public synchronized void readFromDBStream(DataInputStream dis) throws IOException {
+		setmIsLeafNode(dis.readByte() == 0 ? false : true);
+		setNumKeys(dis.readInt());
+		for(int i = 0; i < MAXKEYS; i++) {
+			long sblk = dis.readLong();
+			short shblk = dis.readShort();
+			//if( DEBUG ) { 
+			//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
+			//}
+			keyIdArray[i] = new Optr(sblk, shblk);
+			// data array
+			sblk = dis.readLong();
+			shblk = dis.readShort();
+			//if( DEBUG ) { 
+			//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
+			//}
+			dataIdArray[i] = new Optr(sblk, shblk);
 		}
-		
-		if( DEBUG )
-			System.out.println("BtreeKeyPage ctor2 retrieval for page "+GlobalDBIO.valueOf(pageId)+" "+lbai);
+		// pageId
+		for(int i = 0; i <= MAXKEYS; i++) {	
+			pageIdArray[i] = dis.readLong();
+		}
+	}
+	/**
+	 * Move the sourcepage to this as target page. Zero source and set it to write.
+	 * The block numbers are preserved.
+	 * This is used primarily to replace the root or any internal node if all keys are deleted from it.
+	 * @param sourcePage
+	 * @throws IOException 
+	 */
+	public synchronized void replacePage(BTreeKeyPage sourcePage) throws IOException {
+		BlockAccessIndex tbai = sourcePage.getBlockAccessIndex(); ///source page block
+		// set the source page block as current in block stream for the tablespace for the page
+		BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(sourcePage.pageId));
+		bs.setBlockAccessIndex(tbai);
+		// now get the stream that reads the block
+		DataInputStream dis = bs.getDBInput();
+		// and set up this page with it
+		initTransients();
+		readFromDBStream(dis);
+		//
+		tbai.resetBlock(false); // set up headers without revoking access, does NOT reset block number
+		tbai.getBlk().setKeypage((byte) 0); // mark it as no longer a keypage, its a free block
+		tbai.getBlk().setIncore(true);
+		tbai.decrementAccesses(); // unlatch it, we are done
 	}
 	/**
 	 * Set the key Id array, and set the keyUpdatedArray for the key and the general updated flag
@@ -330,19 +337,289 @@ public final class BTreeKeyPage {
         	System.out.println("BtreeKeyPage.search falling thru "+middleIndex+" "+leftIndex+" "+rightIndex+" "+this+" target:"+targetKey);
         return new TreeSearchResult(middleIndex, false);
 	}
-
-
+	/**
+	 * Remove the key k from this node or the sub-tree rooted with this node preserving BTree properties. 
+	 * The following methods are unique to the removal process:
+	 * 1) remove
+	 * 2) removeFromNonLeaf
+	 * 3) getPred
+	 * 4) getSucc
+	 * 5) borrowFromPrev
+	 * 6) borrowFromNext
+	 * 7) merge
+	 * @see BTreeMain.delete for a description of the logic applied to deletion.
+	 * @param targetKey
+	 * @throws IOException 
+	 */
+	synchronized void remove(Comparable targetKey) throws IOException {
+	    TreeSearchResult tsr = search(targetKey);
+	    int idx = tsr.insertPoint;
+	    // The key to be removed is present in this node
+	    if (tsr.atKey) {
+	        // If the node is a leaf node - delete is called
+	        // Otherwise, removeFromNonLeaf method is called
+	        if (getmIsLeafNode()) {
+				if( DEBUG || DEBUGREMOVE ) System.out.println("BTreeKeyPage.remove LEAF on "+tsr);
+	            delete(idx);
+	        } else {
+				if( DEBUG || DEBUGREMOVE ) System.out.println("BTreeKeyPage.remove NON-LEAF on "+tsr);
+	            removeFromNonLeaf(idx);
+	        }
+	    } else {
+	        // If this node is a leaf node, then the key is not present in tree
+	        if (getmIsLeafNode()) {
+	            if( DEBUG || DEBUGREMOVE )
+	            	System.out.println("BTreeKeyPage.remove The key "+targetKey+" does not exist in the tree");
+	            return;
+	        }
+	        // The key to be removed is present in the sub-tree rooted with this node
+	        // The flag indicates whether the key is present in the sub-tree rooted
+	        // with the last child of this node
+	        boolean flag = ( (idx == getNumKeys())? true : false );
+	        // If the child where the key is supposed to exist has less that t keys,
+	        // we fill that child
+	        if (getPage(idx).getNumKeys() < BTreeMain.T)
+	            fill(idx);
+	        // If the last child has been merged, it must have merged with the previous
+	        // child and so we recurse on the (idx-1)th child. Else, we recurse on the
+	        // (idx)th child which now has at least t keys
+	        if (flag && idx > getNumKeys())
+	            getPage(idx-1).remove(targetKey);
+	        else
+	            getPage(idx).remove(targetKey);
+	    }
+	    return;
+	}
+	// A function to remove the idx-th key from this node - which is a non-leaf node
+	synchronized void removeFromNonLeaf(int idx) throws IOException {
+		Comparable targetKey = getKey(idx);
+	    // If the child that precedes k (C[idx]) has at least t keys,
+	    // find the predecessor 'pred' of k in the subtree rooted at
+	    // C[idx]. Replace k by pred. Recursively delete pred
+	    // in C[idx]
+	    if (getPage(idx).getNumKeys() >= BTreeMain.T) {
+	        TreeSearchResult pred = getPred(idx);
+	        //keys[idx] = pred;
+	        copyKeyAndDataToArray(pred.page, pred.insertPoint, idx);
+	        getPage(idx).remove(pred.page.getKey(pred.insertPoint));
+	    } else
+	    // If the child C[idx] has less that t keys, examine C[idx+1].
+	    // If C[idx+1] has atleast t keys, find the successor 'succ' of k in
+	    // the subtree rooted at C[idx+1]
+	    // Replace k by succ
+	    // Recursively delete succ in C[idx+1]
+	    	if(getPage(idx+1).getNumKeys() >= BTreeMain.T) {
+	    		TreeSearchResult succ = getSucc(idx);
+	    		//keys[idx] = succ;
+	    		//C[idx+1]->remove(succ);
+	            copyKeyAndDataToArray(succ.page, succ.insertPoint, idx);
+		        getPage(idx+1).remove(succ.page.getKey(succ.insertPoint));
+	    	} else {
+	    		// If both C[idx] and C[idx+1] has less that t keys,merge k and all of C[idx+1]
+	    		// into C[idx]
+	    		// Now C[idx] contains 2t-1 keys
+	    		// Free C[idx+1] and recursively delete k from C[idx]
+	    		merge(idx);
+	    		//C[idx]->remove(k);
+	    		getPage(idx).remove(targetKey);
+	    	}
+	    return;
+	}
+	// A function to get predecessor of keys[idx]
+	synchronized TreeSearchResult getPred(int idx) throws IOException {
+	    // Keep moving to the right most node until we reach a leaf
+	    BTreeKeyPage cur = getPage(idx);
+	    while (!cur.getmIsLeafNode())
+	        cur = cur.getPage(cur.getNumKeys());
+	    // Return the last key of the leaf
+	    return new TreeSearchResult(cur, cur.getNumKeys()-1, false);
+	}
+	synchronized TreeSearchResult getSucc(int idx) throws IOException {
+	    // Keep moving the left most node starting from C[idx+1] until we reach a leaf
+	    //BTreeNode *cur = C[idx+1];
+	    //while (!cur->leaf)
+	    BTreeKeyPage cur = getPage(idx+1);
+	    while (!cur.getmIsLeafNode())
+	    	//cur = cur->C[0];
+	        cur = cur.getPage(0);
+	    // Return the first key of the leaf
+	    //return cur->keys[0];
+	    return new TreeSearchResult(cur, 0, false);
+	}
+	/**
+	 * Fill child C[idx] which has less than t-1 keys
+	 * @param idx
+	 * @throws IOException 
+	 */
+	synchronized void fill(int idx) throws IOException {
+	    // If the previous child(C[idx-1]) has more than t-1 keys, borrow a key
+	    // from that child
+	    //if (idx!=0 && C[idx-1]->n>=t)
+		if( idx != 0 && getPage(idx-1).getNumKeys() >= BTreeMain.T)
+	        borrowFromPrev(idx);
+	    // If the next child(C[idx+1]) has more than t-1 keys, borrow a key
+	    // from that child
+	    else 
+	    	//if (idx!=n && C[idx+1]->n>=t)
+	    	if(idx != getNumKeys() && getPage(idx+1).getNumKeys() >= BTreeMain.T)
+	    		borrowFromNext(idx); 
+	    	// Merge C[idx] with its sibling
+	    	// If C[idx] is the last child, merge it with with its previous sibling
+	    	// Otherwise merge it with its next sibling
+	    	else {
+	    		if (idx != getNumKeys())
+	    			merge(idx);
+	    		else
+	    			merge(idx-1);
+	    	}
+	    return;
+	}
+	// Borrow a key from C[idx-1] and insert it
+	// into C[idx]
+	synchronized void borrowFromPrev(int idx) throws IOException { 
+	    BTreeKeyPage child = getPage(idx);
+	    BTreeKeyPage sibling = getPage(idx-1);
+	    // The last key from C[idx-1] goes up to the parent and key[idx-1]
+	    // from parent is inserted as the first key in C[idx]. Thus, the 
+	    // sibling loses one key and child gains one key.
+	    // Moving all key in C[idx] one step ahead
+	    //for (int i=child->n-1; i>=0; --i)
+	    for(int i = child.getNumKeys()-1; i >= 0; --i)
+		    //child->keys[i+1] = child->keys[i];
+	    	child.copyKeyAndDataToArray(child, i, i+1);
+	    // If C[idx] is not a leaf, move all its child pointers one step ahead
+	    if (!child.getmIsLeafNode()) {
+	        //for(int i=child->n; i>=0; --i)
+	    	for(int i = child.getNumKeys(); i >= 0; --i) {
+	            //child->C[i+1] = child->C[i];
+	    		child.putPageToArray(child.getPage(i), i+1);
+	    		child.setPageIdArray(i+1, child.getPageId(i));
+	    	}
+	    }
+	    // Setting child's first key equal to keys[idx-1] from the current node
+	    //child->keys[0] = keys[idx-1];
+	    child.copyKeyAndDataToArray(this, idx-1, 0);
+	    // Moving sibling's last child as C[idx]'s first child
+	    if (!getmIsLeafNode()) {
+	        //child->C[0] = sibling->C[sibling->n];
+	    	child.putPageToArray(sibling.getPage(sibling.getNumKeys()), 0);
+	    	child.setPageIdArray(0, sibling.getPageId(sibling.getNumKeys()));
+	    }
+	    // Moving the key from the sibling to the parent
+	    // This reduces the number of keys in the sibling
+	    //keys[idx-1] = sibling->keys[sibling->n-1];
+	    copyKeyAndDataToArray(sibling, sibling.getNumKeys()-1, idx-1);
+	    // increase/reduce key count
+	    //child->n += 1;
+	    child.setNumKeys(child.getNumKeys()+1);
+	    //sibling->n -= 1;
+	    sibling.setNumKeys(sibling.getNumKeys()-1);
+	    return;
+	}
+	// A function to borrow a key from the C[idx+1] and place
+	// it in C[idx]
+	synchronized void borrowFromNext(int idx) throws IOException {
+	    BTreeKeyPage child = getPage(idx);
+	    BTreeKeyPage sibling = getPage(idx+1);
+	    // keys[idx] is inserted as the last key in C[idx]
+	    //child->keys[(child->n)] = keys[idx];
+	    child.copyKeyAndDataToArray(this, idx, child.getNumKeys());
+	    // Sibling's first child is inserted as the last child
+	    // into C[idx]
+	    if (!child.getmIsLeafNode()) {
+	        //child->C[(child->n)+1] = sibling->C[0];
+	      	child.putPageToArray(sibling.getPage(0), child.getNumKeys()+1);
+	    	child.setPageIdArray(child.getNumKeys()+1, sibling.getPageId(0));
+	    }
+	    //The first key from sibling is inserted into keys[idx]
+	    //keys[idx] = sibling->keys[0];
+	    copyKeyAndDataToArray(sibling, 0, idx);
+	 
+	    // Moving all keys in sibling one step behind
+	    for (int i=1; i< sibling.getNumKeys() ; ++i)
+	        //sibling->keys[i-1] = sibling->keys[i];
+	    	sibling.copyKeyAndDataToArray(sibling, i, i-1);
+	 
+	    // Moving the child pointers one step behind
+	    if (!sibling.getmIsLeafNode()) {
+	        for(int i=1; i<=sibling.getNumKeys(); ++i) {
+	            //sibling->C[i-1] = sibling->C[i];
+	          	sibling.putPageToArray(sibling.getPage(i), i-1);
+		    	sibling.setPageIdArray(i-1, sibling.getPageId(i));
+	        }
+	    }
+	    // Increasing and decreasing the key count of C[idx] and C[idx+1]
+	    // respectively
+	    //child->n += 1;
+	    child.setNumKeys(child.getNumKeys()+1);
+	    //sibling->n -= 1;
+	    sibling.setNumKeys(sibling.getNumKeys()-1);
+	    return;
+	}
+	/**
+	 * Merge C[idx] with C[idx+1]. C[idx+1] is freed after merging
+	 * @param idx
+	 * @throws IOException
+	 */
+	synchronized void merge(int idx) throws IOException {
+	    BTreeKeyPage child = getPage(idx);//C[idx];
+	    BTreeKeyPage sibling = getPage(idx+1);// C[idx+1]; 
+	    // Pulling a key from the current node and inserting it into (t-1)th
+	    // position of C[idx]
+	    //child->keys[t-1] = keys[idx];
+	    child.copyKeyAndDataToArray(this, idx, BTreeMain.T-1);
+	    // Copying the keys from C[idx+1] to C[idx] at the end
+	    for (int i=0; i < sibling.getNumKeys(); ++i) {
+	        //child->keys[i+t] = sibling->keys[i];
+	    	child.copyKeyAndDataToArray(sibling, i, i+BTreeMain.T);
+	    }
+	    // Copying the child pointers from C[idx+1] to C[idx]
+	    if (!child.getmIsLeafNode()) {
+	        for(int i=0; i <= sibling.getNumKeys(); ++i) {
+	            //child->C[i+t] = sibling->C[i];
+	          	child.putPageToArray(sibling.getPage(i), i+BTreeMain.T);
+			    child.setPageIdArray(i+BTreeMain.T, sibling.getPageId(i));
+	        }
+	    }
+	    // Moving all keys after idx in the current node one step before -
+	    // to fill the gap created by moving keys[idx] to C[idx]
+	    for (int i = idx+1; i < getNumKeys(); ++i)
+	        //keys[i-1] = keys[i];
+	    	copyKeyAndDataToArray(this, i, i-1);
+	    // Moving the child pointers after (idx+1) in the current node one
+	    // step before
+	    for (int i = idx+2; i <= getNumKeys(); ++i) {
+	       // C[i-1] = C[i];
+          	child.putPageToArray(getPage(i), i-1);
+			child.setPageIdArray(i-1, getPageId(i));
+	    }
+	    // Updating the key count of child and the current node
+	    //child->n += sibling->n+1;
+	    child.setNumKeys(sibling.getNumKeys()+1);
+	    //n--;
+	    setNumKeys(getNumKeys()-1);
+	    // Freeing the memory occupied by sibling
+	    sibling.getBlockAccessIndex().decrementAccesses();
+	    return;
+	}
+	 
 	/**
 	* Delete the key/data item on this page.
-	* Everything on the page is slid left.
-	* numKeys is decremented
+	* Everything on the page is slid left. If there exists a valid pointer to a key or value
+	* object, that object is deleted.
+	* In the end, numKeys is decremented.
 	* @param index the index of the item on this page to delete
+	* @throws IOException 
 	*/
-	synchronized void delete(int index) {
+	synchronized void delete(int index) throws IOException {
 		// If its the rightmost key ignore move
 		if (index < getNumKeys() - 1)
 			// Move all up
 			for (int i = index;i < (getNumKeys() == MAXKEYS ? MAXKEYS - 1 : getNumKeys()); i++) {
+				if( !keyIdArray[i].equals(Optr.emptyPointer))
+					sdbio.delete_object(keyIdArray[i], GlobalDBIO.getObjectAsBytes(getKey(i)).length);
+				if( !dataIdArray[i].equals(Optr.emptyPointer))
+					sdbio.delete_object(dataIdArray[i], GlobalDBIO.getObjectAsBytes(getData(i)).length);
 				keyArray[i] = keyArray[i + 1];
 				keyIdArray[i] = keyIdArray[i + 1];
 				pageArray[i + 1] = pageArray[i + 2];
@@ -373,17 +650,14 @@ public final class BTreeKeyPage {
 	synchronized void deleteData(int index) throws IOException {
 		if (dataArray[index] != null && !dataIdArray[index].isEmptyPointer()) {
 			if( DEBUG ) {
-				System.out.print("Deleting :"+dataIdArray[index]+"\r\n");
-				System.out.println("Data: "+dataArray[index]+"\r\n");
+				System.out.println("Deleting :"+dataArray[index]+" "+dataIdArray[index]);
 			}
 			//if( Props.DEBUG ) System.out.println(" size "+ilen);
 			sdbio.delete_object(dataIdArray[index],  GlobalDBIO.getObjectAsBytes(dataArray[index]).length );
 			dataIdArray[index] = Optr.emptyPointer;
 			dataUpdatedArray[index] = true;
 			setUpdated(true);
-		} //else {
-			//throw new IOException("Attempt to delete null data index "+index+" for "+this);
-		//}
+		}
 	}
 	/**
 	* Retrieve a page based on an index to this page containing a page.

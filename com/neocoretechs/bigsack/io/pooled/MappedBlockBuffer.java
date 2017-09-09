@@ -158,11 +158,16 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 		return dblk;
 	}
 
-	
+	/**
+	 * Put the block onto the free block list
+	 * @param bai
+	 */
 	public synchronized void put(BlockAccessIndex bai) { 
 			freeBL.add(bai); 
 	}
-	
+	/**
+	 * Reset each block in the map and put them to the free block map
+	 */
 	public synchronized void forceBufferClear() {
 		Enumeration<BlockAccessIndex> it = elements();
 		while(it.hasMoreElements()) {
