@@ -13,6 +13,7 @@ import com.neocoretechs.bigsack.session.SessionManager;
  * the directory  "/users/you" must exist and a series of tablespaces and a log directory
  * are created under that. The database files will be named "TestDB1" under "/users/you/log and 
  * /users/you/tablespace0" to "/users/you/tablespace7".
+ * Set the name of the properties file in the VM -DBigSack.properties="/users/you/Relatrix/BigSack.properties"
  * The static constant fields in the class control the key generation for the tests
  * In general, the keys and values are formatted according to uniqKeyFmt to produce
  * a series of canonically correct sort order strings for the DB in the range of min to max vals.
@@ -53,8 +54,8 @@ public class BatteryBigSack2 {
 		battery1F1(session, argv);
 		battery1G(session, argv);
 		// deletion tests below
-		//battery2(session, argv);
-		//battery2A(session, argv);
+		battery2(session, argv);
+		battery2A(session, argv);
 		
 		 System.out.println("TEST BATTERY 2 COMPLETE.");
 		
@@ -115,17 +116,17 @@ public class BatteryBigSack2 {
 	 */
 	public static void battery1B(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		/*String f = (String) session.first();
+		String f = (String) session.first();
 		String l = (String) session.last();
-		*/
+		
 		String minval = val + String.format(uniqKeyFmt, min);
 		String maxval = val + String.format(uniqKeyFmt, (max-1));
-		/*
+		
 		if( !f.equals(minval) || !l.equals(maxval) ) { // max-1 cause we looped it in
 				 System.out.println("BATTERY1B FAIL "+f+" -- "+l+" supposed to be "+minval+" -- "+maxval);
 				throw new Exception("B1B Fail on Value get with "+f+" -- "+l+" supposed to be "+minval+" -- "+maxval);
 		}
-		*/
+		
 		String fk = (String) session.firstKey();
 		System.out.println("B1B First Key="+fk);
 		String lk = (String) session.lastKey();

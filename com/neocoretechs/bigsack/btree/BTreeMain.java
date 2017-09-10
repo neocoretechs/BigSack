@@ -1,15 +1,12 @@
 package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Random;
 import java.util.Stack;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
-import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -69,17 +66,14 @@ public final class BTreeMain {
 	private static boolean DEBUGDELETE = false;
 	private static boolean TEST = false; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
-	private static boolean OVERWRITE = false; // flag to determine whether value data is overwritten for a key or its ignored
-	static int BOF = 1;
+	private static boolean OVERWRITE = true; // flag to determine whether value data is overwritten for a key or its ignored
+	private static final boolean DEBUGOVERWRITE = false; // notify of overwrite of value for key
 	static int EOF = 2;
 	static int NOTFOUND = 3;
 	static int ALREADYEXISTS = 4;
-	static int STACKERROR = 5;
 	static int TREEERROR = 6;
-	static int MAXSTACK = 1024;
 
 	private BTreeKeyPage root;
-	//private long numKeys;
 	
 	// the 'current' items reflect the current status of the tree
 	BTreeKeyPage currentPage;
@@ -124,6 +118,8 @@ public final class BTreeMain {
 	}
 	/**
 	 * Returns number of table scanned keys, sets numKeys field
+	 * TODO: Alternate more efficient implementation that counts keys on pages
+	 * This method scans all keys, thus verifying the structure.
 	 * @throws IOException
 	 */
 	public synchronized long count() throws IOException {
@@ -145,12 +141,15 @@ public final class BTreeMain {
 		clearStack();
 		return numKeys;
 	}
-	
+	/**
+	 * Determines if tree is empty by examining the root for the presence of any keys
+	 * @return
+	 */
 	public synchronized boolean isEmpty() {
 		return (getRoot().getNumKeys() == 0);
 	}
 	/**
-	* currentPage and currentIndex set.
+	* currentPage and currentIndex set by this seeker of a target key.
 	* @param targetKey The Comparable key to seek
 	* @return data Object if found. Null otherwise.
 	* @exception IOException if read failure
@@ -159,17 +158,14 @@ public final class BTreeMain {
 	public synchronized Object seekObject(Comparable targetKey) throws IOException {
 		TreeSearchResult tsr = search(targetKey);
 		if (tsr.atKey) {
-			currentPage = tsr.page;
-			currentIndex = tsr.insertPoint;
-			currentChild = tsr.insertPoint;
-			setCurrent();
+			setCurrent(tsr);
 			return getCurrentObject();
 		} else {
 			return null;
 		}
 	}
 	/**
-	* Seek the key, if we dont find it leave the tree at it position closest greater than element.
+	* Seek the key, if we dont find it, leave the tree at it position closest greater than element.
 	* If we do find it return true in atKey of result and leave at found key.
 	* Calls search, which calls clearStack, repositionStack and setCurrent.
 	* @param targetKey The Comparable key to seek
@@ -258,9 +254,12 @@ public final class BTreeMain {
                 				// dataArray at index not null and dataIdArray Optr at index not empty for delete to fire.
                 				// So if you are using Sets vs Maps it should not happen.
                 				if( OVERWRITE ) {
-                     				// TODO: 
+                     				if( DEBUG || DEBUGOVERWRITE )
+                     					System.out.println("Preparing to OVERWRITE value "+object+" for key "+key+" index["+i+"]");
                     				sourcePage.deleteData(i);
                 					sourcePage.putDataToArray(object,i);
+                					if( DEBUG || DEBUGOVERWRITE )
+                     					System.out.println("OVERWRITE value "+object+" for key "+key+" index["+i+"] page:"+sourcePage);
                 				} else {
                 					if(ALERT)
                 						System.out.println("OVERWRITE flag set to false, so attempt to update existing value is ignored for key "+key);
@@ -834,15 +833,21 @@ public final class BTreeMain {
                 	return new TreeSearchResult(sourcePage, i, true);
                 }
                 if (sourcePage.getmIsLeafNode()) {
+                	// we are at leaf, we pop or return having not found
                 	if( DEBUG || DEBUGSEARCH)
                 		System.out.println("BTreeMain.repositionStack set to return index :"+i+" for leaf "+sourcePage);
+                	// If our key has run off the end of page or will do so, pop to subtree right in parent, we are at leaf still
                 	if( i >= sourcePage.getNumKeys() || sourcePage.getKey(i).compareTo(key) < 0 ) {
                 		currentPage = sourcePage;
-                		popUntilValid(true);
-                		return new TreeSearchResult(currentPage, currentIndex, true);
+                		int v = popUntilValid(true);
+                		//return new TreeSearchResult(currentPage, currentIndex, true);
+                		return new TreeSearchResult(currentPage, currentIndex, (v == 0));
                 	}
-             		return new TreeSearchResult(sourcePage, i, true);
+                	// didnt run off end or key on page all > key and we are at leaf, key must not exist
+                	//return new TreeSearchResult(sourcePage, i, true);
+             		return new TreeSearchResult(sourcePage, i, false);
                 } else {
+                	// non leaf
                 	BTreeKeyPage targetPage  = sourcePage.getPage(i);// get the page at the index of the given page
                 	if( DEBUG || DEBUGSEARCH) {
                 		System.out.println("BTreeMain.repositionStack traverse next page for key:"+key+" page:"+targetPage);
@@ -1112,7 +1117,7 @@ public final class BTreeMain {
 			currentIndex = 0;
 			currentChild = 0;
 			currentPage = tPage;
-			setCurrentKey(currentPage.getKey(currentIndex));
+			setCurrent();
 			tPage = currentPage.getPage(currentChild);
 		}
 	}
@@ -1129,7 +1134,7 @@ public final class BTreeMain {
 			currentIndex = currentPage.getNumKeys() - 1;
 			currentChild = currentPage.getNumKeys();
 			currentPage = tPage;
-			setCurrentKey(currentPage.getKey(currentIndex));
+			setCurrent();
 			tPage = currentPage.getPage(currentChild);
 		}
 	}

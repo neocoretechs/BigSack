@@ -67,8 +67,8 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public final class BTreeKeyPage {
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGPUTKEY = true;
-	private static final boolean DEBUGREMOVE = true;
+	private static final boolean DEBUGPUTKEY = false;
+	private static final boolean DEBUGREMOVE = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
 	// The number of maximum children is MAXKEYS+1 per node.
@@ -244,20 +244,24 @@ public final class BTreeKeyPage {
 	 * @throws IOException 
 	 */
 	public synchronized void replacePage(BTreeKeyPage sourcePage) throws IOException {
-		BlockAccessIndex tbai = sourcePage.getBlockAccessIndex(); ///source page block
-		// set the source page block as current in block stream for the tablespace for the page
-		BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(sourcePage.pageId));
-		bs.setBlockAccessIndex(tbai);
-		// now get the stream that reads the block
-		DataInputStream dis = bs.getDBInput();
-		// and set up this page with it
-		initTransients();
-		readFromDBStream(dis);
+		if(DEBUG || DEBUGREMOVE) {
+			System.out.println("BTreeKeyPage.replacePage replacing "+this+" with "+sourcePage);
+		}
+		setmIsLeafNode(sourcePage.getmIsLeafNode());
+		setNumKeys(sourcePage.getNumKeys());
+		for(int i = 0; i < sourcePage.getNumKeys(); i++) {
+			BTreeMain.moveKeyData(sourcePage, i, this, i, false);
+			BTreeMain.moveChildData(sourcePage, i, this, i, false);
+		}
 		//
+		BlockAccessIndex tbai = sourcePage.getBlockAccessIndex(); ///source page block
 		tbai.resetBlock(false); // set up headers without revoking access, does NOT reset block number
 		tbai.getBlk().setKeypage((byte) 0); // mark it as no longer a keypage, its a free block
 		tbai.getBlk().setIncore(true);
 		tbai.decrementAccesses(); // unlatch it, we are done
+		if(DEBUG || DEBUGREMOVE) {
+			System.out.println("BTreeKeyPage.replacePage replaced new root, now "+this);
+		}
 	}
 	/**
 	 * Set the key Id array, and set the keyUpdatedArray for the key and the general updated flag

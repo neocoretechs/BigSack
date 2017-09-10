@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 
 
+
+import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
  * Testing of TransactionalTreeSet with large payload key object.
@@ -15,6 +17,7 @@ import com.neocoretechs.bigsack.session.TransactionalTreeSet;
  * the directory  "/users/you" must exist and a series of tablespaces and a log directory
  * are created under that. The database files will be named "TestDB1" under "/users/you/log and 
  * /users/you/tablespace0" to "/users/you/tablespace7".
+ * Set the name of the properties file in the VM -DBigSack.properties="/users/you/Relatrix/BigSack.properties"
  * Yes, this should be a nice JUnit fixture someday
  * @author jg
  *
@@ -49,14 +52,15 @@ public class BatteryBigSack3 {
 		
 	}
 	/**
-	 * Loads up on key/value pairs
+	 * Loads up on key/value pairs, performs inser of keys in reverse order for max loading.
+	 * keys are expected to be inserted in range min to max-1 regardless
 	 * @param session
 	 * @param argv
 	 * @throws Exception
 	 */
 	public static void battery1(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		for(int i = min; i < max; i++) {
+		for(int i = max-1; i >= min; i--) {
 			bigtest b = new bigtest();
 			b.init(i);
 			long ms = System.currentTimeMillis();
@@ -199,6 +203,20 @@ public class BatteryBigSack3 {
 			}
 		}
 		System.out.println("BATTERY1E "+(success ? "SUCCESS" : "FAIL")+" in "+(System.currentTimeMillis()-tims)+" ms.");
+		if( !success) throw new Exception("BATTERY1E fail");
+	}
+	
+	public static void battery3(BigSackSession session, String[] argv) throws Exception {
+		String key = "Lets try this";
+		session.put(key, "A BigSack Rollback!");
+		session.Rollback();
+		Object o = session.get(key);
+		if( o == null )
+			 System.out.println("BATTERY3 SUCCESS ");
+		else {
+			 System.out.println("BATTERY3 FAIL");
+			 throw new Exception("BATTERY3 FAIL");
+		}
 	}
 
 }

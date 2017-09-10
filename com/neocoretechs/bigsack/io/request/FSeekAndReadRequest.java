@@ -8,7 +8,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 
 
 public final class FSeekAndReadRequest implements IoRequestInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private IoInterface ioUnit;
 	private long offset;
 	private Datablock dblk;
