@@ -2,19 +2,24 @@
 <h3>Why BigSack?</h3>
 A list, bunch, bag, heap, sample, weighted set, collection, and suite are generic computer science terms for constructs to hold a 'large' 
 amount of data that is usually unstructured, and in placing them in these constructs, add structure.
-The underlying system in 'BigSack' employs multiple constructs to affect the structuring of unstructured data, such that it can be efficiently indexed and preserved, as as such the all-encompassing term 'Sack' was utilized.
+The underlying system in 'BigSack' employs multiple constructs to affect the structuring of unstructured data, such that it can be efficiently indexed and preserved, and as such the all-encompassing term 'Sack' was utilized.
 'Big' here refers to the fact that the amount of data the system can maintain far exceeds resident and even virtual memory.
 So in addition to BigSack having the means to store a large amount of unstructured data it adds the properties of recoverability,
 isolation, durability, atomicity, concurrency, all while maintaining the transparency to underlying system design. So imagine the Java
 TreeMap and TreeSet with some additional transaction semantics and storage subsystem needs and you have a good picture of this system.<br/>
-'BigSack' seemed to convey maximum functionality with minimum character length.
+'BigSack' as a name seemed to convey maximum functionality with minimum character length.
 <h3>Technical Details:</h3>
 BigSack is a Java persistence mechanism that provides TreeSet and TreeMap key/value store functionality 
 with a small footprint and exabyte object serialization capability. Serializable objects implementing the 
-Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache.<br/>
+java.lang.Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache. The Comparable interface 
+is part of the standard Java Collections Framework and is implemented in the majority of built-in Java classes already, classes such as
+'String' and the Object wrappers for all the primitive types,
+and it is easily implemented in new user classes with the only method
+being 'int compareTo(Comparable anotherObject)'. The 'compareTo(anotherObject)' method takes another Comparable and returns a -1, 0, or 1 depending on whether 'anotherObject' is less than, equal, or greater than the comparing object. <br/>
 <ul>
 <li>Multiple memory mapped tablespace files facilitate high throughput to disk.</li>
 <li>Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
+<li>Extensive use of multithreading makes maximum use of resources to keep the data firehose blasting. 
 </li></ul>
 <p/>
 The disk structure for a 'database' is specified as follows from the example path "/home/db/TestDB":
