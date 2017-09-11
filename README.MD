@@ -18,13 +18,17 @@ being 'int compareTo(Comparable anotherObject)'. The 'compareTo(anotherObject)' 
 Since the process is driven by the compareTo method that expects a class or subclass of a compatible type to be presented to the method for comparison,
 some thought must be given to placing objects of the same type in the collection, as strongly typed collections are not yet enforced. One method to
 manage this constraint is to combine the database name with the type of class intended to be stored, then enforce this naming convention thus 'typing' the collection through other means. To facilitate this, there are methods in the class com.neocoretechs.bigsack.BigSackAdapter:
+
 ```
+
 BigSackAdapter.setTableSpaceDir("/home/db/TestDB"); // sets the database name, which will be modified with class for each new class stored.
 BufferedTreeSet bts = BigSackAdapter.getBigSackSet(object); // where 'object' implements Comparable or is a type of 'Class'.
 BufferedTreeMap btm = BigSackAdapter.getBigSackMap(object);
 TransactionalTreeSet tts = BigSackAdapter.getBigSackSetTransaction(object);
 TransactionalTreeMap ttm = BigSackAdapter.getBigSackMapTransaction(object);
+
 ```
+
 So if you were to store instances of a class named 'com.you.code' you would see files in each tablespace directory similar to "TestDBcom.you.code".
 So the typing is not strongly enforced, but a means to manage types is provided that prevents exceptions being thrown in the 'compareTo' method.
 <h3>Features:</h3>
