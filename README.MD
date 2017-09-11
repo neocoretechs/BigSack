@@ -1,9 +1,17 @@
 <h1>BigSack</h1>
+<h2>Why BigSack?</h2>
+A 'Sack' is a generic computer science term for a construct to hold a large amount of data that is usually unstructured.
+'Big' here refers to the fact that the amount of data the system can maintain far exceeds resident and even virtual memory.
+So in addition to BigSack having the means to store a large amount of unstructured data it adds the properties of recoverability,
+isolation, durability, atomicity, concurrency, all while maintaining the transparency to underlying system design. So imagine the Java
+TreeMap and TreeSet with some additional transaction semantics and storage subsystem needs and you have a good picture of this system.
+<h2>Technical Details:</h2>
 BigSack is a Java persistence mechanism that provides TreeSet and TreeMap key/value store functionality 
 with a small footprint and exabyte object serialization capability. Serializable objects implementing the 
 Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache.
 Multiple memory mapped tablespace files facilitate high throughput to disk.
 Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
+<p/>
 The disk structure for a 'database' is specified as follows from the example path "/home/db/TestDB":
 /home/db/log - Contains the ARIES log files; control and mirror and log TestDB<tablespace>.log.
 /home/db/tablespace0/TestDB.0 - Contains the tablespace files for tablespace 0 for databases
@@ -20,8 +28,10 @@ The tablespace structure is the same on nodes under Cluster configuration.
 For further information see java.util.TreeMap and java.util.TreeSet for specific details of the API.
 See the documentation for the ARIES protocol standard for further information on that subsystem.
 
+<h2>Runtime Configuration:</h2>
+
+To specify the properties file at runtime the -DBigSack.properties=/[path]/[to]/properties JVM parameter may be passed:
 ```
-To specify the properties file at runtime the -DBigSack.properties=/[path]/[to]/properties JVM parameter may be passed
 #
 # Properties for the BigSack Java Deep K/V Store
 #
