@@ -76,7 +76,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new BufferedTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L3Cache"));
+			ret =  new BufferedTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
 			classToIsoTreeSet.put(xClass, ret);
 		}
 		return ret;
@@ -104,7 +104,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackMap About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new BufferedTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L3Cache"));
+			ret =  new BufferedTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
 			classToIsoTreemap.put(xClass, ret);
 		}
 		return ret;
@@ -132,7 +132,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackSetTransaction About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new TransactionalTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L3Cache"));
+			ret =  new TransactionalTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
 			classToIsoXTreeset.put(xClass, ret);
 		}
 		return ret;
@@ -160,7 +160,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackMapTransaction About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new TransactionalTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L3Cache"));
+			ret =  new TransactionalTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
 			classToIsoXTreemap.put(xClass, ret);
 		}
 		return ret;
