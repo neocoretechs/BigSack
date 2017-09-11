@@ -1,34 +1,42 @@
 <h1>BigSack</h1>
-<h2>Why BigSack?</h2>
-A 'Sack' is a generic computer science term for a construct to hold a large amount of data that is usually unstructured.
+<h3>Why BigSack?</h3>
+A list, bunch, bag, heap, sample, weighted set, collection, and suite are generic computer science terms for constructs to hold a 'large' 
+amount of data that is usually unstructured, and in placing them in these constructs, add structure.
+The underlying system in 'BigSack' employs multiple constructs to affect the structuring of unstructured data, such that it can be efficiently indexed and preserved, as as such the all-encompassing term 'Sack' was utilized.
 'Big' here refers to the fact that the amount of data the system can maintain far exceeds resident and even virtual memory.
 So in addition to BigSack having the means to store a large amount of unstructured data it adds the properties of recoverability,
 isolation, durability, atomicity, concurrency, all while maintaining the transparency to underlying system design. So imagine the Java
-TreeMap and TreeSet with some additional transaction semantics and storage subsystem needs and you have a good picture of this system.
-<h2>Technical Details:</h2>
+TreeMap and TreeSet with some additional transaction semantics and storage subsystem needs and you have a good picture of this system.<br/>
+'BigSack' seemed to convey maximum functionality with minimum character length.
+<h3>Technical Details:</h3>
 BigSack is a Java persistence mechanism that provides TreeSet and TreeMap key/value store functionality 
 with a small footprint and exabyte object serialization capability. Serializable objects implementing the 
-Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache.
-Multiple memory mapped tablespace files facilitate high throughput to disk.
-Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
+Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache.<br/>
+<ul>
+<li>Multiple memory mapped tablespace files facilitate high throughput to disk.</li>
+<li>Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
+</li></ul>
 <p/>
 The disk structure for a 'database' is specified as follows from the example path "/home/db/TestDB":
-/home/db/log - Contains the ARIES log files; control and mirror and log TestDB<tablespace>.log.
-/home/db/tablespace0/TestDB.0 - Contains the tablespace files for tablespace 0 for databases
-/home/db/tablespace0/TestDB.1 - Contains the tablespace files for tablespace 1 for databases
-/home/db/tablespace0/TestDB.2 - Contains the tablespace files for tablespace 2 for databases
-/home/db/tablespace0/TestDB.3 - Contains the tablespace files for tablespace 3 for databases
-/home/db/tablespace0/TestDB.4 - Contains the tablespace files for tablespace 4 for databases
-/home/db/tablespace0/TestDB.5 - Contains the tablespace files for tablespace 5 for databases
-/home/db/tablespace0/TestDB.6 - Contains the tablespace files for tablespace 6 for databases
-/home/db/tablespace0/TestDB.7 - Contains the tablespace files for tablespace 7 for databases
+<ul>
+<li>/home/db/log - Contains the ARIES log files; control and mirror and log TestDB<tablespace>.log.</li>
+<li>/home/db/tablespace0/TestDB.0 - Contains the tablespace files for tablespace 0 for databases</li>
+<li>/home/db/tablespace0/TestDB.1 - Contains the tablespace files for tablespace 1 for databases</li>
+<li>/home/db/tablespace0/TestDB.2 - Contains the tablespace files for tablespace 2 for databases</li>
+<li>/home/db/tablespace0/TestDB.3 - Contains the tablespace files for tablespace 3 for databases</li>
+<li>/home/db/tablespace0/TestDB.4 - Contains the tablespace files for tablespace 4 for databases</li>
+<li>/home/db/tablespace0/TestDB.5 - Contains the tablespace files for tablespace 5 for databases</li>
+<li>/home/db/tablespace0/TestDB.6 - Contains the tablespace files for tablespace 6 for databases</li>
+<li>/home/db/tablespace0/TestDB.7 - Contains the tablespace files for tablespace 7 for databases</li>
+</li></ul>
+<p/>
 In a cluster configuration the tablespaces are resident on remote or local nodes connected by TCP sockets.
 The tablespace structure is the same on nodes under Cluster configuration.
-
+<p/>
 For further information see java.util.TreeMap and java.util.TreeSet for specific details of the API.
 See the documentation for the ARIES protocol standard for further information on that subsystem.
-
-<h2>Runtime Configuration:</h2>
+<p/>
+<h3>Runtime Configuration:</h3>
 
 To specify the properties file at runtime the -DBigSack.properties=/[path]/[to]/properties JVM parameter may be passed:
 ```
