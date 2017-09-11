@@ -2,7 +2,6 @@ package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,7 +36,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * that accepts connections and returns a BigSackSession object. A table of one to one sessions and
 * tables is maintained. A path to the log dirs and a path to the tablespace dirs can be specified or
 * a default file structure based on mode can be used if the remoteDbName is null.
-* @author Groff
+* @author Groff (c) NeoCoreTechs 2003,2017
 */
 public final class SessionManager {
 	private static boolean DEBUG = false;

@@ -145,7 +145,7 @@ public final class BTreeKeyPage {
 		if( lbai == null )
 			throw new IOException("BTreeKeyPage ctor1 retrieval for page "+GlobalDBIO.valueOf(pageId)+" **FAIL**.");
 		else {
-			if( clear ) {
+			if( clear || lbai.getBlk().getBytesused() == 0) { // intentional clear or we may have deleted or rolled back all the way to primordial
 				lbai.resetBlock(false); // set up headers without revoking access
 				lbai.getBlk().setKeypage((byte) 1); // mark it as keypage
 				setAllUpdated(true); // we cleared the block, so all must be written come write time
@@ -175,7 +175,7 @@ public final class BTreeKeyPage {
 		initTransients();
 		// Pre-allocate the arrays that hold persistent data
 		setupKeyArrays();
-		if( read ) {
+		if( read && lbai.getBlk().getBytesinuse() > 0) {// intentional clear or we may have deleted or rolled back all the way to primordial
 			BlockStream bs = sdbio.getIOManager().getBufferPool().getBlockStream(GlobalDBIO.getTablespace(this.pageId));
 			DataInputStream dis = bs.getDBInput();
 			readFromDBStream(dis);

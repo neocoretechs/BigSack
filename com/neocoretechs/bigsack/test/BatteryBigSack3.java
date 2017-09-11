@@ -4,9 +4,6 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-
-
-import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
  * Testing of TransactionalTreeSet with large payload key object.
@@ -45,6 +42,7 @@ public class BatteryBigSack3 {
 		battery3B(session, argv);
 		battery1D(session, argv);
 		battery1E(session, argv);
+		battery3(session, argv);
 	
 		//SessionManager.stopCheckpointDaemon(argv[0]);
 		session.commit();
@@ -206,12 +204,12 @@ public class BatteryBigSack3 {
 		if( !success) throw new Exception("BATTERY1E fail");
 	}
 	
-	public static void battery3(BigSackSession session, String[] argv) throws Exception {
-		String key = "Lets try this";
-		session.put(key, "A BigSack Rollback!");
-		session.Rollback();
-		Object o = session.get(key);
-		if( o == null )
+	public static void battery3(TransactionalTreeSet session, String[] argv) throws Exception {
+		bigtest key = new bigtest();
+		key.init(123567);
+		session.add(key);
+		session.rollback();
+		if( !session.contains(key) )
 			 System.out.println("BATTERY3 SUCCESS ");
 		else {
 			 System.out.println("BATTERY3 FAIL");

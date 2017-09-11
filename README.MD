@@ -11,11 +11,23 @@ TreeMap and TreeSet with some additional transaction semantics and storage subsy
 <h3>Technical Details:</h3>
 BigSack is a Java persistence mechanism that provides TreeSet and TreeMap key/value store functionality 
 with a small footprint and exabyte object serialization capability. Serializable objects implementing the 
-java.lang.Comparable interface can be stored backed by a BTree and multiple levels of pooled tuneable cache. The Comparable interface 
+java.lang.Comparable interface can be stored, backed by a BTree and multiple levels of pooled tuneable cache. The Comparable interface 
 is part of the standard Java Collections Framework and is implemented in the majority of built-in Java classes already, classes such as
-'String' and the Object wrappers for all the primitive types,
-and it is easily implemented in new user classes with the only method
+'String' and the Object wrappers for all the primitive types, and it is easily implemented in new user classes with the only method
 being 'int compareTo(Comparable anotherObject)'. The 'compareTo(anotherObject)' method takes another Comparable and returns a -1, 0, or 1 depending on whether 'anotherObject' is less than, equal, or greater than the comparing object. <br/>
+Since the process is driven by the compareTo method that expects a class or subclass of a compatible type to be presented to the method for comparison,
+some thought must be given to placing objects of the same type in the collection, as strongly typed collections are not yet enforced. One method to
+manage this constraint is to combine the database name with the type of class intended to be stored, then enforce this naming convention thus 'typing' the collection through other means. To facilitate this, there are methods in the class com.neocoretechs.bigsack.BigSackAdapter:
+```
+BigSackAdapter.setTableSpaceDir("/home/db/TestDB"); // sets the database name, which will be modified with class for each new class stored.
+BufferedTreeSet bts = BigSackAdapter.getBigSackSet(object); // where 'object' implements Comparable or is a type of 'Class'.
+BufferedTreeMap btm = BigSackAdapter.getBigSackMap(object);
+TransactionalTreeSet tts = BigSackAdapter.getBigSackSetTransaction(object);
+TransactionalTreeMap ttm = BigSackAdapter.getBigSackMapTransaction(object);
+```
+So if you were to store instances of a class named 'com.you.code' you would see files in each tablespace directory similar to "TestDBcom.you.code".
+So the typing is not strongly enforced, but a means to manage types is provided that prevents exceptions being thrown in the 'compareTo' method.
+<h3>Features:</h3>
 <ul>
 <li>Multiple memory mapped tablespace files facilitate high throughput to disk.</li>
 <li>Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
