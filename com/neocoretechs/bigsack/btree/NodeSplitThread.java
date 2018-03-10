@@ -18,7 +18,7 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  */
 public class NodeSplitThread implements Runnable {
 	private static boolean DEBUG = false;
-	private boolean shouldRun = true;
+	private volatile boolean shouldRun = true;
 	private static int QUEUEMAX = 1024;
 	private CyclicBarrier synch;
 	private ArrayBlockingQueue<IoRequestInterface> requestQueue = new ArrayBlockingQueue<IoRequestInterface>(QUEUEMAX, true); // true maintains FIFO order;

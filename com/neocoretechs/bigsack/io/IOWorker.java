@@ -27,7 +27,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	private IoInterface ioUnit;
 	private long nextFreeBlock = -1L;
 	private BlockingQueue<IoRequestInterface> requestQueue;
-	public boolean shouldRun = true;
+	public volatile boolean shouldRun = true;
 	private int tablespace; // 0-7
 	private String DBName;
 	private String remoteDBName = null;

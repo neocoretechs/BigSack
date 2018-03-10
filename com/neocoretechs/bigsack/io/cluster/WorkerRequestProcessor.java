@@ -28,7 +28,7 @@ public final class WorkerRequestProcessor implements Runnable {
 	private static boolean DEBUG = false;
 	private BlockingQueue<IoRequestInterface> requestQueue;
 	private DistributedWorkerResponseInterface worker;
-	private boolean shouldRun = true;
+	private volatile boolean shouldRun = true;
 	public WorkerRequestProcessor(DistributedWorkerResponseInterface worker) {
 		this.worker = worker;
 		requestQueue = ((IOWorker)worker).getRequestQueue();

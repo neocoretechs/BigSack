@@ -41,7 +41,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
 	private static final boolean NEWNODEPOSITIONDEBUG = false;
-	private boolean shouldRun = true;
+	private volatile boolean shouldRun = true;
 	private BlockingQueue<BlockAccessIndex> freeBL; // free block list
 	private ObjectDBIO globalIO;
 	private IoManagerInterface ioManager;

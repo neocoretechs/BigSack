@@ -39,7 +39,7 @@ public class UDPMaster implements Runnable, MasterInterface {
 	private int tablespace;
 	private String remoteDBName = null;
 	
-	private boolean shouldRun = true;
+	private volatile boolean shouldRun = true;
 	
 	private ConcurrentHashMap<Integer, IoRequestInterface> requestContext;
 	

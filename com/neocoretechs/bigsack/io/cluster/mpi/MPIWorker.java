@@ -56,7 +56,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  */
 public class MPIWorker extends IOWorker implements DistributedWorkerResponseInterface, NodeBlockBufferInterface {
 	private static final boolean DEBUG = true;
-	boolean shouldRun = true;
+	volatile boolean shouldRun = true;
 	public String MASTERPORT = "tcp://amimaster";
 	public String SLAVEPORT = "tcp://ami0";
 	public static String remoteMaster = "AMIMASTER";

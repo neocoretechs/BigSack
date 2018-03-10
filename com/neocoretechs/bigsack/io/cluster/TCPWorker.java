@@ -46,7 +46,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  */
 public class TCPWorker extends IOWorker implements DistributedWorkerResponseInterface, NodeBlockBufferInterface {
 	private static final boolean DEBUG = false;
-	boolean shouldRun = true;
+	volatile boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
 	private String remoteMaster = "AMIMASTER";

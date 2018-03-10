@@ -30,7 +30,7 @@ import com.neocoretechs.bigsack.io.request.cluster.IoResponse;
  */
 public class UDPWorker extends IOWorker implements DistributedWorkerResponseInterface, NodeBlockBufferInterface {
 	private static final boolean DEBUG = true;
-	boolean shouldRun = true;
+	volatile boolean shouldRun = true;
 	public int MASTERPORT = 9876;
 	public int SLAVEPORT = 9876;
 	public static String remoteMaster = "AMIMASTER";

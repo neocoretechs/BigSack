@@ -31,7 +31,7 @@ public class DistributedIOWorker implements IOWorkerInterface, Runnable {
 	protected MasterInterface ioUnit;
 	private long nextFreeBlock = 0L;
 	private BlockingQueue<IoRequestInterface> requestQueue;
-	public boolean shouldRun = true;
+	public volatile boolean shouldRun = true;
 	protected int tablespace; // 0-7
 	protected String DBName;
 	protected String remoteDBName = null;

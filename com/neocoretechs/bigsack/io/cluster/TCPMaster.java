@@ -75,7 +75,7 @@ public class TCPMaster implements Runnable, MasterInterface {
 	private int tablespace;
 	private String remoteDBName = null; // if not null, alternate database name for remote worker nodes with specific directory
 	
-	private boolean shouldRun = true;
+	private volatile boolean shouldRun = true;
 	
 	private ConcurrentHashMap<Integer, IoRequestInterface> requestContext;
 	
