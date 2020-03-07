@@ -35,17 +35,20 @@ import java.io.InputStream;
 public class Props {
 	private static final String propsFile = "BigSack.properties";
 	private static String propfile = null;
-	public static boolean DEBUG = false;
+	public static boolean DEBUG = true;
 	/**
 	 * assume properties file is in 'BigSack.properties'
 	 */
 	static {
 		try {
 			String file = System.getProperty(propsFile);
-			if (file == null)
+			if (file == null) {
 				init(top());
-			else
+			} else {
+				if(DEBUG)
+					System.out.println("Loading properties:"+file);
 				init(new FileInputStream(file));
+			}
 		} catch (IOException ioe) {
 			throw new RuntimeException(ioe.toString());
 		}
@@ -137,7 +140,10 @@ public class Props {
 			propfile = System.getProperty(propsFile); // now we look for -DBigSack.properties= on cmdl
 			if( propfile == null ) // nowhere left to turn
 				throw new IOException("FATAL ERROR:  unable to load "+propsFile+" file: not found on resource path");
+			loader = ClassLoader.getSystemResource(propfile);
 		}
+		if( DEBUG )
+			System.out.println("Loading properties:"+loader);
 		return loader.openStream();
 	}
 

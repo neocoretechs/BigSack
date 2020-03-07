@@ -40,7 +40,6 @@ public final class CommitRequest extends AbstractClusterWork implements Completi
 	private int tablespace;
 	private transient CountDownLatch barrierCount;
 	private transient RecoveryLogManager recoveryLog;
-	private transient IoInterface ioManager;
 	/**
 	 * We re use the barriers, they are cyclic, so they are stored as fields
 	 * in the blockManager and passed here
@@ -90,11 +89,10 @@ public final class CommitRequest extends AbstractClusterWork implements Completi
 	}
 	/**
 	 * This method is called by queueRequest to set the proper tablespace from IOManager 
-	 * It is the default way to set the active IO unit
+	 * It is the default way to set the active IO unit. Since we deal with all tablespaces, we do nothing.
 	 */
 	@Override
 	public void setIoInterface(IoInterface ioi) {
-		ioManager = ioi;
 	}
 	
 	@Override

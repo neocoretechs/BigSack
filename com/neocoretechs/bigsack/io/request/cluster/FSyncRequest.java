@@ -86,5 +86,9 @@ public final class FSyncRequest extends AbstractClusterWork implements Completio
 	@Override
 	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
+	@Override
+	public boolean doPropagate() {
+		return true;
+	}
 
 }

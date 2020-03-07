@@ -25,7 +25,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  *
  */
 public class UDPMaster implements Runnable, MasterInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	public static final boolean TEST = false;
 	
 	private int MASTERPORT = 9876;

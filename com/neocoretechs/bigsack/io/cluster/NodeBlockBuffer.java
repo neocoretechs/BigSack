@@ -14,7 +14,7 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
  *
  */
 public final class NodeBlockBuffer  {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private static int NODEPOOLBLOCKS = 10000;
 	private ConcurrentHashMap<Long, Datablock> blockBuffer;
 	private IoInterface rawStore;

@@ -113,5 +113,9 @@ public final class FSeekAndReadRequest extends AbstractClusterWork implements Co
 	@Override
 	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
+	@Override
+	public boolean doPropagate() {
+		return true;
+	}
 
 }

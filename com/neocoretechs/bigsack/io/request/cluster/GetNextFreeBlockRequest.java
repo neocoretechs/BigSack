@@ -164,5 +164,9 @@ public final class GetNextFreeBlockRequest extends AbstractClusterWork implement
 	@Override
 	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
+	@Override
+	public boolean doPropagate() {
+		return true;
+	}
 
 }

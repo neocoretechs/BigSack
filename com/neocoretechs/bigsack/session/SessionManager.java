@@ -50,14 +50,19 @@ public final class SessionManager {
 	@SuppressWarnings("unused")
 	private static final int MAX_USERS = -1;
 	//
-	// Singleton setups:
+	// Multithreaded double check Singleton setups:
 	// 1.) privatized constructor; no other class can call
 	private SessionManager() {
 	}
-	// 2.) create only instance, save it to private static
-	private static SessionManager instance = new SessionManager();
-	// 3.) make the instance available
+	// 2.) volatile instance
+	private static volatile SessionManager instance = null;
+	// 3.) lock class, assign instance if null
 	public static SessionManager getInstance() {
+		synchronized(SessionManager.class) {
+			if(instance == null) {
+				instance = new SessionManager();
+			}
+		}
 		return instance;
 	}
 	// Global transaction timestamps

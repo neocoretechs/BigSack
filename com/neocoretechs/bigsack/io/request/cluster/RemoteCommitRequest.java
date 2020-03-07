@@ -21,7 +21,7 @@ import com.neocoretechs.bigsack.io.cluster.NodeBlockBufferInterface;
  *
  */
 public final class RemoteCommitRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final long serialVersionUID = 1L;
 	private int tablespace;
 	private transient CountDownLatch barrierCount;
@@ -90,6 +90,11 @@ public final class RemoteCommitRequest extends AbstractClusterWork implements Co
 	}
 	@Override
 	public void setCyclicBarrier(CyclicBarrier cb) {	
+	}
+
+	@Override
+	public boolean doPropagate() {
+		return true;
 	}
 
 }

@@ -1,41 +1,67 @@
 <h1>BigSack</h1>
 <h3>Why BigSack?</h3>
-A list, bunch, bag, heap, sample, weighted set, collection, and suite are generic computer science terms for constructs to hold a 'large' 
-amount of data that is usually unstructured, and in placing them in these constructs, add structure.
-The underlying system in 'BigSack' employs multiple constructs to affect the structuring of unstructured data, such that it can be efficiently indexed and preserved, and as such the all-encompassing term 'Sack' was utilized.
-'Big' here refers to the fact that the amount of data the system can maintain far exceeds resident and even virtual memory.
-So in addition to BigSack having the means to store a large amount of unstructured data it adds the properties of recoverability,
-isolation, durability, atomicity, concurrency, all while maintaining the transparency to underlying system design. So imagine the Java
-TreeMap and TreeSet with some additional transaction semantics and storage subsystem needs and you have a good picture of this system.<br/>
-'BigSack' as a name seemed to convey maximum functionality with minimum character length.
+A bag or sack is a computer science term for a structure to hold a large amount of data that is usually unstructured.
+BigSack can store Java objects so that they can be efficiently indexed, preserved, and retrieved in a manner that mirrors the java.util.TreeMap and java.util.TreeSet classes while providing the benefits of a full blown database.
+'Big' refers to the fact that the amount of data the system can maintain far exceeds resident and even virtual memory.
+So in addition to BigSack having the means to store a large number of objects, it adds the properties of recoverability,
+isolation, durability, atomicity, and concurrency. So imagine the Java
+TreeMap and TreeSet with transaction semantics and a storage subsystem with data recovery and the ability to scale over multiple nodes or work standalone, and you have a good picture of this system.<br/>
+
 <h3>Technical Details:</h3>
 BigSack is a Java persistence mechanism that provides TreeSet and TreeMap key/value store functionality 
-with a small footprint and exabyte object serialization capability. Serializable objects implementing the 
-java.lang.Comparable interface can be stored, backed by a BTree and multiple levels of pooled tuneable cache. The Comparable interface 
-is part of the standard Java Collections Framework and is implemented in the majority of built-in Java classes already, classes such as
-'String' and the Object wrappers for all the primitive types, and it is easily implemented in new user classes with the only method
-being 'int compareTo(Comparable anotherObject)'. The 'compareTo(anotherObject)' method takes another Comparable and returns a -1, 0, or 1 depending on whether 'anotherObject' is less than, equal, or greater than the comparing object. <br/>
-Since the process is driven by the compareTo method that expects a class or subclass of a compatible type to be presented to the method for comparison,
-some thought must be given to placing objects of the same type in the collection, as strongly typed collections are not yet enforced. One method to
-manage this constraint is to combine the database name with the type of class intended to be stored, then enforce this naming convention thus 'typing' the collection through other means. To facilitate this, there are methods in the class com.neocoretechs.bigsack.BigSackAdapter:
+with a small footprint and exabyte object serialization capability. Just about any Java object, meaning Serializable objects implementing the 
+java.lang.Comparable interface, can be stored, backed by a BTree and multiple levels of pooled tuneable cache. The Comparable interface 
+is part of the standard Java Collections Framework and is implemented in the majority of built-in Java classes like String already.<p/>
+
+There are methods in the class com.neocoretechs.bigsack.BigSackAdapter to organize the maps and sets on the basis of type. In this way a rudimentary schema can be maintained. A non-transactional BufferedTreeSet or BufferedTreeMap can be obtained by the following methods:
 
 ```
 
 BigSackAdapter.setTableSpaceDir("/home/db/TestDB"); // sets the database name, which will be modified with class for each new class stored.
-BufferedTreeSet bts = BigSackAdapter.getBigSackSet(object); // where 'object' implements Comparable or is a type of 'Class'.
-BufferedTreeMap btm = BigSackAdapter.getBigSackMap(object);
-TransactionalTreeSet tts = BigSackAdapter.getBigSackSetTransaction(object);
-TransactionalTreeMap ttm = BigSackAdapter.getBigSackMapTransaction(object);
+BufferedTreeSet bts = BigSackAdapter.getBigSackSet(Class.class); // implements Comparable and is a type of 'Class'. Or..
+BufferedTreeMap btm = BigSackAdapter.getBigSackMap(Class.class);
+
+```
+
+The 'Buffered' semantics imply that a commit is performed automatically after each operation. If a failure occurs, recovery still happens.<br/>
+If a transaction context is desired, in other words one in which multiple operations can be committed or rolled back under the control of the application, the following methods can be used:
+
+```
+
+BigSackAdapter.setTableSpaceDir("/home/db/TestDB"); // sets the database name, which will be modified with class for each new class stored.
+TransactionalTreeSet tts = BigSackAdapter.getBigSackSetTransaction(Class1.class); // Or
+TransactionalTreeMap ttm = BigSackAdapter.getBigSackMapTransaction(Class2.class);
+tts.add(object);
+ttm.put(key, value);
+ttm.commit(); // Or
+ttm.rollback(); // Or
+ttm.checkpoint(); // establish intermediate checkpoint that can be committed or rolled back to
 
 ```
 
 So if you were to store instances of a class named 'com.you.code' you would see files in each tablespace directory similar to "TestDBcom.you.code".
-So the typing is not strongly enforced, but a means to manage types is provided that prevents exceptions being thrown in the 'compareTo' method.
+The typing is not strongly enforced, any key type can be inserted, but a means to manage types is provided that prevents exceptions being thrown in the 'compareTo' method.
+
+In addition to the 'get','put','remove','contains','size','keySet','entrySet','contains','containsKey','first','last','firstKey','lastKey' the full set of
+iterators can be obtained to retrieve subsets of the data for sets and maps:<br>
+Sets:<br/>
+headSet<br/>
+tailSet<br/>
+subSet<br/>
+Maps:<br/>
+headMap<br/>
+headMapKV (key and value)<br/>
+tailMap<br/>
+tailMapKV<br/>
+subMap<br/>
+subMapKV<br/>
+
 <h3>Features:</h3>
 <ul>
 <li>Multiple memory mapped tablespace files facilitate high throughput to disk.</li>
-<li>Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol.
-<li>Extensive use of multithreading makes maximum use of resources to keep the data firehose blasting. 
+<li>Durability is attained through the use of checkpointing and roll forward recovery utilizing the ARIES protocol. The ARIES protocol is an industry
+standard whose acronym means Algorithms for Recovery and Isolation Exploiting Semantics. ARIES is a protocol used in DB2, SQL Server, and other databases.
+<li>Extensive use of multithreading makes maximum use of resources to keep the data flowing. 
 </li></ul>
 <p/>
 The disk structure for a 'database' is specified as follows from the example path "/home/db/TestDB":

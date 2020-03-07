@@ -25,7 +25,7 @@ public abstract class AbstractClusterWork implements Serializable {
 		 return u;
 	}
 	
-	public boolean doPropagate() { return true; }
+	public abstract boolean doPropagate();
 	
 	@Override
 	public boolean equals(Object o) {

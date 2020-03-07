@@ -25,6 +25,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 public final class UndoableBlock implements Undoable, Serializable {
 	private static final long serialVersionUID = 3823704109110419908L;
 	private BlockAccessIndex blkV1,blkV2; // utility blocks
+	private static boolean DEBUG = false;
 	
 	public UndoableBlock(BlockAccessIndex tblk, BlockAccessIndex blk) {
 		blkV1 = tblk;
@@ -48,7 +49,7 @@ public final class UndoableBlock implements Undoable, Serializable {
 	 */
 	@Override
 	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException {
-		if( Props.DEBUG ) {
+		if( DEBUG  ) {
 			System.out.println("UndoableBlock.applyChange: instance:"+instance+" raw store"+blkV2.getBlockNum()+","+blkV2.getBlk());
 		}
 		blkV2.getBlk().setPageLSN(instance.getValueAsLong());

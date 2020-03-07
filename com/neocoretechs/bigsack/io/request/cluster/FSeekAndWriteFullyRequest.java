@@ -89,5 +89,9 @@ public final class FSeekAndWriteFullyRequest extends AbstractClusterWork impleme
 	@Override
 	public void setCyclicBarrier(CyclicBarrier cb) {
 	}
+	@Override
+	public boolean doPropagate() {
+		return true;
+	}
 
 }
