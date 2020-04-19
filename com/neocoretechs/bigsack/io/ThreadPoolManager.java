@@ -28,14 +28,16 @@ public class ThreadPoolManager {
 	private int threadNum = 0;
     private static Map<String, ExecutorService> executor = new HashMap<String, ExecutorService>();// = Executors.newCachedThreadPool(dtf);
 
-	public static ThreadPoolManager threadPoolManager = null;
+	public static volatile ThreadPoolManager threadPoolManager = null;
 	private ThreadPoolManager() { }
 	
 	public static ThreadPoolManager getInstance() {
-		if( threadPoolManager == null ) {
-			threadPoolManager = new ThreadPoolManager();
-			// set up pool for system processes
-			executor.put(DEFAULT_THREAD_POOL, Executors.newCachedThreadPool(getInstance().new LocalThreadFactory(DEFAULT_THREAD_POOL)));
+		synchronized(ThreadPoolManager.class) {
+			if( threadPoolManager == null ) {
+				threadPoolManager = new ThreadPoolManager();
+				// set up pool for system processes
+				executor.put(DEFAULT_THREAD_POOL, Executors.newCachedThreadPool(getInstance().new LocalThreadFactory(DEFAULT_THREAD_POOL)));
+			}
 		}
 		return threadPoolManager;
 	}
