@@ -152,8 +152,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 {
 	private static final boolean DEBUG = false;
 	private static final boolean DUMPLOG = false;
-	private static final boolean MEASURE = false; // take stats of log writes etc
-	static final boolean ALERT = false; // return status for recovery, also for FileLogger recover
+	private static final boolean MEASURE = true; // take stats of log writes etc
+	static final boolean ALERT = true; // return status for recovery, also for FileLogger recover
 	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
 	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
 	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
