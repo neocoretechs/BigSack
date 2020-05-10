@@ -48,7 +48,7 @@ public class TailSetIterator extends AbstractIterator {
 			}
 			bTree.getIO().deallocOutstanding();
 			if( DEBUG )
-				System.out.println("Relatrix TailSetIterator.Nextkey:"+nextKey);
+				System.out.println("TailSetIterator.Nextkey:"+nextKey);
 		}
 	}
 	public boolean hasNext() {
