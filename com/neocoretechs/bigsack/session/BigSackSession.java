@@ -105,7 +105,15 @@ public final class BigSackSession {
 	}
 
 	@SuppressWarnings("rawtypes")
-	public Object get(Comparable o) throws IOException {
+	public Comparable get(Comparable o) throws IOException {
+		TreeSearchResult tsr = bTree.seekKey(o);
+		if(tsr.atKey)
+			return bTree.getCurrentKey();
+		return null;
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public Object getValue(Object o) throws IOException {
 		return bTree.seekObject(o);
 	}
 	
@@ -115,7 +123,6 @@ public final class BigSackSession {
 		return tsr;
 	}
 	
-
 	/**
 	* Not a real subset, returns iterator vs set.
 	* 'from' element inclusive, 'to' element exclusive
@@ -200,20 +207,35 @@ public final class BigSackSession {
 	}
 	
 	/**
-	 * Contains
+	 * Contains a value object
 	 * @param o
-	 * @return
+	 * @return boolean if the value object is found
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	public boolean contains(Comparable o) throws IOException {
+	public boolean containsValue(Object o) throws IOException {
 		Object obj = bTree.seekObject(o);
 		if( obj != null ) {
 			bTree.getIO().deallocOutstanding();
+			//System.out.println("sought object:"+o+" found:"+obj);
 			return obj.equals(o);
 		}
 		bTree.getIO().deallocOutstanding();
 		return false;
+	}
+	
+	/**
+	 * Contains a value object
+	 * @param o
+	 * @return boolean if the value object is found
+	 * @throws IOException
+	 */
+	@SuppressWarnings("rawtypes")
+	public boolean contains(Comparable o) throws IOException {
+		// return TreeSearchResult
+		TreeSearchResult tsr = bTree.seekKey(o);
+		bTree.getIO().deallocOutstanding();
+		return tsr.atKey;
 	}
 	
 	/**

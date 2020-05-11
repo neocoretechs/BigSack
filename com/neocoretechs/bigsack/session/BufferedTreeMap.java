@@ -98,9 +98,26 @@ public class BufferedTreeMap {
 	* @exception IOException if get from backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public Object get(Comparable tkey) throws IOException {
+	public Comparable get(Comparable tkey) throws IOException {
+		Comparable c = null;
 		synchronized (session.getMutexObject()) {
-				Object kvp = session.get(tkey);
+				c = session.get(tkey);
+				session.Commit();
+		}
+		return c;
+	}
+	
+	/**
+	* Get a value from backing store if not in cache.
+	* We may toss out one to make room if size surpasses objectCacheSize
+	* @param tkey The key for the value
+	* @return The value for the key
+	* @exception IOException if get from backing store fails
+	*/
+	@SuppressWarnings("rawtypes")
+	public Object getValue(Object tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+				Object kvp = session.getValue(tkey);
 				session.Commit();
 				if (kvp == null)
 					return null;

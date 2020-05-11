@@ -86,6 +86,22 @@ public class TransactionalTreeMap {
 	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
 		return session.locate(tvalue);
 	}
+	/**
+	* Get a value from backing store if not in cache.
+	* We may toss out one to make room if size surpasses objectCacheSize
+	* @param tkey The key for the value
+	* @return The value for the key
+	* @exception IOException if get from backing store fails
+	*/
+	@SuppressWarnings("rawtypes")
+	public Comparable get(Comparable tkey) throws IOException {
+		Comparable c = null;
+		synchronized (session.getMutexObject()) {
+				c = session.get(tkey);
+				//session.Commit();
+		}
+		return c;
+	}
 	
 	/**
 	* Get a value from backing store if not in cache.
@@ -95,15 +111,12 @@ public class TransactionalTreeMap {
 	* @exception IOException if get from backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public Object get(Comparable tkey) throws IOException {
+	public Object getValue(Object tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object kvp = session.get(tkey);
-				//session.Commit();
-				if (kvp == null)
-					return null;
-				return kvp;
+				return session.getValue(tkey);
 		}
-	}
+	}	
+
 	/**
 	* Return the number of elements in the backing store
  	* @return A long value of number of elements
@@ -111,9 +124,7 @@ public class TransactionalTreeMap {
 	*/
 	public long size() throws IOException {
 		synchronized (session.getMutexObject()) {
-				long siz = session.size();
-				//session.Commit();
-				return siz;
+				return session.size();
 		}
 	}
 
@@ -140,15 +151,25 @@ public class TransactionalTreeMap {
 	/**
 	* Returns true if the collection contains the given key
 	* @param tkey The key to match
-	* @return true or false if in
+	* @return true if in, or false if absent
 	* @exception IOException If backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
 	public boolean containsKey(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-			boolean ret = session.contains(tkey);
-			//session.Commit();
-			return ret;
+			return  session.contains(tkey);
+		}
+	}
+	/**
+	* Returns true if the collection contains the given value object
+	* @param value The value to match
+	* @return true if in, false if absent
+	* @exception IOException If backing store fails
+	*/
+	@SuppressWarnings("rawtypes")
+	public boolean containsValue(Object value) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return  session.containsValue(value);
 		}
 	}
 	/**
@@ -160,9 +181,7 @@ public class TransactionalTreeMap {
 	@SuppressWarnings("rawtypes")
 	public Object remove(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-			Object o = session.remove(tkey);
-			//session.Commit();
-			return o;
+			return session.remove(tkey);
 		}
 	}
 	/**
@@ -171,9 +190,7 @@ public class TransactionalTreeMap {
 	*/
 	public Object firstKey() throws IOException {
 		synchronized (session.getMutexObject()) {
-			Object ret = session.firstKey();
-			//session.Commit();
-			return ret;
+			return session.firstKey();
 		}
 	}
 	/**
@@ -182,9 +199,7 @@ public class TransactionalTreeMap {
 	*/
 	public Object lastKey() throws IOException {
 		synchronized (session.getMutexObject()) {
-			Object ret = session.lastKey();
-			//session.Commit();
-			return ret;
+			return session.lastKey();
 		}
 	}
 	/**
@@ -195,9 +210,7 @@ public class TransactionalTreeMap {
 	*/
 	public Object last() throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object ret = session.last();
-				//session.Commit();
-				return ret;
+				return session.last();
 		}
 	}
 	/**
@@ -208,9 +221,7 @@ public class TransactionalTreeMap {
 	*/
 	public Object first() throws IOException {
 		synchronized (session.getMutexObject()) {
-			Object ret = session.first();
-			//session.Commit();
-			return ret;
+			return session.first();
 		}
 	}
 	/**
@@ -290,9 +301,7 @@ public class TransactionalTreeMap {
 	*/
 	public boolean isEmpty() throws IOException {
 		synchronized (session.getMutexObject()) {
-				boolean ret = session.isEmpty();
-				//session.Commit();
-				return ret;
+				return session.isEmpty();
 		}
 	}
 

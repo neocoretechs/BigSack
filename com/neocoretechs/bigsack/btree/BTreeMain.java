@@ -123,14 +123,15 @@ public final class BTreeMain {
 	 * @throws IOException
 	 */
 	public synchronized long count() throws IOException {
-		rewind();
+		boolean found = rewind();
+		//System.out.println(found);
 		long numKeys = 0;
 		long tim = System.currentTimeMillis();
-		if( currentPage != null ) {
+		if( found && currentPage != null ) {
 			++numKeys;
 			while (gotoNextKey() == 0) {
-			if( DEBUG || DEBUGCOUNT)
-				System.out.println("gotoNextKey returned: "+currentPage.getKey(currentIndex));
+				if( DEBUG || DEBUGCOUNT)
+					System.out.println("gotoNextKey returned: "+currentPage.getKey(currentIndex));
 				++numKeys;
 			}
 		}
@@ -149,20 +150,33 @@ public final class BTreeMain {
 		return (getRoot().getNumKeys() == 0);
 	}
 	/**
-	* currentPage and currentIndex set by this seeker of a target key.
-	* @param targetKey The Comparable key to seek
-	* @return data Object if found. Null otherwise.
+	* currentPage and currentIndex set by this seeker of a target object value.
+	* The only physically possible way is an iteration through the entire collection until found or end.
+	* @param targetObject The Object value to seek.
+	* @return data Object if found. null otherwise.
 	* @exception IOException if read failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public synchronized Object seekObject(Comparable targetKey) throws IOException {
-		TreeSearchResult tsr = search(targetKey);
-		if (tsr.atKey) {
-			setCurrent(tsr);
-			return getCurrentObject();
-		} else {
-			return null;
+	public synchronized Object seekObject(Object targetObject) throws IOException {	
+		//TreeSearchResult tsr = search(targetKey);
+		//if (tsr.atKey) {
+		//	setCurrent(tsr);
+		//	return getCurrentObject();
+		//} else {
+		//	return null;
+		//}
+		rewind();
+		if( currentPage != null ) {
+			while (gotoNextKey() == 0) {
+				//System.out.println(currentObject);
+				if(currentObject.equals(targetObject))
+					return currentObject;
+			}
 		}
+		// deallocate outstanding blocks in all tablespaces
+		sdbio.deallocOutstanding();
+		clearStack();
+		return null;
 	}
 	/**
 	* Seek the key, if we dont find it, leave the tree at it position closest greater than element.
@@ -783,14 +797,14 @@ public final class BTreeMain {
 	 * such that traversal can take place. Remember to clear stack after these operations.
 	 * @exception IOException If read fails
 	 */
-	public synchronized void rewind() throws IOException {
+	public synchronized boolean rewind() throws IOException {
 		currentPage = getRoot();
 		currentIndex = 0;
 		currentChild = 0;
 		clearStack();
-		seekLeftTree();
-		if( DEBUG )
-			System.out.println("BTreeMain.rewind positioned at "+currentPage+" "+currentIndex+" "+currentChild);
+		return seekLeftTree();
+		//if( DEBUG )
+		//	System.out.println("BTreeMain.rewind positioned at "+currentPage+" "+currentIndex+" "+currentChild);
 	}
 
 	/**
@@ -865,7 +879,7 @@ public final class BTreeMain {
         return new TreeSearchResult(sourcePage, i, false);
     }
 	/**
-	* Seek to location of next key in tree.
+	* Seek to location of next key in tree. Set current key and current object.
 	* Attempt to advance the child index at the current node. If it advances beyond numKeys, a pop
 	* is necessary to get us to the previous level. We repeat the process a that level, advancing index
 	* and checking, and again repeating pop.
@@ -1103,12 +1117,14 @@ public final class BTreeMain {
 	* Seeks to leftmost key in current subtree. Takes the currentChild and currentIndex from currentPage and uses the
 	* child at currentChild to descend the subtree and gravitate left.
 	*/
-	private synchronized void seekLeftTree() throws IOException {
+	private synchronized boolean seekLeftTree() throws IOException {
+		boolean foundPage = false;
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.println("BTreeMain.seekLeftTree page:"+currentPage+" index:"+currentIndex+" child:"+currentChild);
 		}
 		BTreeKeyPage tPage = currentPage.getPage(currentChild);
 		while (tPage != null) {
+			foundPage = true;
 			// Push the 'old' value of currentPage, currentIndex etc as a TraversalStackElement since we are
 			// intent on descending. After push and verification that tPage is not null, set page to tPage.
 			push();
@@ -1120,6 +1136,7 @@ public final class BTreeMain {
 			setCurrent();
 			tPage = currentPage.getPage(currentChild);
 		}
+		return foundPage;
 	}
 
 	/**
