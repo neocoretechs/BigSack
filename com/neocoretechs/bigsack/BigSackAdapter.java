@@ -165,6 +165,34 @@ public class BigSackAdapter {
 		}
 		return ret;
 	}
+	
+	public static void commitMap(Class clazz) throws IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
+		ret.commit();
+		classToIsoXTreemap.remove(xClass);
+	}
+	
+	public static void commitSet(Class clazz) throws IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
+		ret.commit();
+		classToIsoXTreeset.remove(clazz);
+	}
+	
+	public static void rollbackMap(Class clazz) throws IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
+		ret.rollback();
+		classToIsoXTreemap.remove(xClass);
+	}
+	
+	public static void rollbackSet(Class clazz) throws IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
+		ret.rollback();
+		classToIsoXTreeset.remove(clazz);
+	}
 	/**
 	 * Translate a class name into a legitimate file name with some aesthetics.
 	 * @param clazz

@@ -396,6 +396,11 @@ public final class BTreeKeyPage {
 	}
 	// A function to remove the idx-th key from this node - which is a non-leaf node
 	synchronized void removeFromNonLeaf(int idx) throws IOException {
+		// failsafe
+		if(getPage(idx) == null) {
+			System.out.println("BtreeKeyPage.removeFromNonLeaf requesting null page from index "+idx+" exiting instead.");
+			return;
+		}
 		Comparable targetKey = getKey(idx);
 	    // If the child that precedes k (C[idx]) has at least t keys,
 	    // find the predecessor 'pred' of k in the subtree rooted at
@@ -696,6 +701,12 @@ public final class BTreeKeyPage {
 			System.out.println("BTreeKeyPage.getPage EXIT BTreeKeyPage to retrieve target index:["+index+"]");
 			for(int i = 0; i <= numKeys; i++) {
 				System.out.println("BTreeKeyPage.getPage final page index:["+i+"]="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
+			}
+		}
+		if(pageArray[index] == null) {
+			System.out.println("BtreeKeyPage prepared to deliver null page from pageArray index "+index+" pageID:"+pageIdArray[index]);
+			for(int i = 0; i < pageArray.length; i++ ) {
+				System.out.println("Index:"+i+" Id:"+pageIdArray[i]+" Page:"+pageArray[i]);
 			}
 		}
 		return pageArray[index];
