@@ -5,6 +5,7 @@ import java.util.Iterator;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.btree.TreeSearchResult;
+import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
@@ -329,6 +330,7 @@ public final class BigSackSession {
 	* Generic session roll up.  Data is committed based on rollback param.
 	* We deallocate the outstanding block
 	* We iterate the tablespaces for each db removing obsolete log files.
+	* Remove the NODESPLITWORKER threads from BTreeMain, then remove this session from the SessionManager
 	* @param rollback true to roll back, false to commit
 	* @exception IOException For low level failure
 	*/
@@ -341,6 +343,7 @@ public final class BigSackSession {
 			// calls commitbufferflush
 			bTree.getIO().deallocOutstandingCommit();
 		}
+		SessionManager.releaseSession(this);
 	}
 	
 	/**
