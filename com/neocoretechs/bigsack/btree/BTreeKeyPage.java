@@ -703,6 +703,7 @@ public final class BTreeKeyPage {
 				System.out.println("BTreeKeyPage.getPage final page index:["+i+"]="+GlobalDBIO.valueOf(pageIdArray[i])+" page:"+pageArray[i]);
 			}
 		}
+		if(DEBUG)
 		if(pageArray[index] == null) {
 			System.out.println("BtreeKeyPage prepared to deliver null page from pageArray index "+index+" pageID:"+pageIdArray[index]);
 			for(int i = 0; i < pageArray.length; i++ ) {

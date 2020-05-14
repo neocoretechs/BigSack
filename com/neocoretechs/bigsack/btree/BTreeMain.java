@@ -167,6 +167,10 @@ public final class BTreeMain {
 		//}
 		rewind();
 		if( currentPage != null ) {
+			setCurrent();
+			// are we looking for first element?
+			if(currentObject.equals(targetObject))
+				return currentObject;
 			while (gotoNextKey() == 0) {
 				//System.out.println(currentObject);
 				if(currentObject.equals(targetObject))

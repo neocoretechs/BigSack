@@ -218,7 +218,8 @@ public final class BigSackSession {
 		Object obj = bTree.seekObject(o);
 		if( obj != null ) {
 			bTree.getIO().deallocOutstanding();
-			//System.out.println("sought object:"+o+" found:"+obj);
+			if(DEBUG)
+				System.out.println("sought object:"+o+" found:"+obj);
 			return obj.equals(o);
 		}
 		bTree.getIO().deallocOutstanding();
