@@ -166,6 +166,18 @@ public class BigSackAdapter {
 		return ret;
 	}
 	
+	public static void checkpointMapTransactions(Class clazz) throws IllegalAccessException, IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
+		ret.checkpoint();
+	}
+	
+	public static void checkpointSetTransactions(Class clazz) throws IllegalAccessException, IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
+		ret.checkpoint();
+	}
+	
 	public static void commitMap(Class clazz) throws IOException {
 		String xClass = translateClass(clazz.getName());
 		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
