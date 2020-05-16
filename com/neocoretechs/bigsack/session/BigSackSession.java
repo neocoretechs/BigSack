@@ -106,10 +106,10 @@ public final class BigSackSession {
 	}
 
 	@SuppressWarnings("rawtypes")
-	public Comparable get(Comparable o) throws IOException {
+	public Object get(Comparable o) throws IOException {
 		TreeSearchResult tsr = bTree.seekKey(o);
 		if(tsr.atKey)
-			return bTree.getCurrentKey();
+			return bTree.getCurrentObject();
 		return null;
 	}
 	

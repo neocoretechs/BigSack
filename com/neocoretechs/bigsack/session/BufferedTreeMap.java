@@ -98,8 +98,8 @@ public class BufferedTreeMap {
 	* @exception IOException if get from backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public Comparable get(Comparable tkey) throws IOException {
-		Comparable c = null;
+	public Object get(Comparable tkey) throws IOException {
+		Object c = null;
 		synchronized (session.getMutexObject()) {
 				c = session.get(tkey);
 				session.Commit();
