@@ -214,7 +214,7 @@ public class TransactionalTreeSet {
 	 * Commit the outstanding transaction
 	 * @throws IOException
 	 */
-	public void commit() throws IOException {
+	void commit() throws IOException {
 		session.Commit();
 	}
 	/**
@@ -222,11 +222,11 @@ public class TransactionalTreeSet {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public void checkpoint() throws IllegalAccessException, IOException {
+	void checkpoint() throws IllegalAccessException, IOException {
 		session.Checkpoint();
 	}
 	
-	public void rollback() throws IOException {
+	void rollback() throws IOException {
 		session.Rollback();
 	}
 	

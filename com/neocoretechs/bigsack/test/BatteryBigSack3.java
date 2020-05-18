@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 
+import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
  * Testing of TransactionalTreeSet with large payload key object.
@@ -32,7 +33,7 @@ public class BatteryBigSack3 {
 			 System.out.println("usage: java BatteryBigSack3 <database>");
 			System.exit(1);
 		}
-		TransactionalTreeSet session = new TransactionalTreeSet(argv[0],l3CacheSize);
+		TransactionalTreeSet session = BigSackAdapter.getBigSackSetTransaction(Class.forName(argv[0]));//new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
 		battery1A(session, argv);
@@ -45,7 +46,8 @@ public class BatteryBigSack3 {
 		battery3(session, argv);
 	
 		//SessionManager.stopCheckpointDaemon(argv[0]);
-		session.commit();
+		//session.commit();
+		BigSackAdapter.commitSet(Class.forName(argv[0]));
 		System.out.println("TEST BATTERY 3 COMPLETE.");
 		
 	}
@@ -177,7 +179,7 @@ public class BatteryBigSack3 {
 			bigtest b = new bigtest();
 			b.init(i);
 			session.add(b);
-			if( i == (max/2) ) session.checkpoint();
+			if( i == (max/2) ) BigSackAdapter.checkpointSetTransactions(Class.forName(argv[0]));//session.checkpoint();
 		}	
 		System.out.println("BATTERY1D SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -191,7 +193,7 @@ public class BatteryBigSack3 {
 			session.add(b);
 			al.add(b);
 		}
-		session.rollback();
+		BigSackAdapter.rollbackSet(Class.forName(argv[0]));//session.rollback();
 		boolean success = true;
 		// make sure these are not there..
 		for(bigtest bt : al) {
@@ -208,7 +210,7 @@ public class BatteryBigSack3 {
 		bigtest key = new bigtest();
 		key.init(123567);
 		session.add(key);
-		session.rollback();
+		BigSackAdapter.rollbackSet(Class.forName(argv[0]));//session.rollback();
 		if( !session.contains(key) )
 			 System.out.println("BATTERY3 SUCCESS ");
 		else {

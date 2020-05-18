@@ -357,6 +357,7 @@ public final class BTreeKeyPage {
 	 */
 	synchronized void remove(Comparable targetKey) throws IOException {
 	    TreeSearchResult tsr = search(targetKey);
+	    //System.out.println("BTreeKeyPage.remove "+targetKey+" search result:"+tsr);
 	    int idx = tsr.insertPoint;
 	    // The key to be removed is present in this node
 	    if (tsr.atKey) {
@@ -621,14 +622,15 @@ public final class BTreeKeyPage {
 	* @throws IOException 
 	*/
 	synchronized void delete(int index) throws IOException {
+		//System.out.println("BTreeKeyPage.delete "+this+" index:"+index);
+		if( !keyIdArray[index].equals(Optr.emptyPointer))
+			sdbio.delete_object(keyIdArray[index], GlobalDBIO.getObjectAsBytes(getKey(index)).length);
+		if( !dataIdArray[index].equals(Optr.emptyPointer))
+			sdbio.delete_object(dataIdArray[index], GlobalDBIO.getObjectAsBytes(getData(index)).length);
 		// If its the rightmost key ignore move
 		if (index < getNumKeys() - 1)
 			// Move all up
 			for (int i = index;i < (getNumKeys() == MAXKEYS ? MAXKEYS - 1 : getNumKeys()); i++) {
-				if( !keyIdArray[i].equals(Optr.emptyPointer))
-					sdbio.delete_object(keyIdArray[i], GlobalDBIO.getObjectAsBytes(getKey(i)).length);
-				if( !dataIdArray[i].equals(Optr.emptyPointer))
-					sdbio.delete_object(dataIdArray[i], GlobalDBIO.getObjectAsBytes(getData(i)).length);
 				keyArray[i] = keyArray[i + 1];
 				keyIdArray[i] = keyIdArray[i + 1];
 				pageArray[i + 1] = pageArray[i + 2];

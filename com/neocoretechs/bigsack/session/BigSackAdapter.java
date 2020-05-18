@@ -1,12 +1,9 @@
-package com.neocoretechs.bigsack;
+package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.neocoretechs.bigsack.session.BufferedTreeMap;
-import com.neocoretechs.bigsack.session.BufferedTreeSet;
-import com.neocoretechs.bigsack.session.TransactionalTreeMap;
-import com.neocoretechs.bigsack.session.TransactionalTreeSet;
+import com.neocoretechs.bigsack.Props;
 
 /**
  * This class enforces a strong typing for the BigSack using the database naming convention linked to the
@@ -204,6 +201,34 @@ public class BigSackAdapter {
 		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
 		ret.rollback();
 		classToIsoXTreeset.remove(clazz);
+	}
+	
+	public static void commitMap(TransactionalTreeMap ret) throws IOException {
+		ret.commit();	
+		classToIsoXTreemap.remove(translateClass(ret.getClass().getName()), ret);
+	}
+	
+	public static void commitSet(TransactionalTreeSet ret) throws IOException {
+		ret.commit();
+		classToIsoXTreeset.remove(translateClass(ret.getClass().getName()), ret);
+	}
+	
+	public static void rollbackMap(TransactionalTreeMap ret) throws IOException {
+		ret.rollback();
+		classToIsoXTreeset.remove(translateClass(ret.getClass().getName()), ret);
+	}
+	
+	public static void rollbackSet(TransactionalTreeSet ret) throws IOException {
+		ret.rollback();
+		classToIsoXTreeset.remove(translateClass(ret.getClass().getName()), ret);
+	}
+	
+	public static void checkpointMapTransactions(TransactionalTreeMap ret) throws IllegalAccessException, IOException {
+		ret.checkpoint();
+	}
+	
+	public static void checkpointSetTransactions(TransactionalTreeSet ret) throws IllegalAccessException, IOException {
+		ret.checkpoint();
 	}
 	/**
 	 * Translate a class name into a legitimate file name with some aesthetics.

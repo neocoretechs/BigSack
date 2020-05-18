@@ -777,77 +777,75 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 
 	/**
 	* deleten -  delete n bytes from object / directory. Item may span a block so we
-	* adjust the pointers across block boundaries if necessary
+	* adjust the pointers across block boundaries if necessary. Numerous sanity checks along the way.
 	* @param osize number bytes to delete
 	* @return true if success
-	* @exception IOException If we cannot write block
+	* @exception IOException If we cannot write block, or we attempted to seek past the end of a chain, or if the high water mark and total bytes used did not ultimately agree.
 	*/
-	public synchronized boolean deleten(BlockAccessIndex lbai, int osize) throws IOException {
+	public synchronized void deleten(BlockAccessIndex lbai, int osize) throws IOException {
+		//System.out.println("MappedBlockBuffer.deleten:"+lbai+" size:"+osize);
 		BlockAccessIndex tblk;
 		int runcount = osize;
 		if (osize <= 0)
 			throw new IOException("Attempt to delete object with size invalid: " + osize);
-
-		for (;;) {
-			// bytesused is high water mark, bytesinuse is # bytes occupied by data
-			// we assume contiguous data that can start anywhere in the block to a high water mark that may not be at end of block
-			// of a size determined by the size of delete
-			// set runcount to size of delete
-			// case 1 is byteindex + runcount size of delete <= high water mark bytesused
-			// case 1 bytesinuse = (bytesinuse - runcount size of delete), set block modified. 
-			// if bytesinuse is zero, set high water mark bytesused to zero
-			// else
-			// if index + runcount size of delete = high water mark bytesused, set high water mark bytesused to byteindex.
-			// break from loop on case 1
-			// case 2 is index + runcount size of delete > high water mark bytesused
-			// case 2 set runcount = runcount - (high water mark bytesused - index).
-			// bytesinuse = bytesinuse - (high water mark bytesused - index)
-			// if bytesinuse is zero, set high water mark bytesused to zero 
-			// proceed to next block to check case 1 and 2
-			// this case spans whole block or block to end
-			//
-			int bspan = lbai.getByteindex() + runcount;
-			if (bspan > lbai.getBlk().getBytesused()) { // is index + runcount size of delete > high water mark bytesused?
-				// case 2
-				int dspan = lbai.getBlk().getBytesused() - lbai.getByteindex(); // (high water mark bytesused - index)
-				runcount -= dspan; //runcount = runcount - (high water mark bytesused - index).
-				// bytes used for data not 0, remove from start of index of item to delete, again assume contiguous data from start
-				lbai.getBlk().setBytesinuse((short) (lbai.getBlk().getBytesinuse() - dspan)); // bytesinuse = bytesinuse - (high water mark bytesused - index)
-				lbai.getBlk().setBytesused((short) (lbai.getBlk().getBytesused() - dspan)); // reduce high water mark by same amount
-			} else { // byteindex + runcount size of delete <= bytesused high water mark
-				// we span somewhere in block to not end
-				// reduce byteinuse by remaining amount of delete
-				lbai.getBlk().setBytesinuse((short) (lbai.getBlk().getBytesinuse() - runcount));
-				// advance byteindex to runcount, next record after delete
-				lbai.setByteindex((short) bspan);
-				runcount = 0;
-			}
+		//
+		// Handle the case where the entry we want to delete can be contained within one block
+		// we are not altering the high water mark because the entry falls between the beginning and high water
+		// and there may be another entry between it and high water
+		//
+		if( (((int)lbai.getByteindex()) + runcount) < ((int)lbai.getBlk().getBytesused())) {
+			lbai.getBlk().setBytesinuse((short) (((int)(lbai.getBlk().getBytesinuse()) - runcount)) ); // reduce total bytes being used by delete amount
 			// assertion did everything make sense at the end?
-			if (lbai.getBlk().getBytesinuse() < 0)
-				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount "+runcount);
+			if(lbai.getBlk().getBytesinuse() < 0)
+				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount:"+runcount+" delete size:"+osize);
+			lbai.getBlk().setIncore(true);
+			lbai.getBlk().setInlog(false);
+			return;
+		}
+		//
+		// The following case works for all contiguous chunks, however,it DOES NOT work for non contiguous chunks
+		// where an entry is between the one to be deleted and high water mark. as in byteindex = 64 and osiz = 32
+		// bytesused = 128 high water and bytesinuse = 64, 2 32 byte entries. in that case bspan = 96, dspan = 64
+		// bytesused comes out 64 and bytesinuse comes out 0, and the entry after the one we want gone disappears.
+		// that case should have been handled above.
+		//
+		do {
 			//
-			if(lbai.getBlk().getBytesinuse() == 0 ) { // bytes used for data is 0
-				 // bytes used for data is 0, but high water mark was not, so adjust block
+			int bspan = ((int)lbai.getByteindex()) + runcount; // current delete amount plus start of delete
+			int dspan = ((int)lbai.getBlk().getBytesused()) - ((int)lbai.getByteindex()); // (high water mark bytesused - index) total available to delete this page
+			if( bspan < dspan ) { // If the total we want to delete plus start, does not exceed total this page, set to delete remaining runcount
+				dspan = runcount;
+			} else {
+				// reduce bytesused by total this page, set high water mark back since we exceeded it
+				lbai.getBlk().setBytesused( (short) (((int)(lbai.getBlk().getBytesused()) - dspan)) );
+			}
+			//System.out.println("runcount="+runcount+" dspan="+dspan+" bspan="+bspan);
+			runcount = runcount - dspan; //reduce runcount by total available to delete this page
+			lbai.getBlk().setBytesinuse((short) (((int)(lbai.getBlk().getBytesinuse()) - dspan)) ); // reduce total bytes being used by delete amount
+			//
+			// assertion did everything make sense at the end?
+			if(lbai.getBlk().getBytesinuse() < 0)
+				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount:"+runcount+" delete size:"+osize);
+			if(lbai.getBlk().getBytesused() < 0)
+				throw new IOException(this.toString() + " "+lbai+" negative bytesused from runcount "+runcount+" delete size:"+osize);
+			// high water mark 0, but bytes used for data is not, something went horribly wrong
+			if(lbai.getBlk().getBytesinuse() == 0) { //if total bytes used is 0, reset high water mark to 0 to eventually reclaim block
 				lbai.getBlk().setBytesused((short)0);
 				lbai.setByteindex((short)0);	
 			}
-			
+			//
 			lbai.getBlk().setIncore(true);
 			lbai.getBlk().setInlog(false);
-			//
-			if (runcount > 0) {
-				if((tblk = getnextblk(lbai)) == null)
+			if(runcount > 0) { // if we have more to delete
+				tblk = getnextblk(lbai);
+				// another sanity check
+				if(tblk == null)
 					throw new IOException(
-						"attempted delete past end of chain for "
-							+ osize
-							+ " bytes in "
-							+ lbai);
+						"Attempted delete past end of block chain for "+ osize + " bytes total, with remaining runcount "+runcount+" in "+ lbai);
 				lbai = tblk;
-			} else
-				break;
-
-		}
-		return true;
+				lbai.setByteindex((short) 0);// start at the beginning of the next block to continue delete, or whatever
+			}
+		} while( runcount > 0); // while we still have more to delete
 	}
 	
 

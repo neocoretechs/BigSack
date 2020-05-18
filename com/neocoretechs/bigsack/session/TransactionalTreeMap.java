@@ -306,7 +306,7 @@ public class TransactionalTreeMap {
 	 * Commit the outstanding transaction
 	 * @throws IOException
 	 */
-	public void commit() throws IOException {
+	void commit() throws IOException {
 		session.Commit();
 	}
 	/**
@@ -314,14 +314,14 @@ public class TransactionalTreeMap {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public void checkpoint() throws IllegalAccessException, IOException {
+	void checkpoint() throws IllegalAccessException, IOException {
 		session.Checkpoint();
 	}
 	/**
 	 * Roll back the outstanding transactions
 	 * @throws IOException
 	 */
-	public void rollback() throws IOException {
+	void rollback() throws IOException {
 		session.Rollback();
 	}
 	public String getDBName() {

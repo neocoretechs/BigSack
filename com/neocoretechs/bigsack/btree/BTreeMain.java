@@ -1245,6 +1245,7 @@ public final class BTreeMain {
 	 * @return
 	 */
 	public synchronized BTreeKeyPage setRoot(BTreeKeyPage root) {
+		System.out.println("Root page:"+root);
 		this.root = root;
 		return root;
 	}

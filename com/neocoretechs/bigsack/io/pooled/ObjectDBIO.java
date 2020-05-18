@@ -46,6 +46,7 @@ public final class ObjectDBIO extends GlobalDBIO {
 	* @exception IOException if the block cannot be sought or written
 	*/
 	public synchronized void delete_object(Optr loc, int osize) throws IOException {
+		//System.out.println("ObjectDBIO.delete_object "+loc+" "+osize);
 		ioManager.objseek(loc);
 		ioManager.deleten(loc, osize);
 	}
