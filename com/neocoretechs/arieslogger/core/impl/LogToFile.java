@@ -150,7 +150,7 @@ import java.util.zip.CRC32;
 
 public final class LogToFile implements LogFactory, java.security.PrivilegedExceptionAction
 {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static final boolean DUMPLOG = false;
 	private static final boolean MEASURE = true; // take stats of log writes etc
 	static final boolean ALERT = true; // return status for recovery, also for FileLogger recover
@@ -1878,10 +1878,16 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			// if we have a bad file 1 toss exception. verifyLogFormat closes file
 			headerLogInstance = verifyLogFormat(logFile, logFileNumber);
 						
-			// log file exist, need to run recovery
-			if( ALERT )
-				System.out.println("Recovery indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition);
-			recoveryNeeded = true;
+			// log file exist, need to run recovery if checkpoint is valid
+			if (checkpointInstance != LogCounter.INVALID_LOG_INSTANCE) {
+				if( ALERT )
+					System.out.println("Recovery indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition);
+				recoveryNeeded = true;
+			} else {
+				if( ALERT )
+					System.out.println("Recovery NOT indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition+" Checkpoint instance not valid.");
+				recoveryNeeded = false;
+			}
 		}
 
     	bootTimeLogFileNumber = logFileNumber;

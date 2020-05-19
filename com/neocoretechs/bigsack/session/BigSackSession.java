@@ -338,12 +338,12 @@ public final class BigSackSession {
 	private void rollupSession(boolean rollback) throws IOException {
 		if (rollback) {
 			bTree.getIO().deallocOutstandingRollback();
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-				bTree.getIO().getIOManager().getUlog(i).getLogToFile().deleteOnlineArchivedLogFiles();
 		} else {
 			// calls commitbufferflush
 			bTree.getIO().deallocOutstandingCommit();
 		}
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			bTree.getIO().getIOManager().getUlog(i).getLogToFile().deleteOnlineArchivedLogFiles();
 		SessionManager.releaseSession(this);
 	}
 	

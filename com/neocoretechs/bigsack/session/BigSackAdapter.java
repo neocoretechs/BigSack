@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.Props;
@@ -205,22 +206,43 @@ public class BigSackAdapter {
 	
 	public static void commitMap(TransactionalTreeMap ret) throws IOException {
 		ret.commit();	
-		classToIsoXTreemap.remove(translateClass(ret.getClass().getName()), ret);
+		for(Map.Entry<String, TransactionalTreeMap> me : classToIsoXTreemap.entrySet()) {
+			if(me.getValue() == ret) {
+				classToIsoXTreemap.remove(me.getKey());
+				break;
+			}
+		}
+		
 	}
 	
 	public static void commitSet(TransactionalTreeSet ret) throws IOException {
 		ret.commit();
-		classToIsoXTreeset.remove(translateClass(ret.getClass().getName()), ret);
+		for(Map.Entry<String, TransactionalTreeSet> me : classToIsoXTreeset.entrySet()) {
+			if(me.getValue() == ret) {
+				classToIsoXTreeset.remove(me.getKey());
+				break;
+			}
+		}
 	}
 	
 	public static void rollbackMap(TransactionalTreeMap ret) throws IOException {
 		ret.rollback();
-		classToIsoXTreeset.remove(translateClass(ret.getClass().getName()), ret);
+		for(Map.Entry<String, TransactionalTreeMap> me : classToIsoXTreemap.entrySet()) {
+			if(me.getValue() == ret) {
+				classToIsoXTreemap.remove(me.getKey());
+				break;
+			}
+		}
 	}
 	
 	public static void rollbackSet(TransactionalTreeSet ret) throws IOException {
 		ret.rollback();
-		classToIsoXTreeset.remove(translateClass(ret.getClass().getName()), ret);
+		for(Map.Entry<String, TransactionalTreeSet> me : classToIsoXTreeset.entrySet()) {
+			if(me.getValue() == ret) {
+				classToIsoXTreeset.remove(me.getKey());
+				break;
+			}
+		}
 	}
 	
 	public static void checkpointMapTransactions(TransactionalTreeMap ret) throws IllegalAccessException, IOException {
