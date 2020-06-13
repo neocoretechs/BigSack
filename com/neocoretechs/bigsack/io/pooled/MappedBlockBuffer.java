@@ -39,7 +39,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  */
 public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex> implements Runnable {
 	private static final long serialVersionUID = -5744666991433173620L;
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static final boolean NEWNODEPOSITIONDEBUG = false;
 	private volatile boolean shouldRun = true;
 	private BlockingQueue<BlockAccessIndex> freeBL; // free block list
@@ -356,7 +356,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 						//ioManager.getUlog(tablespace).writeLog(ebaii); 
 						// will set incore, inlog, and push to raw store via applyChange of Loggable
 						if( DEBUG )
-							System.out.println("MappedeBlockBuffer.commitBufferFlush of block "+ebaii);
+							System.out.println("MappedBlockBuffer.commitBufferFlush of block "+ebaii);
 						rlm.writeLog(ebaii);
 					}
 					ebaii.decrementAccesses();
@@ -842,6 +842,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 				if(tblk == null)
 					throw new IOException(
 						"Attempted delete past end of block chain for "+ osize + " bytes total, with remaining runcount "+runcount+" in "+ lbai);
+				// we have to unlink this from the next block
+				lbai.getBlk().setNextblk(-1L);
 				lbai = tblk;
 				lbai.setByteindex((short) 0);// start at the beginning of the next block to continue delete, or whatever
 			}
