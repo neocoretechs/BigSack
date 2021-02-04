@@ -88,7 +88,7 @@ import java.util.Map.Entry;
 
 public final class FileLogger implements Logger {
 
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 
 	private LogRecord	logRecord;
 

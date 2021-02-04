@@ -47,7 +47,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * @author Groff
 */
 public final class RecoveryLogManager  {
-	private static boolean DEBUG = false;
+	private static boolean DEBUG = true;
 	private ObjectDBIO blockIO;
 	private IoManagerInterface ioManager;
 	private FileLogger fl = null;

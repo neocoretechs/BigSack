@@ -195,7 +195,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private int     logSwitchInterval   = DEFAULT_LOG_SWITCH_INTERVAL;
     
 	private FileLogger fileLogger = null;
-	protected LogAccessFile logOut;		// an output stream to the log file
+	private LogAccessFile logOut;		// an output stream to the log file
 								// (access of the variable should sync on this)
 	//private RandomAccessFile theLog = null;
 	protected long		    endPosition = LOG_FILE_HEADER_SIZE; // end position of the current log file
@@ -335,7 +335,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private int tablespace;
    
 	/**
-	 * Construt the instance with the IO manager and tablespace
+	 * Construct the instance with the IO manager and tablespace
 	 * @param blockIO
 	 * @param tablespace
 	 */
@@ -369,7 +369,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	*/
 	public synchronized IOException markCorrupt(IOException originalError) {
 		boolean firsttime = false;
-	
+		if(DEBUG)
+			System.out.println("Marking log factory as corrupt due to:"+originalError);
 		if (corrupt == null && originalError != null) {
 				corrupt = originalError;
 				firsttime = true;
@@ -394,7 +395,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 						// don't worry about it, just trying to clean up 
 					}
 				}
-
+				if(DEBUG)
+					System.out.println("Setting logOut to null due to:"+originalError);
 				// NullPointerException is preferred over corrupting the database
 				logOut = null;
 		}
@@ -1958,7 +1960,9 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
             	logOut.close();
             }
 			logOut = allocateNewLogFile(firstLog, logFile, LogCounter.INVALID_LOG_INSTANCE, logFileNumber, logBufferSize);
-
+			if(logOut == null) {
+				throw new IOException("allocateNewLogFile failed to return valid instance using "+firstLog+" with File "+logFile+" and logFileNumber "+logFileNumber+" with logBufferSize "+logBufferSize);
+			}
 			assert(endPosition == LOG_FILE_HEADER_SIZE) : 
 					"LogToFile.initializeLogFileSequence empty log file "+logFile.getName()+" in "+dbName+" has wrong size";
 		} else {

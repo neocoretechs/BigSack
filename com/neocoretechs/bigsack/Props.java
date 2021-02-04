@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -30,14 +31,18 @@ import java.io.InputStream;
  * We assume the the properties file is in BigSack.Properties which we try
  * to locate through system.getProperty("BigSack.properties") and barring that,
  * attempt to load from the system resource stream.
- * @author Groff
+ * @author Jonathan Groff (C) NeoCoreTechs 2003,202
  */
 public class Props {
 	private static final String propsFile = "BigSack.properties";
 	private static String propfile = null;
+	public static final String dataDirectory = "/home/pi/";
 	public static boolean DEBUG = true;
 	/**
-	 * assume properties file is in 'BigSack.properties'
+	 * assume properties file is in 'bigsack.properties' defined at runtime by -Dbigsack.properties=file
+	 * failing that, we will try to load a file name RoboCore.properties from the system resource stream
+	 * located on the classpath, failing that, we will try to load RoboCore.properties from the dataDirectory path.
+	 * If all else fails throw Runtime exception because we need this config.
 	 */
 	static {
 		try {
@@ -45,13 +50,29 @@ public class Props {
 			if (file == null) {
 				init(top());
 			} else {
-				if(DEBUG)
-					System.out.println("Loading properties:"+file);
 				init(new FileInputStream(file));
 			}
 		} catch (IOException ioe) {
 			throw new RuntimeException(ioe.toString());
 		}
+	}
+	
+	/**
+	 * Find the top level resource for props
+	 * @return the InputStream of property resource
+	 * @exception IOException if we can't get the resource
+	 */
+	public static InputStream top() throws IOException {
+		java.net.URL loader =
+			ClassLoader.getSystemResource(propsFile);
+		if (loader == null) {
+			if( DEBUG )
+				System.out.println("Loading properties:"+dataDirectory+propsFile);
+			return new FileInputStream(dataDirectory+propsFile);
+		}
+		if( DEBUG )
+			System.out.println("Loading properties:"+loader);
+		return loader.openStream();
 	}
 	
 	public static String getPropFile() {
@@ -128,24 +149,6 @@ public class Props {
 		}
 	}
 
-	/**
-	 * Find the top level resource for props
-	 * @return the InputStream of property resource
-	 * @exception IOException if we can't get the resource
-	 */
-	public static InputStream top() throws IOException {
-		java.net.URL loader =
-			ClassLoader.getSystemResource(propsFile);
-		if (loader == null) {
-			propfile = System.getProperty(propsFile); // now we look for -DBigSack.properties= on cmdl
-			if( propfile == null ) // nowhere left to turn
-				throw new IOException("FATAL ERROR:  unable to load "+propsFile+" file: not found on resource path");
-			loader = ClassLoader.getSystemResource(propfile);
-		}
-		if( DEBUG )
-			System.out.println("Loading properties:"+loader);
-		return loader.openStream();
-	}
 
 	/** 
 	 * @param prop The property to retrieve
@@ -159,6 +162,20 @@ public class Props {
 		if (result != null)
 			result = result.trim();
 		return result;
+	}
+
+	public static float toFloat(String prop) {
+		String val = Props.toString(prop);
+		try {
+			return Float.valueOf(val).floatValue();
+		} catch (Exception ex) {
+			throw new IllegalArgumentException(
+				"invalid value "
+					+ val
+					+ " for property "
+					+ prop
+					+ " (expected floating point)");
+		}
 	}
 
 }
