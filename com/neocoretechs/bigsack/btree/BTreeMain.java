@@ -65,7 +65,7 @@ public final class BTreeMain {
 	private static boolean DEBUGCOUNT = false;
 	private static boolean DEBUGDELETE = false;
 	private static boolean TEST = false; // Do a table scan and key count at startup
-	private static boolean ALERT = true; // Info level messages
+	private static boolean ALERT = false; // Info level messages
 	private static boolean OVERWRITE = true; // flag to determine whether value data is overwritten for a key or its ignored
 	private static final boolean DEBUGOVERWRITE = false; // notify of overwrite of value for key
 	static int EOF = 2;
@@ -1245,7 +1245,8 @@ public final class BTreeMain {
 	 * @return
 	 */
 	public synchronized BTreeKeyPage setRoot(BTreeKeyPage root) {
-		System.out.println("Root page:"+root);
+		if(DEBUG)
+			System.out.println("Root page:"+root);
 		this.root = root;
 		return root;
 	}

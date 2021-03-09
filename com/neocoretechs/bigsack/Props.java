@@ -37,7 +37,7 @@ public class Props {
 	private static final String propsFile = "BigSack.properties";
 	private static String propfile = null;
 	public static final String dataDirectory = "/home/pi/";
-	public static boolean DEBUG = true;
+	public static boolean DEBUG = false;
 	/**
 	 * assume properties file is in 'bigsack.properties' defined at runtime by -Dbigsack.properties=file
 	 * failing that, we will try to load a file name RoboCore.properties from the system resource stream
