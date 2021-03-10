@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
@@ -32,7 +33,7 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 * This class can be used for debugging and benchmarking, or if you need to 
 * support multiple instances for writing for some reason.
 * It uses no level 1 cache; no deserialized instance in-memory cache
-* @author Groff
+* @author Jonathan Groff (C) NeoCoreTechs 2020,2021
 */
 public class BufferedCachelessTreeSet {
 	protected BigSackSession session;
@@ -119,6 +120,11 @@ public class BufferedCachelessTreeSet {
 	@SuppressWarnings("rawtypes")
 	public synchronized Iterator<?> subSet( Comparable fkey, Comparable tkey) throws IOException {
 			return session.subSet(fkey, tkey);
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public synchronized Stream<?> subSetStream( Comparable fkey, Comparable tkey) throws IOException {
+			return session.subSetStream(fkey, tkey);
 	}
 	/**
 	* Return boolean value indicating whether the set is empty

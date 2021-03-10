@@ -29,7 +29,7 @@ import com.neocoretechs.bigsack.btree.BTreeMain;
 */
 /**
 * Iterator for items of persistent collection strictly less than 'to' element
-* @author Groff
+* @author Jonathan Groff (C) NeoCoreTechs 1997,2003,2020,2021
 */
 public class HeadSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")

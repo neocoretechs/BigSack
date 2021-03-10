@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
@@ -174,7 +175,14 @@ public class BufferedTreeSet {
 	@SuppressWarnings("rawtypes")
 	public Iterator<?> headSet(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-				return  session.headSet(tkey);
+				return session.headSet(tkey);
+		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> headSetStream(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+				return session.headSetStream(tkey);
 		}
 	}
 	/**
@@ -190,6 +198,13 @@ public class BufferedTreeSet {
 				return session.tailSet(tkey);
 		}
 	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> tailSetStream(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+				return session.tailSetStream(tkey);
+		}
+	}
 	/**
 	* Return the subset of elements, we have to bypass cache for this because
 	* of our random throwouts
@@ -200,6 +215,13 @@ public class BufferedTreeSet {
 	public Iterator<?> subSet(Comparable fkey, Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 				return session.subSet(fkey, tkey);
+		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> subSetStream(Comparable fkey, Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+				return session.subSetStream(fkey, tkey);
 		}
 	}
 	/**

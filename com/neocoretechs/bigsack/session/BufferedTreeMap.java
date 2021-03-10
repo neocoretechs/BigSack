@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.btree.TreeSearchResult;
 /*
@@ -147,6 +148,12 @@ public class BufferedTreeMap {
 				return session.entrySet();
 		}
 	}
+	
+	public Stream<?> entrySetStream() throws IOException {
+		synchronized (session.getMutexObject()) {
+				return session.entrySetStream();
+		}
+	}
 	/**
 	* Get a keySet iterator. Get from backing store if not in cache.
 	* @return The iterator for the keys
@@ -155,6 +162,12 @@ public class BufferedTreeMap {
 	public Iterator<?> keySet() throws IOException {
 		synchronized (session.getMutexObject()) {
 				return session.keySet();
+		}
+	}
+	
+	public Stream<?> keySetStream() throws IOException {
+		synchronized (session.getMutexObject()) {
+				return session.keySetStream();
 		}
 	}
 	/**
@@ -244,6 +257,13 @@ public class BufferedTreeMap {
 			return session.headSet(tkey);
 		}
 	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> headMapStream(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.headSetStream(tkey);
+		}
+	}
 	/**
 	* @param tkey Strictly less than 'to' this element
 	* @return Iterator of first to tkey returning KeyValuePairs
@@ -253,6 +273,13 @@ public class BufferedTreeMap {
 	public Iterator<?> headMapKV(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.headSetKV(tkey);
+		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> headMapKVStream(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.headSetKVStream(tkey);
 		}
 	}
 	/**
@@ -266,6 +293,13 @@ public class BufferedTreeMap {
 			return session.tailSet(fkey);
 		}
 	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> tailMapStream(Comparable fkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.tailSetStream(fkey);
+		}
+	}
 	/**
 	* @param fkey Greater or equal to 'from' element
 	* @return Iterator of objects from fkey to end which are KeyValuePairs
@@ -275,6 +309,13 @@ public class BufferedTreeMap {
 	public Iterator<?> tailMapKV(Comparable fkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.tailSetKV(fkey);
+		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> tailMapKVStream(Comparable fkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.tailSetKVStream(fkey);
 		}
 	}
 	/**
@@ -290,6 +331,14 @@ public class BufferedTreeMap {
 			return session.subSet(fkey, tkey);
 		}
 	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> subMapStream(Comparable fkey, Comparable tkey)
+		throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.subSetStream(fkey, tkey);
+		}
+	}
 	/**
 	* @param fkey 'from' element inclusive 
 	* @param tkey 'to' element exclusive
@@ -301,6 +350,14 @@ public class BufferedTreeMap {
 		throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSetKV(fkey, tkey);
+		}
+	}
+	
+	@SuppressWarnings("rawtypes")
+	public Stream<?> subMapKVStream(Comparable fkey, Comparable tkey)
+		throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.subSetKVStream(fkey, tkey);
 		}
 	}
 	/**

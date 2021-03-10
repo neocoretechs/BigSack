@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
@@ -16,6 +17,15 @@ import com.neocoretechs.bigsack.iterator.SubSetIterator;
 import com.neocoretechs.bigsack.iterator.SubSetKVIterator;
 import com.neocoretechs.bigsack.iterator.TailSetIterator;
 import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
+import com.neocoretechs.bigsack.stream.EntrySetStream;
+import com.neocoretechs.bigsack.stream.HeadSetKVStream;
+import com.neocoretechs.bigsack.stream.HeadSetStream;
+import com.neocoretechs.bigsack.stream.KeySetStream;
+import com.neocoretechs.bigsack.stream.SackStream;
+import com.neocoretechs.bigsack.stream.SubSetKVStream;
+import com.neocoretechs.bigsack.stream.SubSetStream;
+import com.neocoretechs.bigsack.stream.TailSetKVStream;
+import com.neocoretechs.bigsack.stream.TailSetStream;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -45,7 +55,7 @@ import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
 * specific collection types can obtain their functionality.  Operations include
 * handing out iterators, inserting and deleting objects, size, navigation, clearing,
 * and handling commit and rollback.
-* @author Groff (C) 2003, 2017
+* @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
 public final class BigSackSession {
 	private boolean DEBUG = false;
@@ -137,6 +147,12 @@ public final class BigSackSession {
 		throws IOException {
 		return new SubSetIterator(fkey, tkey, bTree);
 	}
+	
+	public Stream<?> subSetStream(Comparable fkey, Comparable tkey)
+			throws IOException {
+		return new SubSetStream(new SubSetIterator(fkey, tkey, bTree));
+	}
+	
 	/**
 	* Not a real subset, returns iterator vs set.
 	* 'from' element inclusive, 'to' element exclusive
@@ -150,6 +166,12 @@ public final class BigSackSession {
 		throws IOException {
 		return new SubSetKVIterator(fkey, tkey, bTree);
 	}
+	
+	public Stream<?> subSetKVStream(Comparable fkey, Comparable tkey)
+			throws IOException {
+			return new SubSetKVStream(fkey, tkey, bTree);
+	}
+	
 	/**
 	* Not a real subset, returns iterator
 	* @return The Iterator over the entrySet
@@ -157,6 +179,10 @@ public final class BigSackSession {
 	*/
 	public Iterator<?> entrySet() throws IOException {
 		return new EntrySetIterator(bTree);
+	}
+	
+	public Stream<?> entrySetStream() throws IOException {
+		return new EntrySetStream(bTree);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -168,6 +194,10 @@ public final class BigSackSession {
 	public Iterator<?> headSet(Comparable tkey) throws IOException {
 		return new HeadSetIterator(tkey, bTree);
 	}
+	
+	public Stream<?> headSetStream(Comparable tkey) throws IOException {
+		return new HeadSetStream(tkey, bTree);
+	}
 	/**
 	* Not a real subset, returns Iterator
 	* @param tkey return from head to strictly less than tkey
@@ -178,6 +208,10 @@ public final class BigSackSession {
 	public Iterator<?> headSetKV(Comparable tkey) throws IOException {
 		return new HeadSetKVIterator(tkey, bTree);
 	}
+	
+	public Stream<?> headSetKVStream(Comparable tkey) throws IOException {
+		return new HeadSetKVStream(tkey, bTree);
+	}
 	/**
 	* Return the keyset Iterator over all elements
 	* @return The Iterator over the keySet
@@ -185,6 +219,10 @@ public final class BigSackSession {
 	*/
 	public Iterator<?> keySet() throws IOException {
 		return new KeySetIterator(bTree);
+	}
+	
+	public Stream<?> keySetStream() throws IOException {
+		return new KeySetStream(bTree);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -195,6 +233,10 @@ public final class BigSackSession {
 	@SuppressWarnings("rawtypes")
 	public Iterator<?> tailSet(Comparable fkey) throws IOException {
 		return new TailSetIterator(fkey, bTree);
+	}
+	
+	public Stream<?> tailSetStream(Comparable fkey) throws IOException {
+		return new TailSetStream(fkey, bTree);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -207,6 +249,9 @@ public final class BigSackSession {
 		return new TailSetKVIterator(fkey, bTree);
 	}
 	
+	public Stream<?> tailSetKVStream(Comparable fkey) throws IOException {
+		return new TailSetKVStream(fkey, bTree);
+	}
 	/**
 	 * Contains a value object
 	 * @param o

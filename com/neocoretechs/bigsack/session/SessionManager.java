@@ -36,7 +36,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * that accepts connections and returns a BigSackSession object. A table of one to one sessions and
 * tables is maintained. A path to the log dirs and a path to the tablespace dirs can be specified or
 * a default file structure based on mode can be used if the remoteDbName is null.
-* @author Groff (c) NeoCoreTechs 2003,2017
+* @author Jonathan Groff (c) NeoCoreTechs 2003, 2017, 2021
 */
 public final class SessionManager {
 	private static boolean DEBUG = false;
