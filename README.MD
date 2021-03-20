@@ -1,4 +1,4 @@
-<h1>BigSack</h1>
+<h1>BigSack - Now With Java 8 Streams!</h1>
 <h3>Why BigSack?</h3>
 A bag or sack is a computer science term for a structure to hold a large amount of data that is usually unstructured.
 BigSack can store Java objects so that they can be efficiently indexed, preserved, and retrieved in a manner that mirrors the java.util.TreeMap and java.util.TreeSet classes while providing the benefits of a full blown database.
