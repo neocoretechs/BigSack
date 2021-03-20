@@ -69,7 +69,7 @@ public class EntrySetIterator extends AbstractIterator {
 					bTree.clearStack();
 				}
 				bTree.getIO().deallocOutstanding();
-				return retElem;
+				return new Entry(retKey, retElem);
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());
 			}
