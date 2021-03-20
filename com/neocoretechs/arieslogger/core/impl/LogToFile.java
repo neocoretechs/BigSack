@@ -2235,7 +2235,11 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
         }
 
 		if (logOut == null) {
-				throw new IOException("Log null");
+				//throw new IOException("Log null");
+			System.out.printf("<<<logOut was null in %s.appendLogRecord. deleteObsoleteLogFiles and initializeLogFileSequence in progress..%n", 
+					this.getClass().getName());
+			deleteObsoleteLogfiles();
+			initializeLogFileSequence();
         }
 		
 		// set up to call the write of log record and checksum
