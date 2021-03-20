@@ -24,7 +24,18 @@ import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-
+/**
+ * Lynchpin superclass of all BigSack streams that wraps the Iterator with Spliterator using:
+ * (Spliterator<T>) Spliterators.spliteratorUnknownSize(esi, characteristics) <p/>
+ * Once wrapped, the system supplied StreamSupport class provides the actual stream using:
+ * (Stream<T>) StreamSupport.stream(spliterator, parallel) <p/>
+ * Before calling 'of()', call 'parallel()' , 'setParallel(true | false)', 'sequential()' or 
+ * 'unordered()' to change the charactaristics of the stream.<p/>
+ * The default charactaristscs are Spliterator.DISTINCT | Spliterator.SORTED | Spliterator.ORDERED<p/>
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
+ *
+ * @param <T>
+ */
 public class SackStream<T> implements Stream<T> {
 	protected static final int characteristics = Spliterator.DISTINCT | Spliterator.SORTED | Spliterator.ORDERED;
 	protected static final int characteristicsUnordered = Spliterator.DISTINCT | Spliterator.SORTED ;
