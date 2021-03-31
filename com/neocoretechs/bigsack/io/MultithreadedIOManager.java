@@ -49,15 +49,26 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	protected final CyclicBarrier nextBlocksBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected IOWorkerInterface ioWorker[];
 	protected BufferPool bufferPool;
+	private FreeBlockAllocator alloc;
 	protected int L3cache = 0;
 
 	public MultithreadedIOManager(ObjectDBIO globalIO) throws IOException {
 		this.globalIO = globalIO;
 		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
+		alloc = new FreeBlockAllocator(this);
 		bufferPool = new BufferPool();
 		// Initialize the thread pool group NAMES to spin new threads in controllable batches
 		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"}, false);
 	}
+	/**
+	 * Get the allocator of free blocks
+	 * @return
+	 */
+	@Override
+	public synchronized FreeBlockAllocator getFreeBlockAllocator() {
+		return alloc;
+	}
+	
 	/**
 	 * Invoke each tablespace open request by creating buffers and spinning workers.
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen(java.lang.String, int, boolean)
@@ -172,7 +183,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
-		bufferPool.getFreeBlockAllocator().setNextFree(tblsp, iori.getLongReturn());
+		alloc.setNextFree(tblsp, iori.getLongReturn());
 		return iori.getLongReturn();
 	}
 	/**
@@ -199,7 +210,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				freeArray[i] = iori[i].getLongReturn();
 		}
-		bufferPool.getFreeBlockAllocator().setNextFree(freeArray);
+		alloc.setNextFree(freeArray);
 	}
 	
 	/* (non-Javadoc)
@@ -279,7 +290,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	@Override
 	public void setNextFreeBlocks() {
-		bufferPool.getFreeBlockAllocator().setNextFreeBlocks();
+		alloc.setNextFreeBlocks();
 	}
 
 	/**
@@ -302,7 +313,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.findSmallestTablespace ");
 		getNextFreeBlocks(); // sets blocks in feeeblockallocator
-		return bufferPool.getFreeBlockAllocator().nextTablespace();	
+		return alloc.nextTablespace();	
 	}
 
 	/**
@@ -573,10 +584,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public BufferPool getBufferPool() {
 		return bufferPool;
-	}
-	@Override
-	public FreeBlockAllocator getFreeBlockAllocator() {
-		return bufferPool.getFreeBlockAllocator();
 	}
 
 }

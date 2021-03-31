@@ -66,15 +66,15 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
-		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, bufferPool.getFreeBlockAllocator().getNextFree(tblsp));
+		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, getFreeBlockAllocator().getNextFree(tblsp));
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
 		} catch (InterruptedException e) {}
 		// remove old request
 		((DistributedIOWorker)ioWorker[tblsp]).removeRequest((AbstractClusterWork) iori);
-		bufferPool.getFreeBlockAllocator().setNextFree(tblsp, iori.getLongReturn());
-		return bufferPool.getFreeBlockAllocator().getNextFree(tblsp);
+		getFreeBlockAllocator().setNextFree(tblsp, iori.getLongReturn());
+		return getFreeBlockAllocator().getNextFree(tblsp);
 		
 	}
 	/**
@@ -104,7 +104,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 				// remove old requests
 				((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
 		}
-		bufferPool.getFreeBlockAllocator().setNextFree(freeArray);
+		getFreeBlockAllocator().setNextFree(freeArray);
 	}
 	/**
 	 * Send the request to write the given block at the given location, with

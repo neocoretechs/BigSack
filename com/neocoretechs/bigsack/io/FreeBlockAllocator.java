@@ -1,21 +1,25 @@
 package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 /**
  * Free block allocator for all tablespaces of a particular database.
- * @author jg
+ * @author Jonathan Groff (C) NeoCoreTechs 2021
  *
  */
-public class FreeBlockAllocator {
-	long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
-	int roundRobinTablespace = -1;
-	IoManagerInterface ioManager;
+public final class FreeBlockAllocator {
+	private static boolean DEBUG = true;
+	private long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
+	private int roundRobinTablespace = -1;
+	private IoManagerInterface ioManager;
 	
 	public FreeBlockAllocator(IoManagerInterface ioManager) {
+		if(DEBUG)
+			System.out.printf("%s created for ioManager:%s%n", this.getClass().getName(), ioManager);
 		this.ioManager = ioManager;
 	}
 	
@@ -27,6 +31,8 @@ public class FreeBlockAllocator {
 		if( roundRobinTablespace == DBPhysicalConstants.DTABLESPACES ) {
 			roundRobinTablespace = 0;
 		}
+		if(DEBUG)
+			System.out.printf("%s nextTablespace %d for ioManager:%s%n", this.getClass().getName(), roundRobinTablespace, ioManager);
 		return roundRobinTablespace;
 	}
 	/**
@@ -37,10 +43,14 @@ public class FreeBlockAllocator {
 	 */
 	public synchronized long getNextFree() throws IOException {
 		nextTablespace();
+		if(DEBUG)
+			System.out.printf("%s getNextFree roundRobinTablespace %d block %d for ioManager:%s%n", this.getClass().getName(), roundRobinTablespace, nextFree[roundRobinTablespace], ioManager);
 		return nextFree[roundRobinTablespace];
 	}
 	
 	public synchronized long getNextFree(int tblsp) throws IOException {
+		if(DEBUG)
+			System.out.printf("%s getNextFree tablespace %d block %d for ioManager:%s%n", this.getClass().getName(), tblsp, nextFree[tblsp], ioManager);
 		return nextFree[tblsp];
 	}
 	/**
@@ -49,6 +59,8 @@ public class FreeBlockAllocator {
 	 * @param longReturn The block virtual number
 	 */
 	public synchronized void setNextFree(int tblsp, long longReturn) {
+		if(DEBUG)
+			System.out.printf("%s setNextFree tablespace %d block %d for ioManager:%s%n", this.getClass().getName(), tblsp, longReturn, ioManager);
 		nextFree[tblsp] = longReturn;	
 	}
 	/**
@@ -56,11 +68,15 @@ public class FreeBlockAllocator {
 	 * allocate first free of that one to be at DBLOCKSIZ
 	 */
 	public synchronized void setNextFreeBlocks() {
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			if (i == 0)
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			if (i == 0) {
 				nextFree[i] = ((long) DBPhysicalConstants.DBLOCKSIZ);
-			else
+			} else {
 				nextFree[i] = 0L;
+			}
+			if(DEBUG)
+				System.out.printf("%s setNextFreeBlocks tablespace %d block %d for ioManager:%s%n", this.getClass().getName(), i, nextFree[i], ioManager);
+		}
 	}
 	
 	/**
@@ -78,6 +94,8 @@ public class FreeBlockAllocator {
 				smallestTablespace = i;
 			}
 		}
+		if(DEBUG)
+			System.out.printf("%s findSmallestTablespace tablespace %d for ioManager:%s%n", this.getClass().getName(), smallestTablespace, ioManager);
 		return smallestTablespace;
 	}
 
@@ -86,7 +104,9 @@ public class FreeBlockAllocator {
 	}
 
 	public synchronized void setNextFree(long[] freeArray) {
-		nextFree = freeArray;	
+		nextFree = freeArray;
+		if(DEBUG)
+			System.out.printf("%s setNextFree array %s for ioManager:%s%n", this.getClass().getName(), Arrays.toString(freeArray), ioManager);
 	}
 	
 	
