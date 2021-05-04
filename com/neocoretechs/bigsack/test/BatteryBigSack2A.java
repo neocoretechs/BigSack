@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.test;
 
 import java.util.Iterator;
+import java.util.Map.Entry;
 
 import com.neocoretechs.bigsack.iterator.KeyValuePair;
 import com.neocoretechs.bigsack.session.BigSackSession;
@@ -166,7 +167,9 @@ public class BatteryBigSack2A {
 		int ctr = 0;
 		while(itk.hasNext()) {
 			Object f = itk.next();
-			Object l = ite.next();
+			Object nl = ite.next();
+			Entry<String,String> le = (Entry<String,String>)nl;
+			String l = le.getValue();
 			String nkey = key + String.format(uniqKeyFmt, ctr);
 			String nval = val + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nkey) || !l.equals(nval)) {
