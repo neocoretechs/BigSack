@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.btree;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.Arrays;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.Optr;
@@ -798,7 +799,8 @@ public final class BTreeKeyPage {
 		return btk;
 	}
 	/**
-	 * Get a new page from the pool from round robin tablespace. used for general inserts.
+	 * Get a new page from the pool from round
+	 *  robin tablespace. used for general inserts.
 	 * Call stealblk, create BTreeKeyPage with the page Id of stolen block, set the pageArray
 	 * to MAXKEYS+1, the dataArray to MAXKEYS, and the dataUpdatedArray to MAXKEYS
 	 * set updated to true, and return the newly formed  
@@ -837,7 +839,8 @@ public final class BTreeKeyPage {
 		for(int i = 0; i < MAXKEYS; i++) {
 			if( keyUpdatedArray[i] ) {
 				// put the key to a block via serialization and assign KeyIdArray the position of stored key
-				putKey(i, false); // do not reset the update flag yet
+				  if(!putKey(i)) // will set keyUpdatedArray[i] to false if successful
+					 continue;
 			}
 			if( dataUpdatedArray[i]) {
 				putData(i, false);
@@ -845,35 +848,36 @@ public final class BTreeKeyPage {
 		}
 		//
 		assert (pageId != -1L) : " BTreeKeyPage unlinked from page pool:"+this;
-		// write the page to the current block
-		lbai.getBlk().setIncore(true);
-		lbai.setByteindex((short) 0);
-		// Write to the block output stream
 		BlockStream bks = sdbio.getIOManager().getBlockStream(GlobalDBIO.getTablespace(pageId));
-		bks.setBlockAccessIndex(lbai);
-		if( DEBUG )
-			System.out.println("BTreeKeyPage.putPage BlockStream:"+bks);
 		DataOutputStream bs = bks.getDBOutput();
-		bs.writeByte(getmIsLeafNode() ? 1 : 0);
-		bs.writeInt(getNumKeys());
-		for(int i = 0; i < MAXKEYS; i++) {
-			if( keyUpdatedArray[i] ) {
-				// put the key to a block via serialization and assign KeyIdArray the position of stored key
-				//putKey(i);
+		// write the page to the current block
+		if(isUpdated()) {
+			lbai.getBlk().setIncore(true);
+			lbai.setByteindex((short) 0);
+			// Write to the block output stream
+			bks.setBlockAccessIndex(lbai);
+			if( DEBUG )
+				System.out.println("BTreeKeyPage.putPage BlockStream:"+bks);
+			bs.writeByte(getmIsLeafNode() ? 1 : 0);
+			bs.writeInt(getNumKeys());
+			for(int i = 0; i < MAXKEYS; i++) {
+				if( !keyUpdatedArray[i] ) { // if set, key was processed by putKey[i]
+					// else skip 
+					bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
+					continue;
+				}
 				bs.writeLong(keyIdArray[i].getBlock());
 				bs.writeShort(keyIdArray[i].getOffset());
-				keyUpdatedArray[i] = false; // now reset the update flag, this field is done, it has a key and a location
-			} else {
-				bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
-			}
-			// data array
-			if( dataUpdatedArray[i] ) {
-				bs.writeLong(dataIdArray[i].getBlock());
-				bs.writeShort(dataIdArray[i].getOffset());
-				dataUpdatedArray[i] = false;
-			} else {
-				// skip the data Id for this index as it was not updated, so no need to write anything
-				bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
+				keyUpdatedArray[i] = false;
+				// data array
+				if( dataUpdatedArray[i] ) {
+					bs.writeLong(dataIdArray[i].getBlock());
+					bs.writeShort(dataIdArray[i].getOffset());
+					dataUpdatedArray[i] = false;
+				} else {
+					// skip the data Id for this index as it was not updated, so no need to write anything
+					bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
+				}
 			}
 		}
 		// persist btree key page indexes
@@ -881,8 +885,6 @@ public final class BTreeKeyPage {
 			bs.writeLong(pageIdArray[i]);
 		}
 		bs.flush();
-		//sdbio.getIOManager().FseekAndWrite(lbai.getBlockNum(), getDatablock());
-		//sdbio.getIOManager().deallocOutstandingCommit();
 		if( DEBUG ) {
 			System.out.println("BTreeKeyPage.putPage Added Keypage @"+GlobalDBIO.valueOf(pageId)+" block for keypage:"+lbai+" page:"+this);
 		}
@@ -947,37 +949,34 @@ public final class BTreeKeyPage {
 	}
 
 	/**
-	 * Put the updated keys to deep store at available block space.
+	 * Put the updated keys to the buffer pool at available block space.
 	 * The data is written to the BlockAccessIndex, the push to deep store takes place at commit time or
 	 * when the buffer fills and it becomes necessary to open a spot.
 	 * @param sdbio The ObjectDBIO instance
-	 * @param resetUpdate true to reset the updated flag for this index
 	 * @exception IOException If write fails
 	 */
-	private synchronized void putKey(int index, boolean resetUpdate) throws IOException {
-		if (keyArray[index] == null) {
+	private synchronized boolean putKey(int index) throws IOException {
+		if(!keyUpdatedArray[index]) {
 			if(DEBUG || DEBUGPUTKEY) 
-				System.out.println("BTreeKeyPage.putKeys key "+index+" key is null");
-			return;
+				System.out.println("BTreeKeyPage.putKey("+index+") key not updated, exiting..");
+			return false;
 		}
-		// If it already has a key, it has to stay
-		if(!keyIdArray[index].equals(Optr.emptyPointer)) {
+		if (keyArray[index] == null || !keyIdArray[index].equals(Optr.emptyPointer)) {
 			if(DEBUG || DEBUGPUTKEY) 
-				System.out.println("BTreeKeyPage.putKeys **IGNORE OVERWRITE** at index "+index+" id:"+keyArray[index]);
-			return;
+				System.out.println("BTreeKeyPage.putKeys("+index+") "+ (keyArray[index] == null ? "key is null " : " ")+
+						(!keyIdArray[index].equals(Optr.emptyPointer) ? " keyIdArray already contains valid pointer, "+(keyIdArray[index])+" returning.." : "."));
+			return false;
 		}
 		keyIdArray[index] = MappedBlockBuffer.getNewInsertPosition(sdbio, keyIdArray, index, getNumKeys());
 		// get first block to write contiguous records for keys
-		if(DEBUG || DEBUGPUTKEY)
-				System.out.println("BTreeKeyPage.putKeys found insert block "+keyIdArray[index]);
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(keyArray[index]);
 		sdbio.add_object(keyIdArray[index], pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY) 
 				System.out.println("BTreeKeyPage.putKeys Added object @"+keyIdArray[index]+" bytes:"+pb.length+" page:"+this);
-		if(resetUpdate)
-			keyUpdatedArray[index] = false;
+		return true;
 	}
+	
 	@SuppressWarnings("rawtypes")
 	/**
 	 * Using key, put keyArray[index] = key

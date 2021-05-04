@@ -67,6 +67,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			System.out.println("ClusterIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, getFreeBlockAllocator().getNextFree(tblsp));
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -91,6 +92,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		// queue to each tablespace
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			iori[i] = new GetNextFreeBlocksRequest(barrierCount);
+			iori[i].setTablespace(i);
 			ioWorker[i].queueRequest(iori[i]);
 		}
 		// Wait for barrier synchronization from UDP master nodes if request demands it
@@ -117,6 +119,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -134,6 +137,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndWriteFullyRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -153,6 +157,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndReadRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -176,6 +181,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		CompletionLatchInterface iori = new FSeekAndReadFullyRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -193,6 +199,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			System.out.println("ClusterIOManager.Fsize ");
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		CompletionLatchInterface iori = new FSizeRequest(barrierCount);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -209,6 +216,12 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	@Override
 	public synchronized boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
+		// Initialize the thread pool group NAMES to spin new threads in controllable batches
+		String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			ioWorkerNames[i] = "IOWORKER"+translateDb(fname,i);
+		}
+		ThreadPoolManager.init(ioWorkerNames, false);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			if( globalIO.getWorkerNodes() != null )
 				ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort, 
@@ -216,8 +229,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			else
 				ioWorker[i] = new DistributedIOWorker(fname, i, ++currentPort, ++currentPort, null, 0);
 			bufferPool.createPool(globalIO, this, i);
-			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i],"IOWORKER");
-			ThreadPoolManager.getInstance().spin(getBlockBuffer(i), "BLOCKPOOL");
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i],ioWorkerNames[i]);
 			// allow the workers to come up
 			try {
 				Thread.sleep(500);
@@ -248,6 +260,12 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		this.L3cache = L3cache;
 		String bootNode;
 		int bootPort;
+		// Initialize the thread pool group NAMES to spin new threads in controllable batches
+		String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			ioWorkerNames[i] = "IOWORKER"+translateDb(fname,i);
+		}
+		ThreadPoolManager.init(ioWorkerNames, false);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			if( globalIO.getWorkerNodes() != null ) {
 				bootNode = globalIO.getWorkerNodes()[i][0]; 
@@ -261,8 +279,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			else
 					ioWorker[i] = new DistributedIOWorker(fname, remote, i, ++currentPort, ++currentPort, bootNode, bootPort);
 			bufferPool.createPool(globalIO, this, i);
-			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i], "IOWORKER");
-			ThreadPoolManager.getInstance().spin(bufferPool.getBlockBuffer(i), "BLOCKPOOL");
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i], ioWorkerNames[i]);
 			// allow the workers to come up
 			try {
 				Thread.sleep(500);
@@ -299,6 +316,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		// queue to each tablespace
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				iori[i] = new FSyncRequest(barrierCount);
+				iori[i].setTablespace(i);
 				ioWorker[i].queueRequest(iori[i]);
 		}
 		try {
@@ -323,6 +341,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			System.out.println("ClusterIOManager.FisNew for tablespace "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		CompletionLatchInterface iori = new IsNewRequest(barrierCount);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -340,7 +359,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		CountDownLatch cdl = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				ForceBufferClearRequest fbcr = new ForceBufferClearRequest(bufferPool.getBlockBuffer(i), cdl, forceBarrierSynch);
-				bufferPool.getBlockBuffer(i).queueRequest(fbcr);
+				ioWorker[i].queueRequest(fbcr);
 				//blockBuffer[i].forceBufferClear();
 		}
 		try {
@@ -361,7 +380,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		//return blockBuffer[tblsp].addBlockAccessNoRead(Lbn);
 		CountDownLatch cdl = new CountDownLatch(1);
 		AddBlockAccessNoReadRequest abanrr = new AddBlockAccessNoReadRequest(bufferPool.getBlockBuffer(tblsp), cdl, Lbn);
-		bufferPool.getBlockBuffer(tblsp).queueRequest(abanrr);
+		ioWorker[tblsp].queueRequest(abanrr);
 		try {
 			cdl.await();
 			return (BlockAccessIndex) abanrr.getObjectReturn();
@@ -410,6 +429,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			iori[i] = new RemoteCommitRequest(cdl);
+			iori[i].setTablespace(i);
 			ioWorker[i].queueRequest(iori[i]);
 		}
 		try {
@@ -436,6 +456,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		synchronized(ioWorker[tblsp]) {
 			CountDownLatch barrierCount = new CountDownLatch(1);
 			IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, blkn, blkV2);
+			iori.setTablespace(tblsp);
 			ioWorker[tblsp].queueRequest(iori);
 			try {
 				barrierCount.await();
@@ -449,6 +470,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 		synchronized(ioWorker[tblsp]) {
 			CountDownLatch barrierCount = new CountDownLatch(1);
 			IoRequestInterface iori = new FSeekAndReadRequest(barrierCount, blkn, blkV2);
+			iori.setTablespace(tblsp);
 			ioWorker[tblsp].queueRequest(iori);
 			try {
 				barrierCount.await();

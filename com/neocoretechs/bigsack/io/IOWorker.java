@@ -111,7 +111,7 @@ public class IOWorker implements Runnable, IoInterface, IOWorkerInterface {
 	 */
 	public synchronized void queueRequest(IoRequestInterface irf) {
 		irf.setIoInterface(ioUnit); 
-		irf.setTablespace(tablespace);
+		//irf.setTablespace(tablespace);
 		if( DEBUG ) {
 			System.out.println("Adding request "+irf+" size:"+requestQueue.size());
 		}

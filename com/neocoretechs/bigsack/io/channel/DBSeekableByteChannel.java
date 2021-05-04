@@ -8,7 +8,6 @@ import java.nio.channels.ByteChannel;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 
 /**
  * This class bridges the block pool and the computational elements.

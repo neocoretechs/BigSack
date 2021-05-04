@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Random;
@@ -37,7 +38,7 @@ import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
  * @author jg
  *
  */
-public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex> implements Runnable {
+public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex> {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
 	private static final boolean NEWNODEPOSITIONDEBUG = false;
@@ -47,8 +48,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	private IoManagerInterface ioManager;
 	private int tablespace;
 	private int minBufferSize = 10; // minimum number of buffers to reclaim on flush attempt
-	private ArrayBlockingQueue<CompletionLatchInterface> requestQueue; // Request processing queue
-	private final Set<BlockChangeEvent> mObservers = Collections.newSetFromMap(new ConcurrentHashMap<BlockChangeEvent, Boolean>(0));
+	private final Set<BlockChangeEvent> mObservers = Collections.newSetFromMap(new ConcurrentHashMap<BlockChangeEvent, Boolean>());
   
 	private static int POOLBLOCKS;
 	private static int QUEUEMAX = 256; // max requests before blocking
@@ -74,8 +74,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 				freeBL.put(new BlockAccessIndex(true));
 			} catch (InterruptedException e) {}
 		}
-		minBufferSize = POOLBLOCKS/10; // we need at least one
-		requestQueue = new ArrayBlockingQueue<CompletionLatchInterface>(QUEUEMAX, true); // true maintains FIFO order	   
+		minBufferSize = POOLBLOCKS/10; // we need at least one 
 	}
 	
 	public void addBlockChangeObserver(BlockChangeEvent bce) { mObservers.add(bce); }
@@ -230,15 +229,17 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 				ablk.decrementAccesses();
 			}
 		}
+		boolean stolen = false;
 		// come up empty?
 		if (blockNum == -1L) {
 			ablk = sdbio.stealblk();
 			blockNum = ablk.getBlockNum();
 			bytesUsed = ablk.getBlk().getBytesused();
+			stolen = true;
 		}
 		assert( !ablk.getBlk().isKeypage() ) : "Attempt to obtain new insert position on key page:"+ablk+" "+ablk.getBlk();
 		if( NEWNODEPOSITIONDEBUG )
-			System.out.println("MappedBlockBuffer.getNewNodePosition "+blockNum+" "+bytesUsed);
+			System.out.println("MappedBlockBuffer.getNewNodePosition "+GlobalDBIO.valueOf(blockNum)+" Used bytes:"+bytesUsed+" stolen:"+stolen+" called by keys(target="+index+" in use="+nkeys+") locs:"+Arrays.toString(locs));
 		return new Optr(blockNum, bytesUsed);
 	}
 	/**
@@ -852,39 +853,11 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	
 
 	public String toString() {
-		return "MappedBlockBuffer tablespace "+tablespace+" blocks:"+this.size()+" free:"+freeBL.size()+" requests:"+requestQueue.size()+" cache hit="+cacheHit+" miss="+cacheMiss;
+		return "MappedBlockBuffer tablespace "+tablespace+" blocks:"+this.size()+" free:"+freeBL.size()+" cache hit="+cacheHit+" miss="+cacheMiss;
 	}
 	
-	public synchronized void queueRequest(CompletionLatchInterface ior) {
-		try {
-			requestQueue.put(ior);
-		} catch (InterruptedException e) {
-			// executor calls for shutdown during wait for queue to process entries while full or busy 
-		}
-	}
 	
-	@Override
-	public void run() {
-		CompletionLatchInterface ior = null;
-		while(shouldRun) {
-			try {
-				ior = requestQueue.take();
-			} catch (InterruptedException e) {
-				// executor calling for shutdown
-				break;
-			}
-			try {
-				ior.setTablespace(tablespace);
-				if( DEBUG ) {
-					System.out.println("MappedBlockBuffer.run processing request "+ior+" for tablespace:"+tablespace);
-				}
-				ior.process();
-			} catch (IOException e) {
-				System.out.println("MappedBlockBuffer exception processing request "+ior+" "+e);
-				break;
-			}
-		}
-		
-	}
+	
+
 
 }

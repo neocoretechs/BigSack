@@ -352,7 +352,7 @@ public final class BigSackSession {
 	/**
 	* @exception IOException for low level failure
 	*/
-	void Rollback() throws IOException {
+	public void Rollback() throws IOException {
 		Close(true);
 	}
 	
@@ -360,15 +360,17 @@ public final class BigSackSession {
 	* Commit the blocks.
 	* @exception IOException For low level failure
 	*/
-	void Commit() throws IOException {
-		Close(false);
+	public void Commit() throws IOException {
+		bTree.getIO().deallocOutstandingCommit();
+		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
+			bTree.getIO().getIOManager().getUlog(i).commit();	
 	}
 	/**
 	 * Checkpoint the current transaction
 	 * @throws IOException 
 	 * @throws IllegalAccessException 
 	 */
-	void Checkpoint() throws IllegalAccessException, IOException {
+	public void Checkpoint() throws IllegalAccessException, IOException {
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
 				bTree.getIO().getIOManager().getUlog(i).checkpoint();
 	}

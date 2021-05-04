@@ -12,7 +12,7 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
  *
  */
 public final class FreeBlockAllocator {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	private long[] nextFree = new long[DBPhysicalConstants.DTABLESPACES];
 	private int roundRobinTablespace = -1;
 	private IoManagerInterface ioManager;

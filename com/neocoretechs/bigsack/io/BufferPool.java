@@ -34,12 +34,14 @@ public class BufferPool {
 	protected final CyclicBarrier commitBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 	protected final CyclicBarrier directWriteBarrierSynch = new CyclicBarrier(DBPhysicalConstants.DTABLESPACES);
 
+	private MultithreadedIOManager ioManager;
 	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	private RecoveryLogManager[] ulog;
 	private BlockStream[] blks = new BlockStream[DBPhysicalConstants.DTABLESPACES];
 	
 	
-	public BufferPool() {
+	public BufferPool(MultithreadedIOManager ioManager) {
+		this.ioManager = ioManager;
 		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
 		ulog = new RecoveryLogManager[DBPhysicalConstants.DTABLESPACES];
 	}
@@ -166,7 +168,7 @@ public class BufferPool {
 		CountDownLatch cdl = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				ForceBufferClearRequest fbcr = new ForceBufferClearRequest(blockBuffer[i], cdl, forceBarrierSynch);
-				blockBuffer[i].queueRequest(fbcr);
+				ioManager.ioWorker[i].queueRequest(fbcr);
 				//blockBuffer[i].forceBufferClear();
 		}
 		try {
@@ -299,7 +301,7 @@ public class BufferPool {
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				//blockBuffer[i].directBufferWrite();
 				DirectBufferWriteRequest dbwr = new DirectBufferWriteRequest(blockBuffer[i], cdl, directWriteBarrierSynch);
-				blockBuffer[i].queueRequest(dbwr);
+				ioManager.ioWorker[i].queueRequest(dbwr);
 		}
 		try {
 				cdl.await();

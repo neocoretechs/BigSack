@@ -56,9 +56,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		this.globalIO = globalIO;
 		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
 		alloc = new FreeBlockAllocator(this);
-		bufferPool = new BufferPool();
-		// Initialize the thread pool group NAMES to spin new threads in controllable batches
-		ThreadPoolManager.init(new String[]{"BLOCKPOOL","IOWORKER"}, false);
+		bufferPool = new BufferPool(this);
 	}
 	/**
 	 * Get the allocator of free blocks
@@ -76,11 +74,16 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public synchronized boolean Fopen(String fname, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
+		// Initialize the thread pool group NAMES to spin new threads in controllable batches
+		String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			ioWorkerNames[i] = "IOWORKER"+translateDb(fname,i);
+		}
+		ThreadPoolManager.init(ioWorkerNames, false);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			ioWorker[i] = new IOWorker(translateDb(fname,i), i, L3cache);
 			bufferPool.createPool(globalIO, this, i);
-			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i],"IOWORKER");
-			ThreadPoolManager.getInstance().spin(bufferPool.getBlockBuffer(i), "BLOCKPOOL");
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i],ioWorkerNames[i]);
 		}
 		if( create && isNew() ) {
 			// init the Datablock arrays, create freepool
@@ -113,14 +116,19 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public synchronized boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException {
 		this.L3cache = L3cache;
+		// Initialize the thread pool group NAMES to spin new threads in controllable batches
+		String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			ioWorkerNames[i] = "IOWORKER"+translateDb(fname,i);
+		}
+		ThreadPoolManager.init(ioWorkerNames, false);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			if( remote == null )
 					ioWorker[i] = new IOWorker(translateDb(fname,i), i, L3cache);
 			else
 					ioWorker[i] = new IOWorker(translateDb(fname,i), translateDb(remote,i), i, L3cache);
 			bufferPool.createPool(globalIO, this, i);
-			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i], "IOWORKER");
-			ThreadPoolManager.getInstance().spin(getBlockBuffer(i), "BLOCKPOOL");
+			ThreadPoolManager.getInstance().spin((Runnable)ioWorker[i], ioWorkerNames[i]);
 		}
 		if( create && isNew() ) {
 			// init the Datablock arrays, create freepool
@@ -179,6 +187,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.println("MultithreadedIOManager.getNextFreeBlock "+tblsp);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new GetNextFreeBlockRequest(barrierCount, getFreeBlockAllocator().getNextFree(tblsp));
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -201,6 +210,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		// queue to each tablespace
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			iori[i] = new GetNextFreeBlocksRequest(nextBlocksBarrierSynch, barrierCount);
+			iori[i].setTablespace(i);
 			ioWorker[i].queueRequest(iori[i]);
 		}
 		try {
@@ -224,6 +234,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndWriteRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		// no need to wait, let the queue handle serialization
 		ioWorker[tblsp].queueRequest(iori);
 	}
@@ -239,6 +250,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndWriteFullyRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 	}
 	/* (non-Javadoc)
@@ -254,6 +266,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndReadRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -278,6 +291,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		long offset = GlobalDBIO.getBlock(toffset);
 		CountDownLatch barrierCount = new CountDownLatch(1);
 		IoRequestInterface iori = new FSeekAndReadFullyRequest(barrierCount, offset, tblk);
+		iori.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(iori);
 		try {
 			barrierCount.await();
@@ -365,7 +379,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		bufferPool.deallocOutstandingWriteLog(tablespace, lbai);
 	}
 		
-	private String translateDb(String dbname, int tablespace) {
+	protected String translateDb(String dbname, int tablespace) {
 		String db;
         // replace any marker of $ with tablespace number
         if( dbname.indexOf('$') != -1) {
@@ -503,6 +517,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.println("MultithreadedIOManager.fsize for tablespace "+tblsp);
 		CountDownLatch cdl = new CountDownLatch(1);
 		FsizeRequest abanrr = new FsizeRequest(cdl);
+		abanrr.setTablespace(tblsp);
 		ioWorker[tblsp].queueRequest(abanrr);
 		try {
 			cdl.await();

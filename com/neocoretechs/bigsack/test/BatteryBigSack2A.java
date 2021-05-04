@@ -6,9 +6,10 @@ import com.neocoretechs.bigsack.iterator.KeyValuePair;
 import com.neocoretechs.bigsack.session.BigSackSession;
 import com.neocoretechs.bigsack.session.BufferedTreeMap;
 import com.neocoretechs.bigsack.session.SessionManager;
+import com.neocoretechs.bigsack.session.TransactionalTreeMap;
 /**
  * This simple test battery tests the BufferedTreeMap and uses small to medium string K/V pairs
- * with insertion, deletion and retrieval.
+ * with insertion, deletion and retrieval in a transactional setting.
  * Parameters: Set the database name as the first argument "/users/you/TestDB1" where
  * the directory  "/users/you" must exist and a series of tablespaces and a log directory
  * are created under that. The database files will be named "TestDB1" under "/users/you/log and 
@@ -23,12 +24,12 @@ import com.neocoretechs.bigsack.session.SessionManager;
  * @author jg
  *
  */
-public class BatteryBigSack2 {
+public class BatteryBigSack2A {
 	static String key = "This is a test"; // holds the base random key string for tests
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0; // controls range of testing
-	static int max = 1000000;
+	static int max = 100000;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -36,10 +37,10 @@ public class BatteryBigSack2 {
 	*/
 	public static void main(String[] argv) throws Exception {
 		if (argv.length == 0 || argv[0].length() == 0) {
-			 System.out.println("usage: java BatteryBigSack2 <database>");
+			 System.out.println("usage: java BatteryBigSack2A <database>");
 			System.exit(1);
 		}
-		BufferedTreeMap session = new BufferedTreeMap(argv[0],l3CacheSize);
+		BigSackSession session = SessionManager.Connect(argv[0], null, true);
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
 		battery1(session, argv);
@@ -75,13 +76,14 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
 			session.put(key + String.format(uniqKeyFmt, i), val+String.format(uniqKeyFmt, i));
 			if(i%(max/100) == 0) {
 				System.out.println("Added "+i+" in "+(System.currentTimeMillis()-tims)+"ms.");
 				tims = System.currentTimeMillis();
+				session.Commit();
 			}
 		}
 		 System.out.println("BATTERY1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
@@ -92,7 +94,7 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1A(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1A(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
 			Object o = session.get(key + String.format(uniqKeyFmt, i));
@@ -109,7 +111,7 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1A1(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1A1(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		
 			int o = (int) session.size();
@@ -125,7 +127,7 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1B(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1B(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		String f = (String) session.first();
 		String l = (String) session.last();
@@ -157,7 +159,7 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1C(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1C(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		Iterator<?> itk = session.keySet();
 		Iterator<?> ite = session.entrySet();
@@ -168,7 +170,7 @@ public class BatteryBigSack2 {
 			String nkey = key + String.format(uniqKeyFmt, ctr);
 			String nval = val + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nkey) || !l.equals(nval)) {
-				 System.out.println("BATTERY1C FAIL "+f+" -- "+l+" "+ctr);
+				 System.out.println("BATTERY1C FAIL \r\nretrieved:"+f+" -- "+l+"\r\n"+" target:"+nkey+" -- "+nval);
 				 System.out.println("BATTERY1C FAIL counter reached "+ctr+" not "+max);
 				throw new Exception("B1C Fail on get with "+f+" -- "+l+" "+ctr);
 			}
@@ -186,10 +188,10 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1D(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1D(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// headset strictly less than 'to' element
-		Iterator<?> itk = session.headMap(key+(max)); // set is strictly less than 'to' element so we use max val
+		Iterator<?> itk = session.headSet(key+(max)); // set is strictly less than 'to' element so we use max val
 		int ctr = 0;
 		while(itk.hasNext()) {
 			Object f = itk.next();
@@ -213,11 +215,11 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1E(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1E(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// from element inclusive to element exclusive
 		// notice how we use base key to set lower bound as the partial unformed key is least possible value
-		Iterator<?> itk = session.subMap(key, key+String.format(uniqKeyFmt, max)); // 'to' exclusive so we use max val
+		Iterator<?> itk = session.subSet(key, key+String.format(uniqKeyFmt, max)); // 'to' exclusive so we use max val
 		int ctr = 0;
 		while(itk.hasNext()) {
 			Object f = itk.next();
@@ -242,10 +244,10 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1F(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1F(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// subset strictly less than 'to' element
-		Iterator<?> itk = session.tailMap(key); // >= from, so try partial bare key here
+		Iterator<?> itk = session.tailSet(key); // >= from, so try partial bare key here
 		int ctr = 0;
 		while(itk.hasNext()) {
 			Object f = itk.next();
@@ -270,10 +272,10 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1D1(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1D1(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// headset strictly less than 'to' element
-		Iterator<?> itk = session.headMapKV(key+String.format(uniqKeyFmt, max)); // set is strictly less than 'to' element so we use max val
+		Iterator<?> itk = session.headSetKV(key+String.format(uniqKeyFmt, max)); // set is strictly less than 'to' element so we use max val
 		//System.out.println("BATTERY1D1 iterator:"+itk);
 		if( itk == null)
 			throw new Exception("BATTERY1D1 FAIL iterator for K/V headmap came back null for "+key+String.format(uniqKeyFmt, max));
@@ -304,11 +306,11 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1E1(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1E1(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// from element inclusive to element exclusive
 		// notice how we use base key to set lower bound as the partial unformed key is least possible value
-		Iterator<?> itk = session.subMapKV(key, key+String.format(uniqKeyFmt, max)); // 'to' exclusive so we use max val
+		Iterator<?> itk = session.subSetKV(key, key+String.format(uniqKeyFmt, max)); // 'to' exclusive so we use max val
 		int ctr = 0;
 		while(itk.hasNext()) {
 			KeyValuePair f = (KeyValuePair) itk.next();
@@ -334,10 +336,10 @@ public class BatteryBigSack2 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1F1(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery1F1(BigSackSession session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		// subset strictly less than 'to' element
-		Iterator<?> itk = session.tailMapKV(key); // >= from, so try partial bare key here
+		Iterator<?> itk = session.tailSetKV(key); // >= from, so try partial bare key here
 		int ctr = 0;
 		while(itk.hasNext()) {
 			KeyValuePair f = (KeyValuePair) itk.next();

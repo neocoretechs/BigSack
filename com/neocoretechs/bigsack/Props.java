@@ -1,7 +1,9 @@
 package com.neocoretechs.bigsack;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Properties;
 
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -36,10 +38,17 @@ import java.io.InputStream;
 public class Props {
 	private static final String propsFile = "BigSack.properties";
 	private static String propfile = null;
-	public static final String dataDirectory = "/home/pi/";
+	public static String dataDirectory = "/home/pi/";
 	public static boolean DEBUG = false;
+	private static Properties properties;
 	/**
 	 * assume properties file is in 'bigsack.properties' defined at runtime by -Dbigsack.properties=file
+	 * failing that, we will try to load a file name RoboCore.properties from the system resource stream
+	 * located on the classpath, failing that, we will try to load RoboCore.properties from the dataDirectory path.
+	 * If all else fails throw Runtime exception because we need this config.
+	 */
+	/**
+	 * assume properties file is in 'RoboCore.properties' defined at runtime by -DRoboCore.properties=file
 	 * failing that, we will try to load a file name RoboCore.properties from the system resource stream
 	 * located on the classpath, failing that, we will try to load RoboCore.properties from the dataDirectory path.
 	 * If all else fails throw Runtime exception because we need this config.
@@ -47,10 +56,15 @@ public class Props {
 	static {
 		try {
 			String file = System.getProperty(propsFile);
+			properties = new Properties();
 			if (file == null) {
 				init(top());
 			} else {
-				init(new FileInputStream(file));
+				File f = new File(file);
+				if(f.exists())
+					init(new FileInputStream(file));
+				else
+					init(top());
 			}
 		} catch (IOException ioe) {
 			throw new RuntimeException(ioe.toString());
@@ -58,7 +72,9 @@ public class Props {
 	}
 	
 	/**
-	 * Find the top level resource for props
+	 * Try to locate the BigSack.properties file through system class loader resource stream.<p/>
+	 * Find the top level resource for props. User even has the option of specifying -DBigSack.properties=<directory>
+	 * and we will try to look for the file named BigSack.properties there.<p/>
 	 * @return the InputStream of property resource
 	 * @exception IOException if we can't get the resource
 	 */
@@ -66,6 +82,11 @@ public class Props {
 		java.net.URL loader =
 			ClassLoader.getSystemResource(propsFile);
 		if (loader == null) {
+		   	dataDirectory = System.getProperty(propsFile);
+		   	if(dataDirectory == null)
+		   		throw new IOException(propsFile+" cannot be loaded from any resource path to configure database...");
+	    	if(!dataDirectory.endsWith("/"))
+	    			dataDirectory += "/";
 			if( DEBUG )
 				System.out.println("Loading properties:"+dataDirectory+propsFile);
 			return new FileInputStream(dataDirectory+propsFile);
@@ -86,7 +107,8 @@ public class Props {
 	 */
 	public static void init(InputStream propFile) throws IOException {
 		try {
-			System.getProperties().load(propFile);
+			properties.load(propFile);
+			propFile.close();
 		} catch (Exception ex) {
 			throw new IOException("FATAL ERROR:  unable to load "+propsFile+" file " + ex.toString());
 		}
@@ -98,7 +120,7 @@ public class Props {
 	 * @exception IllegalArgumentException if not set. 
 	 **/
 	public static boolean toBoolean(String prop) {
-		String val = Props.toString(prop);
+		String val = properties.getProperty(prop);
 		try {
 			return Boolean.valueOf(val).booleanValue();
 		} catch (Exception ex) {
@@ -117,7 +139,7 @@ public class Props {
 	 * @exception IllegalArgumentException if not set. 
 	 **/
 	public static int toInt(String prop) {
-		String val = Props.toString(prop);
+		String val = properties.getProperty(prop);
 		try {
 			return Integer.parseInt(val);
 		} catch (NumberFormatException ex) {
@@ -136,7 +158,7 @@ public class Props {
 	 * @exception IllegalArgumentException if not set. 
 	 **/
 	public static long toLong(String prop) {
-		String val = Props.toString(prop); // can hurl
+		String val = properties.getProperty(prop); // can hurl
 		try {
 			return Long.parseLong(val);
 		} catch (NumberFormatException ex) {
@@ -156,7 +178,7 @@ public class Props {
 	 * @exception IllegalArgumentException if not set. 
 	 **/	
 	public static String toString(String prop) {
-		String result = System.getProperty(prop);
+		String result = properties.getProperty(prop);
 		if (result == null)
 			throw new IllegalArgumentException("property " + prop + " not set");
 		if (result != null)
@@ -165,7 +187,7 @@ public class Props {
 	}
 
 	public static float toFloat(String prop) {
-		String val = Props.toString(prop);
+		String val = properties.getProperty(prop);
 		try {
 			return Float.valueOf(val).floatValue();
 		} catch (Exception ex) {
