@@ -1,12 +1,21 @@
+BigSack - The Purely Java Object Database.
+
 Overview:
-BigSack (formerly TreePool) is a Java persistence mechanism that provides TreeSet and TreeMap functionality with a small footprint
-and exabyte object serialization capability. Undo logging tunable cache are some of the differentiating features. The typical workflow is to open
-a 'database', get a session, perform adds/deletes/updates/retrievals, then commit or rollback. Accessing the data is done through
-methods returning subsets of the ordered set via iterators, like the native Java KeySet and KeyMap collections classes.
- 
+A sack is a computer sceince term for a mechanism to manage a collection of unstructured data. BigSack is a Java persistence mechanism 
+that provides Java util class TreeSet and TreeMap functionality with a small footprint.
+BigSack can function as a striaght TreeMap and TreeSet enhanced replacement, or embedded in its transaction
+wrapper for full database commit, checkpoint and rollback semantics.
+
+Exabyte object serialization capability, and tunable cache are some of the other differentiating features. 
+
+The typical workflow is to open a 'database', get a session, perform adds/deletes/updates/retrievals, then commit or rollback. 
+Accessing the data is done through methods returning subsets of the ordered set via iterators or Java 8 streams  
+like the native Java KeySet and KeyMap collections classes.
+
 Storage Mechanism:
 It stores individual key/value pairs as a bTree index spread over a series of 
-fixed-length blocks which are double linked. As elements are needed the necessary blocks are paged in to the pool as the index is traversed. 
+fixed-length blocks which are double linked. As elements are needed the necessary blocks are paged in to the pool as the 
+index is traversed.
 The leaf nodes point to data blocks that contain the serialized version of the object, again spread over the necessary blocks.
 Multiple tablespace files are dynamically managed by memory mapping and/or file IO. An undo file mirrors the modified
 blocks and restores them in the event of a failure. The index to the keys is a BTree composed of serialized internal BigSack
@@ -56,6 +65,7 @@ java -cp bin/BigSack.jar com.neocoretechs.bigsack.test.BatteryBigSack user/TestD
 or right click BatteryBigSack in eclipse and 'Run As Java application'. The app will look for the BigSack.properties and if
 not found on the ClassPath will look for a system property. Set up you 'Arguments' tab in eclipse to include the
 path and name of directory/database.
+
 A command line example:
 java -cp bin/Bigsack.jar -DBigSack.properties=conf/BigSack.properties com.neocoretechs.bigsack.test.BatteryBigSack user/TestDB
 
@@ -72,7 +82,31 @@ BigSackSession session = SessionManager.Connect(argv[0], true);
 Classes that wrap a session are BufferedTreeMap, BufferedTreeSet, and BufferedCachlessTreeSet. At this level concurrency
 control is managed through a mutex object and an in-memory cache of deserialized objects is provided. In you app you would do the following:
 BufferedTreeMap bm = new BufferedTreeMap(argv[0], true);
-and from there use bm to put/get/get your iterators on, etc.
+and from there use bm to put/get/get your iterators on, etc. The BigSackAdapter class is used to get transactional sessions:
+
+		BigSackAdapter.setTableSpaceDir(argv[0]);
+		TransactionalTreeSet session = BigSackAdapter.getBigSackSetTransaction(Class.forName(argv[1]));
+		Object o;
+		int i = 0;
+		session.headSetStream((Comparable) session.first()).forEach(o ->System.out.println("["+(i++)+"]"+o));
+		session.headSetStream((Comparable) session.first()).forEach(o -> {			
+			System.out.println("["+(i++)+"]"+o);
+			comparableClass.mapEntry = (Map.Entry) o;
+			...
+		});
+		session.tailSetStream((Comparable) session.last()).forEach(o -> {
+			System.out.println("["+(i++)+"]"+o);
+		});
+		session.subSetStream((Comparable) session.first(), (Comparable) session.last()).forEach(o -> {
+			System.out.println("["+(i++)+"]"+o);
+		});
+		o = session.first();
+		o = session.last();
+		boolean x = session.contains(Class.forName(argv[1]).newInstsance("something"));
+		session.add(o);
+		BigSackAdapter.commitSet(Class.forName(argv[1]));
+		-- or ...
+		BigSackAdapter.rollbackSet(Class.forName(argv[1]))
 
 Easter Eggs:
 Many possibilities exist. If you explore you'll find a mechanism to plug in your own classloader for class resolution. There are AdminSessions that,

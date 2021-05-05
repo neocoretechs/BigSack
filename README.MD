@@ -55,7 +55,23 @@ tailMap<br/>
 tailMapKV<br/>
 subMap<br/>
 subMapKV<br/>
-
+```
+		TransactionalTreeSet session = BigSackAdapter.getBigSackSetTransaction(Class.forName(argv[1]));
+		Object o;
+		int i = 0;
+		session.headSetStream((Comparable) session.first()).forEach(o ->System.out.println("["+(i++)+"]"+o));
+		session.headSetStream((Comparable) session.first()).forEach(o -> {			
+			System.out.println("["+(i++)+"]"+o);
+			comparableClass.mapEntry = (Map.Entry) o;
+			...
+		});
+		session.tailSetStream((Comparable) session.last()).forEach(o -> {
+			System.out.println("["+(i++)+"]"+o);
+		});
+		session.subSetStream((Comparable) session.first(), (Comparable) session.last()).forEach(o -> {
+			System.out.println("["+(i++)+"]"+o);
+		});
+```
 <h3>Features:</h3>
 <ul>
 <li>Multiple memory mapped tablespace files facilitate high throughput to disk.</li>
