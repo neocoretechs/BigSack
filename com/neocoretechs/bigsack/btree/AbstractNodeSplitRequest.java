@@ -20,7 +20,7 @@ import com.neocoretechs.bigsack.io.request.IoRequestInterface;
  *                 /   \
  *     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
  *
- * @author jg Copyright (C) NeoCoreTechs 2015
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2015
  *
  */
 public abstract class AbstractNodeSplitRequest implements IoRequestInterface {

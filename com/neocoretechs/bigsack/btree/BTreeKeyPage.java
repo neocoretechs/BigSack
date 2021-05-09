@@ -71,41 +71,43 @@ public final class BTreeKeyPage {
 	private static final boolean DEBUGPUTKEY = false;
 	private static final boolean DEBUGREMOVE = false;
 	static final long serialVersionUID = -2441425588886011772L;
+	public static final int BTREEKEYSIZE = 28; // total size of non-transient recurring fields here
+	public static final int BTREEDATASIZE = 5; // total number of non transient single entry fields stored per block
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
 	// The number of maximum children is MAXKEYS+1 per node.
 	// Calculate the maximum number of odd keys that can fit per block.
 	public static int MAXKEYS = (
-			(((DBPhysicalConstants.DATASIZE-13)/28) % 2) == 0 ? 
-			((DBPhysicalConstants.DATASIZE-13)/28)-1 : // even, subtract 1 from total
-			((DBPhysicalConstants.DATASIZE-13)/28) );//5; 
+			((int) Math.floor(((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE)) % 2) == 0 ? 
+			((int) Math.floor((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE)) - 1 : // even, subtract 1 from total
+			((int) Math.floor((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE)) );
 	// Non transient number of keys on this page. Adjusted as necessary when inserting/deleting.
-	private int numKeys = 0;
+	private int numKeys = 0; // 4 bytes, SINGLE ENTRY
 	// Transient. The 'id' is really the location this page was retrieved from deep store.
 	transient long pageId = -1L;
 	@SuppressWarnings("rawtypes")
 	// The array of keys, transient, filled from key Ids.
 	private transient Comparable[] keyArray;
 	// The array of page locations of stored keys as block and offset, used to fill keyArray lazily
-	private Optr[] keyIdArray;
+	private Optr[] keyIdArray; // 10 bytes, MAXKEYS ENTRIES
 	// Array to hold updated key status
 	private transient boolean[] keyUpdatedArray;
 	// The array of pages corresponding to the pageIds for the child nodes. Transient since we lazily retrieve pages via pageIds
 	transient BTreeKeyPage[] pageArray;
 	// The array of page ids from which the btree key page array is filled. This data is persisted as virtual page pointers. Since
 	// we align indexes on page boundaries we dont need an offset as we do with value data associated with the indexes for maps.
-	private long[] pageIdArray;
+	private long[] pageIdArray; // 8 bytes, MAXKEYS ENTRIES
 	// These are the data items for values associated with keys,
 	// These are lazily populated from the dataIdArray where an id exsists at that index.
 	transient Object[] dataArray;
 	// This array is present for maps where values are associated with keys. In sets it is absent or empty.
 	// It contains the page and offset of the data item associated with a key. We pack value data on pages, hence
 	// we need an additional 2 byte offset value to indicate that.
-	private Optr[] dataIdArray;
+	private Optr[] dataIdArray; // 10 bytes, MAXKEYS ENTRIES
 	// This transient array maintains boolean values indicating whether the data item at that index has been updated
 	// and needs written back to deep store.
 	transient boolean[] dataUpdatedArray;
 	// Global is this leaf node flag.
-	private boolean mIsLeafNode = true; // We treat as leaf since the logic is geared to proving it not
+	private boolean mIsLeafNode = true; //1 byte, SINGLE ENTRY ,We treat as leaf since the logic is geared to proving it not
 	// Global page updated flag.
 	private transient boolean updated = false; // has the node been updated for purposes of write
 	private transient ObjectDBIO sdbio;

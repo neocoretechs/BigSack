@@ -1,4 +1,7 @@
 package com.neocoretechs.bigsack;
+
+import com.neocoretechs.bigsack.io.pooled.Datablock;
+
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
 * All rights reserved.
@@ -25,7 +28,7 @@ package com.neocoretechs.bigsack;
 /**
 * Defines physical constants for tablespaces, buckets, etc
 * block header size is diff of DBLOCKSIZ - DATASIZE
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 1997,2003,2021
 */
 public interface DBPhysicalConstants {
 	/**
@@ -33,7 +36,7 @@ public interface DBPhysicalConstants {
 	 * - the size of the header portion
 	 */
 	public static final short DATASIZE =
-		(short) (Props.toInt("BlockSize") - 29);
+		(short) (Props.toInt("BlockSize") - Datablock.DATABLOCKHEADERSIZE);
 	/**
 	 * The total block (page) size.  Determined by BlockSize in properties file
 	 */

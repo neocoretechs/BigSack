@@ -41,6 +41,7 @@ import com.neocoretechs.bigsack.io.IoInterface;
 */
 public final class Datablock implements Externalizable {
 	private static boolean DEBUG = false;
+	public static final int DATABLOCKHEADERSIZE = 29;
 	private long prevblk = -1L; // offset to prev blk in chain
 	private long nextblk = -1L; // offset of next blk in chain
 	private short bytesused; // bytes used this blk-highwater mark
