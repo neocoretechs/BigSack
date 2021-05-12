@@ -5,9 +5,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 /**
  * This is an IoManager based request which will call into the block buffer for this

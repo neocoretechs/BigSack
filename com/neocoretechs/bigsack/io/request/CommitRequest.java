@@ -6,8 +6,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 
 /**
  * A special case of request the does not propagate outward to workers but instead is

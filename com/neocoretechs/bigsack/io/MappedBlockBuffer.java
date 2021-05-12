@@ -1,4 +1,4 @@
-package com.neocoretechs.bigsack.io.pooled;
+package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -12,9 +12,10 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.io.IoManagerInterface;
-import com.neocoretechs.bigsack.io.Optr;
-import com.neocoretechs.bigsack.io.RecoveryLogManager;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.BlockChangeEvent;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 
 /**
@@ -209,21 +210,21 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, BlockAccessIndex>
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public static Optr getNewInsertPosition(ObjectDBIO sdbio, Optr[] locs, int index, int nkeys) throws IOException {
+	protected static Optr getNewInsertPosition(ObjectDBIO sdbio, Optr[] locs, int index, int nkeys, int bytesNeeded ) throws IOException {
 		long blockNum = -1L;
 		BlockAccessIndex ablk = null;
-		short bytesUsed = DBPhysicalConstants.DATASIZE;
+		short bytesUsed = 0;
 		int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);  
 		for(int i = 0; i < nkeys; i++) {
 			if(i == index) continue;
 			if( !locs[i].equals(Optr.emptyPointer) && GlobalDBIO.getTablespace(locs[i].getBlock()) == tbsp ) {
 				ablk = sdbio.findOrAddBlock(locs[i].getBlock());
 				assert(!ablk.getBlk().isKeypage()) : "Attempt to insert to keyPage "+ablk;
-				short xbytesUsed = ablk.getBlk().getBytesused();
-				if( xbytesUsed < bytesUsed ) {
+				short bytesAvailable = (short) (DBPhysicalConstants.DATASIZE - ablk.getBlk().getBytesused());
+				if( bytesAvailable >= bytesNeeded || bytesAvailable == DBPhysicalConstants.DATASIZE) {
 					// eligible
 					blockNum = ablk.getBlockNum();
-					bytesUsed = xbytesUsed;
+					bytesUsed = ablk.getBlk().getBytesused();
 					break;
 				}
 				ablk.decrementAccesses();

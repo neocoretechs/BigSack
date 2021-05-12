@@ -934,7 +934,7 @@ public final class BTreeMain {
 					// seek to "leftmost" key in currentPage subtree,the one we just tested, using currentChild
 					seekLeftTree();
 					setCurrent();
-					return (0);	
+					return 0;	
 				}
 		}
 		// If we are here we are at the end of the key range
@@ -1013,6 +1013,9 @@ public final class BTreeMain {
 		// if we hit the root, protocol right. in any case we have to reassert
 		// if there is a subtree follow it, else return the key
 		Comparable key = currentPage.getKey(currentIndex);
+		if(key == null) {
+			System.out.printf("popUntilValid retrieved null key from currentIndex:%d currentPage:%s%n",currentIndex,currentPage);
+		}
 		while( pop() ) {
 			if(DEBUG || DEBUGSEARCH) {
 				System.out.println("BTreeMain.popUntilValid POP index:"+currentIndex+" child:"+currentChild+" page:"+currentPage);

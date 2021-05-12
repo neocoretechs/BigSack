@@ -5,7 +5,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 /**
  * Issue a request to directly write the buffer. The raw store is written if block access is 0 and the log subsystem

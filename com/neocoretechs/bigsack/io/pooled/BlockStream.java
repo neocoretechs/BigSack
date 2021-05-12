@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.stream.DBInputStream;
 import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 

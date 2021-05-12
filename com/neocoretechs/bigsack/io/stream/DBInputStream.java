@@ -2,8 +2,8 @@ package com.neocoretechs.bigsack.io.stream;
 import java.io.IOException;
 import java.io.InputStream;
 
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 /*
 * Copyright (c) 1998,2003, NeoCoreTechs
 * All rights reserved.

@@ -12,7 +12,6 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 import com.neocoretechs.bigsack.io.request.FSeekAndReadFullyRequest;
@@ -167,13 +166,16 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* For sets vs maps, we store only the serialized keys clustered on the page.
 	* We determine location of new node, store in new_node_pos.
 	* Attempts to cluster entries in used blocks near insertion point.
+	* @param locs The array of previous entries to check for block space
+	* @param index The index of the target in array, such that we dont check that
+	* @param nkeys The total keys in use to check in array
 	* @return The Optr block plus offset in the block pointing to the new node position
 	* @exception IOException If we cannot get block for new item
 	*/
-	public Optr getNewInsertPosition(Optr[] locs, int index, int nkeys) throws IOException {
+	public Optr getNewInsertPosition(Optr[] locs, int index, int nkeys, int bytesNeeded) throws IOException {
 		if( DEBUG2 )
-			System.out.println("MultithreadedIOManager.getNewNodePosition for index "+index);
-		return MappedBlockBuffer.getNewInsertPosition(this.globalIO, locs, index, nkeys);
+			System.out.printf("%s.getNewInsertPosition(%s, %d, %d, %d)%n",this.getClass().getName(), locs, index, nkeys, bytesNeeded);
+		return MappedBlockBuffer.getNewInsertPosition(this.globalIO, locs, index, nkeys, bytesNeeded);
 	}
 
 	/**

@@ -36,8 +36,8 @@ import com.neocoretechs.bigsack.io.IoInterface;
 * The usual pattern is to have these methods call back through an IoInterface to perform
 * specific low level record writes. IoInterface is accessed through a request that has been queued
 * and is being serviced, thus, direct calls back to the file store are appropriate.
-* Copyright (C) NeoCoreTechs 1997,2014
-* @author Groff
+* 
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 1997,2014,2021
 */
 public final class Datablock implements Externalizable {
 	private static boolean DEBUG = false;
@@ -54,11 +54,16 @@ public final class Datablock implements Externalizable {
 	private static final long serialVersionUID = 1L;
 	//
 	private int datasize;
-	//
+	/**
+	 * Initialize the datablock with default DBPhysicalConstants.DATASIZE 
+	 */
 	public Datablock() {
 		this(DBPhysicalConstants.DATASIZE);
 	}
-	
+	/**
+	 * Initialize the datablock with the given size
+	 * @param tdatasize The size to initialize the block
+	 */
 	public Datablock(int tdatasize) {
 		datasize = tdatasize;
 		data = new byte[datasize];
@@ -190,9 +195,9 @@ public final class Datablock implements Externalizable {
 	}
 	
 	/**
-	Write this out.
-	@exception IOException error writing to log stream
-	 */
+	* Write this out.
+	* @throws IOException error writing to log stream
+	*/
 	public synchronized void writeExternal(ObjectOutput out) throws IOException
 	{
 		out.writeLong(getPrevblk());
@@ -209,8 +214,8 @@ public final class Datablock implements Externalizable {
 
 	/**
 	* Read this in
-	* @exception IOException error reading from log stream
-	* @exception ClassNotFoundException corrupted log stream
+	* @throws IOException error reading from log stream
+	* @throws ClassNotFoundException corrupted log stream
 	*/
 	public synchronized void readExternal(ObjectInput in) throws IOException, ClassNotFoundException
 	{
@@ -296,13 +301,34 @@ public final class Datablock implements Externalizable {
 				+ incore;
 		//return o;
 	}
+	/**
+	 * Actual # of bytes in use
+	 * @return The actual number of bytes in use in this block.
+	 */
 	public synchronized short getBytesinuse() {
 		return bytesinuse;
 	}
+	/**
+	 * Set the number of bytes in use for this block
+	 * @param bytesinuse the number of bytes in use in any location in the block
+	 */
 	public synchronized void setBytesinuse(short bytesinuse) {
 		this.bytesinuse = bytesinuse;
 	}
-	
+	/**
+	 * Return a non-verbose rendition of this data block.<p/>
+	 * <li>
+	 * previous<dd/>
+	 * next<dd/>
+	 * bytesused<dd/>
+	 * bytes in use <dd/>
+	 * page # <dd/>
+	 * is key page?<dd/>
+	 * is in core?<dd/>
+	 * is block empty?<dd/>
+	 * </li>
+	 * @return
+	 */
 	public synchronized String toBriefString() {
 		return ( prevblk !=-1 || nextblk !=-1 || bytesused != 0 || bytesinuse != 0 || 
 				 pageLSN != -1 || incore) ?
@@ -322,48 +348,109 @@ public final class Datablock implements Externalizable {
 					+ incore
 			:  "[[ Block Empty ]]";
 	}
+	/**
+	 * Return whether this block is in core
+	 * @return boolean true if block is active, being written or accessed
+	 */
 	public synchronized boolean isIncore() {
 		return incore;
 	}
+	/**
+	 * Set whether this block is active, written, aceesed, etc.
+	 * @param incore boolean true if active
+	 */
 	public synchronized void setIncore(boolean incore) {
 		this.incore = incore;
 	}
+	/**
+	 * Previous block
+	 * @return the long value of previous block or -1L if none
+	 */
 	public synchronized long getPrevblk() {
 		return prevblk;
 	}
+	/**
+	 * Set previous block
+	 * @param prevblk the long value of previous block
+	 */
 	public synchronized void setPrevblk(long prevblk) {
 		this.prevblk = prevblk;
 	}
+	/**
+	 * Get next block
+	 * @return the long value of next block or -1L if none
+	 */
 	public synchronized long getNextblk() {
 		return nextblk;
 	}
+	/**
+	 * Set next block
+	 * @param nextblk Long value of next block or -1L if none.
+	 */
 	public synchronized void setNextblk(long nextblk) {
 		this.nextblk = nextblk;
 	}
+	/**
+	 * Return the number of bytes used in this block, the high water mark.
+	 * @return short value of number of bytes used high water mark this block.
+	 */
 	public synchronized short getBytesused() {
 		return bytesused;
 	}
+	/**
+	 * Set high water mark bytes used this block.
+	 * @param bytesused short value of bytes used high water mark.
+	 */
 	public synchronized void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
+	/**
+	 * Is this a key page?
+	 * @return true if this is a key page.
+	 */
 	public boolean isKeypage() { return (isKeypage == 0 ? false : true); }
-	
+	/**
+	 * Set whether this is a key page.
+	 * @param b true if this is to be a key page.
+	 */
 	public void setKeypage(byte b) { isKeypage = b; }
-	
+	/**
+	 * Return the stored byte indicating whether this is a key page.
+	 * @return byte is 0 if not a keypage.
+	 */
 	public byte getKeypage() { return isKeypage; }
-	
+	/**
+	 * Get the log sequence number of this page.
+	 * @return The long value of the log sequence number this page.
+	 */
 	public synchronized long getPageLSN() {
 		return pageLSN;
 	}
+	/**
+	 * Set the log sequence number of this page.
+	 * @param version
+	 */
 	public synchronized void setPageLSN(long version) {
 		this.pageLSN = version;
 	}
+	/**
+	 * Is page in log?
+	 * @return true if page is in log.
+	 */
 	public synchronized boolean isInlog() {
 		return inlog;
 	}
+	/**
+	 * Set whether page is in log.
+	 * @param inlog true if page is in log.
+	 */
 	public synchronized void setInlog(boolean inlog) {
 		this.inlog = inlog;
 	}
+	/**
+	 * Get the data payload of this page.
+	 * @return The byte array holding the data payload of this page.
+	 */
 	public synchronized byte[] getData() { return data; }
 
 }

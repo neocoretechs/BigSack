@@ -87,7 +87,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		return accesses;
 	}
 	
-	synchronized void addAccess() {
+	public synchronized void addAccess() {
 		//if( !lock.isWriteLocked() )
 		//		lock.writeLock().lock();
 		++accesses;

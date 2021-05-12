@@ -5,7 +5,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.request.cluster.CompletionLatchInterface;
 
 public final class ForceBufferClearRequest implements CompletionLatchInterface {

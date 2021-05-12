@@ -5,12 +5,12 @@ import java.io.IOException;
 import java.util.Arrays;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /*
@@ -70,6 +70,9 @@ public final class BTreeKeyPage {
 	private static final boolean DEBUG = false;
 	private static final boolean DEBUGPUTKEY = false;
 	private static final boolean DEBUGREMOVE = false;
+	private static final boolean DEBUGSETNUMKEYS = true;
+	private static final boolean DEBUGGETDATA = true;
+	private static final boolean DEBUGPUTDATA = true;
 	static final long serialVersionUID = -2441425588886011772L;
 	public static final int BTREEKEYSIZE = 28; // total size of non-transient recurring fields here
 	public static final int BTREEDATASIZE = 5; // total number of non transient single entry fields stored per block
@@ -754,7 +757,6 @@ public final class BTreeKeyPage {
 	* work in dataArray in this method. If the dataIdArray contains a valid non Optr.Empty entry, then
 	* we retrieve and deserialize that block,offset to an entry in the dataArray at the index passed in the params
 	* location.
-	* @param sdbio The session database io instance
 	* @param index The index to the data array on this page that contains the offset to deserialize.
 	* @return The deserialized Object instance
 	* @exception IOException If retrieval fails
@@ -765,7 +767,7 @@ public final class BTreeKeyPage {
 		}
 		if (dataArray[index] == null && !dataIdArray[index].isEmptyPointer()) {
 			// eligible to retrieve page
-			if( DEBUG ) {
+			if( DEBUGGETDATA ) {
 				System.out.println("BTreeKeyPage.getData about to retrieve index:"+index+" loc:"+dataIdArray[index]);
 			}
 			dataArray[index] = sdbio.deserializeObject(dataIdArray[index]);
@@ -905,16 +907,16 @@ public final class BTreeKeyPage {
 				byte[] pb = GlobalDBIO.getObjectAsBytes(dataArray[index]);
 				// pack the page into this tablespace and within blocks the same tablespace as key
 				// the new insert position will attempt to find a block with space relative to established positions
-				dataIdArray[index] = sdbio.getIOManager().getNewInsertPosition(dataIdArray, index, getNumKeys());		
-				if( DEBUG )
-					System.out.println("BTreeKeyPage.putPage ADDING NON NULL value "+dataArray[index]+" for key index "+index+" at "+
+				dataIdArray[index] = sdbio.getIOManager().getNewInsertPosition(dataIdArray, index, getNumKeys(), pb.length);		
+				if( DEBUGPUTDATA )
+					System.out.println("BTreeKeyPage.putData ADDING NON NULL value "+dataArray[index]+" for key index "+index+" at "+
 										GlobalDBIO.valueOf(dataIdArray[index].getBlock())+","+dataIdArray[index].getOffset());
 				sdbio.add_object(dataIdArray[index], pb, pb.length);
 		} else {
 				// null this with an empty Optr.
 				dataIdArray[index] = Optr.emptyPointer;
-				if( DEBUG )
-					System.out.println("BTreeKeyPage.putPage ADDING NULL value for key index "+index);
+				if( DEBUGPUTDATA )
+					System.out.println("BTreeKeyPage.putData ADDING NULL value for key index "+index);
 		}
 		if(resetUpdate)
 			dataUpdatedArray[index] = false;
@@ -963,16 +965,16 @@ public final class BTreeKeyPage {
 				System.out.println("BTreeKeyPage.putKey("+index+") key not updated, exiting..");
 			return false;
 		}
-		if (keyArray[index] == null || !keyIdArray[index].equals(Optr.emptyPointer)) {
+		if(keyArray[index] == null || !keyIdArray[index].equals(Optr.emptyPointer)) {
 			if(DEBUG || DEBUGPUTKEY) 
 				System.out.println("BTreeKeyPage.putKeys("+index+") "+ (keyArray[index] == null ? "key is null " : " ")+
 						(!keyIdArray[index].equals(Optr.emptyPointer) ? " keyIdArray already contains valid pointer, "+(keyIdArray[index])+" returning.." : "."));
 			return false;
 		}
-		keyIdArray[index] = MappedBlockBuffer.getNewInsertPosition(sdbio, keyIdArray, index, getNumKeys());
 		// get first block to write contiguous records for keys
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(keyArray[index]);
+		keyIdArray[index] = sdbio.getIOManager().getNewInsertPosition(keyIdArray, index, getNumKeys(), pb.length);
 		sdbio.add_object(keyIdArray[index], pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY) 
 				System.out.println("BTreeKeyPage.putKeys Added object @"+keyIdArray[index]+" bytes:"+pb.length+" page:"+this);
@@ -1208,6 +1210,8 @@ public final class BTreeKeyPage {
 	 * @param numKeys the numKeys to set
 	 */
 	public synchronized void setNumKeys(int numKeys) {
+		if(DEBUGSETNUMKEYS)
+			System.out.printf("Setting num keys=%d MAX=%d leaf:%b page:%s%n", numKeys, MAXKEYS, mIsLeafNode, GlobalDBIO.valueOf(pageId));
 		this.numKeys = numKeys;
 		updated = true;
 	}

@@ -7,7 +7,6 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /**
@@ -147,7 +146,7 @@ public interface IoManagerInterface {
 	
 	public ObjectDBIO getIO();
 
-	public Optr getNewInsertPosition(Optr[] locs, int index, int nkeys) throws IOException;
+	public Optr getNewInsertPosition(Optr[] locs, int index, int nkeys, int length) throws IOException;
 	
 	public MappedBlockBuffer getBlockBuffer(int tablespace);
 
