@@ -68,7 +68,7 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public final class BTreeKeyPage {
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGPUTKEY = false;
+	private static final boolean DEBUGPUTKEY = true;
 	private static final boolean DEBUGREMOVE = false;
 	private static final boolean DEBUGSETNUMKEYS = true;
 	private static final boolean DEBUGGETDATA = true;
@@ -718,6 +718,14 @@ public final class BTreeKeyPage {
 				System.out.println("Index:"+i+" Id:"+pageIdArray[i]+" Page:"+pageArray[i]);
 			}
 		}
+		// resolve other pages with this same value
+		for(int i = 0; i < numKeys; i++) {
+			if( i == index )
+				continue;
+			if (pageArray[i] == null && pageIdArray[i] == pageIdArray[index]) {
+				pageArray[i] = pageArray[index];
+			}
+		}
 		return pageArray[index];
 	}
 
@@ -747,6 +755,7 @@ public final class BTreeKeyPage {
 				System.out.println("BTreeKeyPage.getKey retrieved index:"+index+" loc:"+keyIdArray[index]+" retrieved:"+keyArray[index]);
 				for(int i = 0; i < numKeys; i++)System.out.println(i+"="+keyIdArray[i]);
 			}
+			keyUpdatedArray[index] = false;
 		}
 		return keyArray[index];
 	}
@@ -843,11 +852,10 @@ public final class BTreeKeyPage {
 		for(int i = 0; i < MAXKEYS; i++) {
 			if( keyUpdatedArray[i] ) {
 				// put the key to a block via serialization and assign KeyIdArray the position of stored key
-				  if(!putKey(i)) // will set keyUpdatedArray[i] to false if successful
-					 continue;
+				putKey(i);	
 			}
 			if( dataUpdatedArray[i]) {
-				putData(i, false);
+				putData(i);
 			}
 		}
 		//
@@ -855,33 +863,30 @@ public final class BTreeKeyPage {
 		BlockStream bks = sdbio.getIOManager().getBlockStream(GlobalDBIO.getTablespace(pageId));
 		DataOutputStream bs = bks.getDBOutput();
 		// write the page to the current block
-		if(isUpdated()) {
-			lbai.getBlk().setIncore(true);
-			lbai.setByteindex((short) 0);
-			// Write to the block output stream
-			bks.setBlockAccessIndex(lbai);
-			if( DEBUG )
-				System.out.println("BTreeKeyPage.putPage BlockStream:"+bks);
-			bs.writeByte(getmIsLeafNode() ? 1 : 0);
-			bs.writeInt(getNumKeys());
-			for(int i = 0; i < MAXKEYS; i++) {
-				if( !keyUpdatedArray[i] ) { // if set, key was processed by putKey[i]
-					// else skip 
-					bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
-					continue;
-				}
+		lbai.getBlk().setIncore(true);
+		lbai.setByteindex((short) 0);
+		// Write to the block output stream
+		bks.setBlockAccessIndex(lbai);
+		if( DEBUG )
+			System.out.println("BTreeKeyPage.putPage BlockStream:"+bks);
+		bs.writeByte(getmIsLeafNode() ? 1 : 0);
+		bs.writeInt(getNumKeys());
+		for(int i = 0; i < MAXKEYS; i++) {
+			if( keyUpdatedArray[i] ) { // if set, key was processed by putKey[i]
 				bs.writeLong(keyIdArray[i].getBlock());
 				bs.writeShort(keyIdArray[i].getOffset());
 				keyUpdatedArray[i] = false;
-				// data array
-				if( dataUpdatedArray[i] ) {
-					bs.writeLong(dataIdArray[i].getBlock());
-					bs.writeShort(dataIdArray[i].getOffset());
-					dataUpdatedArray[i] = false;
-				} else {
-					// skip the data Id for this index as it was not updated, so no need to write anything
-					bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
-				}
+			} else { // skip 
+				bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
+			}
+			// data array
+			if( dataUpdatedArray[i] ) {
+				bs.writeLong(dataIdArray[i].getBlock());
+				bs.writeShort(dataIdArray[i].getOffset());
+				dataUpdatedArray[i] = false;
+			} else {
+				// skip the data Id for this index as it was not updated, so no need to write anything
+				bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+10));
 			}
 		}
 		// persist btree key page indexes
@@ -898,10 +903,9 @@ public final class BTreeKeyPage {
 	 * At BTreeKeyPage putPage time, we resolve the lazy elements to actual VBlock,offset
 	 * This method puts the values associated with a key/value pair, if using maps vs sets
 	 * @param index Index of BTreeKeyPage key and data value array
-	 * @param resetUpdate true to reset the update flag for this key, causing a push
 	 * @throws IOException
 	 */
-	private synchronized void putData(int index, boolean resetUpdate) throws IOException {
+	private synchronized void putData(int index) throws IOException {
 		// if it gets nulled or overwritten, delete old data
 		if( dataArray[index] != null) {
 				byte[] pb = GlobalDBIO.getObjectAsBytes(dataArray[index]);
@@ -918,23 +922,8 @@ public final class BTreeKeyPage {
 				if( DEBUGPUTDATA )
 					System.out.println("BTreeKeyPage.putData ADDING NULL value for key index "+index);
 		}
-		if(resetUpdate)
-			dataUpdatedArray[index] = false;
 	}
-	/**
-	* Recursively put the pages to deep store.  
-	* @param sdbio The BlockDBIO instance
-	* @exception IOException if write fails 
-	*/
-	public synchronized void putPages() throws IOException {
-		for (int i = 0; i <= getNumKeys(); i++) {
-			if (pageArray[i] != null) {
-				pageArray[i].putPages();
-				pageIdArray[i] = pageArray[i].pageId;
-			}
-		}
-		putPage();
-	}
+	
 	/**
 	 * Using fromPage, populate pageArray[index] = fromPage. 
 	 * If fromPage is NOT null, pageIdArray[index] = fromPage.pageId
@@ -967,7 +956,7 @@ public final class BTreeKeyPage {
 		}
 		if(keyArray[index] == null || !keyIdArray[index].equals(Optr.emptyPointer)) {
 			if(DEBUG || DEBUGPUTKEY) 
-				System.out.println("BTreeKeyPage.putKeys("+index+") "+ (keyArray[index] == null ? "key is null " : " ")+
+				System.out.println("BTreeKeyPage.putKey("+index+") "+ (keyArray[index] == null ? "key is null " : " ")+
 						(!keyIdArray[index].equals(Optr.emptyPointer) ? " keyIdArray already contains valid pointer, "+(keyIdArray[index])+" returning.." : "."));
 			return false;
 		}
@@ -977,7 +966,7 @@ public final class BTreeKeyPage {
 		keyIdArray[index] = sdbio.getIOManager().getNewInsertPosition(keyIdArray, index, getNumKeys(), pb.length);
 		sdbio.add_object(keyIdArray[index], pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY) 
-				System.out.println("BTreeKeyPage.putKeys Added object @"+keyIdArray[index]+" bytes:"+pb.length+" page:"+this);
+				System.out.println("BTreeKeyPage.putKey Added object:"+keyArray[index]+" @"+keyIdArray[index]+" bytes:"+pb.length);
 		return true;
 	}
 	
