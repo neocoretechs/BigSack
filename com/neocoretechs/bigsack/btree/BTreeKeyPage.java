@@ -68,11 +68,11 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 */
 public final class BTreeKeyPage {
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGPUTKEY = true;
+	private static final boolean DEBUGPUTKEY = false;
 	private static final boolean DEBUGREMOVE = false;
-	private static final boolean DEBUGSETNUMKEYS = true;
-	private static final boolean DEBUGGETDATA = true;
-	private static final boolean DEBUGPUTDATA = true;
+	private static final boolean DEBUGSETNUMKEYS = false;
+	private static final boolean DEBUGGETDATA = false;
+	private static final boolean DEBUGPUTDATA = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	public static final int BTREEKEYSIZE = 28; // total size of non-transient recurring fields here
 	public static final int BTREEDATASIZE = 5; // total number of non transient single entry fields stored per block
