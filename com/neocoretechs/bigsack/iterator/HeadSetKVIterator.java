@@ -65,7 +65,7 @@ public class HeadSetKVIterator extends AbstractIterator {
 				retKey = nextKey;
 				retElem = nextElem;
 				if ( !bTree.seekKey(nextKey).atKey )
-					throw new ConcurrentModificationException("Next HeadSetKVIterator element rendered invalid");
+					throw new ConcurrentModificationException("Next HeadSetKVIterator element rendered invalid. Last good key:"+nextKey);
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
 					nextElem = bTree.getCurrentObject();

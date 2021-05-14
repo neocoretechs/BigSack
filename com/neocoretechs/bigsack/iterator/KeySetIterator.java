@@ -55,7 +55,7 @@ public class KeySetIterator extends AbstractIterator  {
 				// save for return
 				retKey = nextKey;
 				if ( !bTree.seekKey(nextKey).atKey )
-					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid");
+					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid. Last good key:"+nextKey);
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
 				} else {

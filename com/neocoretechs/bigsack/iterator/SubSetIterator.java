@@ -83,7 +83,7 @@ public class SubSetIterator extends AbstractIterator {
 				retKey = nextKey;
 				TreeSearchResult tsr = bTree.seekKey(nextKey);
 				if (!tsr.atKey)
-					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid");
+					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid. Last good key:"+nextKey);
 				bTree.setCurrent(tsr);
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();

@@ -65,7 +65,7 @@ public class SubSetKVIterator extends AbstractIterator {
 				retKey = nextKey;
 				retElem = nextElem;
 				if ( !bTree.seekKey(nextKey).atKey )
-					throw new ConcurrentModificationException("Next SubSetKVIterator element rendered invalid");
+					throw new ConcurrentModificationException("Next SubSetKVIterator element rendered invalid. Last good key:"+nextKey);
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
 					nextElem = bTree.getCurrentObject();

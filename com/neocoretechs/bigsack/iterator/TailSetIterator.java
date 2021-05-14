@@ -62,7 +62,7 @@ public class TailSetIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in TailSetIterator");
 				retKey = nextKey;
 				if(!bTree.search(nextKey).atKey)
-					throw new ConcurrentModificationException("Next TailSetIterator element rendered invalid");
+					throw new ConcurrentModificationException("Next TailSetIterator element rendered invalid. Last good key:"+nextKey);
 				if (bTree.gotoNextKey() == 0) {
 					nextKey = bTree.getCurrentKey();
 				} else {
