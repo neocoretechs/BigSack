@@ -102,6 +102,7 @@ public class CheckpointOperation implements Loggable, Externalizable
 	 */
 	private void checkpointInRollForwardRecovery(LogInstance instance,long redoLWM2, long undoLWM2) {
 	}
+	
 	/**
 	 * Go back to blockIO and get the recoverylog instance and then get the logtofile, then see if in RFR from that
 	 * @param xact

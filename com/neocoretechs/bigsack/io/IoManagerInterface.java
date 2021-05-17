@@ -77,6 +77,8 @@ public interface IoManagerInterface {
 	 * @throws IOException
 	 */
 	public void commitBufferFlush() throws IOException;
+	
+	public void checkpointBufferFlush() throws IOException;
 
 	public void directBufferWrite() throws IOException;
 	
@@ -172,6 +174,5 @@ public interface IoManagerInterface {
 	public void readDirect(int tablespace, long block, Datablock blk) throws IOException;
 
 	public FreeBlockAllocator getFreeBlockAllocator();
-
 
 }

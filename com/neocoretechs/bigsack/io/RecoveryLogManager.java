@@ -73,28 +73,6 @@ public final class RecoveryLogManager  {
 		this.fl = (FileLogger) ltf.getLogger();
 		ltf.boot();
 	}
-	/**
-	 * Close the random access files and buffers for recovery log. Call stop in LogToFile
-	 * Closes logAccessfile and calls deleteObsoleteLogFiles IF NO CORRUPTION
-	 * @throws IOException
-	 */
-	public synchronized void stop( ) throws IOException {
-		if( DEBUG )
-			System.out.println("RecoveryLogManager.stop invoked. tablespace"+tablespace);
-			ltf.stop();
-		if( DEBUG )
-			System.out.println("RecoveryLogManager.stop terminated.");
-	}
-	/**
-	 * Call stop on the LogTofile instance
-	 * @param tblsp
-	 * @throws IOException
-	 */
-	public synchronized void stop(int tblsp) throws IOException {
-		if( DEBUG )
-			System.out.println("RecoveryLog.stop invoked for tablespace "+tblsp);
-		ltf.stop();
-	}
 	
 	public LogToFile getLogToFile() {
 		return ltf;
@@ -110,6 +88,9 @@ public final class RecoveryLogManager  {
 		if( DEBUG ) {
 			System.out.println("RecoveryLogManager.writeLog "+blk.toString());
 		}
+		// Have we issued an intermediate commit or rollbacK?
+		if(ltf.getLogOut() == null)
+			ltf.boot();
 		tblk.setBlockNumber(blk.getBlockNum());
 		assert( tablespace == GlobalDBIO.getTablespace(blk.getBlockNum()));
 		// Write directly to deep store at this point.
@@ -139,8 +120,6 @@ public final class RecoveryLogManager  {
 			if(DEBUG) System.out.println("RecoveryLogManager.commit called for db "+ltf.getDBName()+" tablespace "+tablespace+" log seq. int.");
 			firstTrans = null;
 			ltf.stop();
-			ltf.deleteObsoleteLogfilesOnCommit();
-			ltf.initializeLogFileSequence();
 	}
 
 	/**
@@ -154,8 +133,7 @@ public final class RecoveryLogManager  {
 			fl.undo(blockIO, firstTrans, null);
 			if(DEBUG) System.out.println("RecoveryLogManager.rollback Undo initial transaction recorded for rollback in tablespace "+tablespace+" in "+ltf.getDBName());
 			firstTrans = null;
-			ltf.deleteObsoleteLogfilesOnCommit();
-			ltf.initializeLogFileSequence();
+			ltf.stop();
 		}
 	}
 	

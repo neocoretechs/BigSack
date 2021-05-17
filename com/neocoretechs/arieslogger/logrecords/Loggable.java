@@ -107,7 +107,7 @@ public interface Loggable  {
 		@see Loggable#releaseResource
 	*/
 	public boolean needsRedo(ObjectDBIO xact) throws IOException;
-
+	
 
 	/**
 		Release any resource that was acquired for applyChange for rollback or

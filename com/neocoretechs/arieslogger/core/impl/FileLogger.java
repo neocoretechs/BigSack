@@ -623,8 +623,7 @@ public final class FileLogger implements Logger {
 	
 	@Override
 	public void reprepare(long t, long undoId, LogInstance undoStopAt,LogInstance undoStartAt) throws IOException {
-		// TODO Auto-generated method stub
-		
+		throw new IOException("reprepare unimplemented");
 	}
 
 	@Override

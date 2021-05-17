@@ -361,9 +361,7 @@ public final class BigSackSession {
 	* @exception IOException For low level failure
 	*/
 	public void Commit() throws IOException {
-		bTree.getIO().deallocOutstandingCommit();
-		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			bTree.getIO().getIOManager().getUlog(i).commit();	
+		Close(false);
 	}
 	/**
 	 * Checkpoint the current transaction
@@ -371,8 +369,7 @@ public final class BigSackSession {
 	 * @throws IllegalAccessException 
 	 */
 	public void Checkpoint() throws IllegalAccessException, IOException {
-		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-				bTree.getIO().getIOManager().getUlog(i).checkpoint();
+			bTree.getIO().checkpointBufferFlush();
 	}
 	/**
 	* Generic session roll up.  Data is committed based on rollback param.
@@ -389,8 +386,6 @@ public final class BigSackSession {
 			// calls commitbufferflush
 			bTree.getIO().deallocOutstandingCommit();
 		}
-		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
-			bTree.getIO().getIOManager().getUlog(i).getLogToFile().deleteOnlineArchivedLogFiles();
 		SessionManager.releaseSession(this);
 	}
 	

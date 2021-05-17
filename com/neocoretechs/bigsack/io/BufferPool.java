@@ -10,6 +10,7 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.request.CheckpointRequest;
 import com.neocoretechs.bigsack.io.request.CommitRequest;
 import com.neocoretechs.bigsack.io.request.IoRequestInterface;
 import com.neocoretechs.bigsack.io.request.iomanager.DirectBufferWriteRequest;
@@ -25,7 +26,6 @@ import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
  * the action of this class, as the MappedblockBuffer has no knowledge of the streams or recovery log.<p/>
  * @see IOManagerInterface
  * @author Jonathan Groff (C) NeoCoreTechs 2021
- *
  */
 public class BufferPool {
 	private static final boolean DEBUG = false;
@@ -38,7 +38,6 @@ public class BufferPool {
 	private RecoveryLogManager[] ulog;
 	private BlockStream[] blks = new BlockStream[DBPhysicalConstants.DTABLESPACES];
 	
-	
 	public BufferPool(MultithreadedIOManager ioManager) {
 		this.ioManager = ioManager;
 		blockBuffer = new MappedBlockBuffer[DBPhysicalConstants.DTABLESPACES];
@@ -48,10 +47,14 @@ public class BufferPool {
 	public synchronized MappedBlockBuffer[] getBlockBuffer() {
 		return blockBuffer;
 	}
+	
 	/**
 	 * Return the MappedBlockBuffer for the tablespace
 	 */
-	public synchronized MappedBlockBuffer getBlockBuffer(int tblsp) { return blockBuffer[tblsp]; }
+	public synchronized MappedBlockBuffer getBlockBuffer(int tblsp) { 
+		return blockBuffer[tblsp]; 
+	}
+	
 	/**
 	 * Set the passed MappedBlockBuffer array as the page pool for each tablespace
 	 * @param blockBuffer
@@ -59,13 +62,7 @@ public class BufferPool {
 	public synchronized void setBlockBuffer(MappedBlockBuffer[] blockBuffer) {
 		this.blockBuffer = blockBuffer;
 	}
-	/**
-	 * Get the array of Recovery log managers for each tablespace
-	 * @return
-	 */
-	protected synchronized RecoveryLogManager[] getUlog() {
-		return ulog;
-	}
+
 	/**
 	 * Get the RecoveryLogManager for a particular tablespace
 	 * @param tablespace
@@ -73,13 +70,6 @@ public class BufferPool {
 	 */
 	public synchronized RecoveryLogManager getUlog(int tablespace) {
 		return ulog[tablespace];
-	}
-	/**
-	 * Set the array of RecoveryLogManagers for each tablespace
-	 * @param ulog
-	 */
-	protected synchronized void setUlog(RecoveryLogManager[] ulog) {
-		this.ulog = ulog;
 	}
 
 	/**
@@ -154,7 +144,6 @@ public class BufferPool {
 			blks[i].getBlockAccessIndex().decrementAccesses();
 			forceBufferClear();
 			ulog[i].rollBack();
-			ulog[i].stop();
 			return true;
 		}
 		return false;
@@ -216,9 +205,9 @@ public class BufferPool {
 				//System.out.println("MultithreadedIOManager WARNING!! FAILED TO DEALLOCATE "+GlobalDBIO.valueOf(pos));
 				//new Throwable().printStackTrace();
 			}
-		}
-		
+		}	
 	}
+	
 	/**
 	 * Write the block to the log then unlatch it by decrementing accesses.
 	 * @param tablespace The tablespace
@@ -234,6 +223,7 @@ public class BufferPool {
 			throw new IOException("BufferPool.deallocOutstandingWriteLog failed to dealloc intended target tablespace:"+tablespace+" "+blks);
 		}
 	}
+	
 	/**
 	 * Write the pooled block to the log then unlatch.
 	 * @param tblsp The tablespace with the current block as latched. current is that which has been block cursored.
@@ -242,6 +232,7 @@ public class BufferPool {
 	public synchronized void deallocOutstandingWriteLog(int tblsp) throws IOException {
 		deallocOutstandingWriteLog(tblsp, blks[tblsp].getBlockAccessIndex());	
 	}
+	
 	/**
 	 * Add a block, take it from freechain and set its block number, which latches it, then put it in main buffer.
 	 * @param Lbn The target block number, as Vblock, which might be a template for a future write.
@@ -253,6 +244,7 @@ public class BufferPool {
 		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].addBlockAccessNoRead(Lbn));
 		return blks[tblsp].getBlockAccessIndex();
 	}
+	
 	/**
 	 * Formulate a request to the page buffer to bring target page into the pool and latch it.
 	 * @param bn The target virtual block number
@@ -266,6 +258,7 @@ public class BufferPool {
 		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(bn));
 		return blks[tblsp].getBlockAccessIndex();
 	}
+	
 	/**
 	 * Formulate a request to get a block already in the pool.
 	 * @param loc
@@ -275,15 +268,33 @@ public class BufferPool {
 		int tblsp = GlobalDBIO.getTablespace(loc);
 		return blockBuffer[tblsp].getUsedBlock(loc);
 	}
+	
 	/**
 	 * Commit the current buffers and flush the page pools of buffered pages.
-	 * @param ioWorker The array of IOWorkers to handle each commmit request.
+	 * @param ioWorker The array of IOWorkers to handle each commit request.
 	 */
-	public synchronized void commmitBufferFlush(IOWorkerInterface[] ioWorker) {
+	public synchronized void commitBufferFlush(IOWorkerInterface[] ioWorker) {
 		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
 		// queue to each tablespace
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				IoRequestInterface iori  = new CommitRequest(blockBuffer[i], ulog[i], commitBarrierSynch, barrierCount);
+				ioWorker[i].queueRequest(iori);
+		}
+		try {
+				barrierCount.await();
+		} catch (InterruptedException e) {}
+		
+	}
+	
+	/**
+	 * Checkpoint the current buffers and flush the page pools of buffered pages.
+	 * @param ioWorker The array of IOWorkers to handle each checkpoint request.
+	 */
+	public synchronized void checkpointBufferFlush(IOWorkerInterface[] ioWorker) {
+		CountDownLatch barrierCount = new CountDownLatch(DBPhysicalConstants.DTABLESPACES);
+		// queue to each tablespace
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				IoRequestInterface iori  = new CheckpointRequest(blockBuffer[i], ulog[i], commitBarrierSynch, barrierCount);
 				ioWorker[i].queueRequest(iori);
 		}
 		try {
@@ -308,6 +319,7 @@ public class BufferPool {
 				return;
 		}
 	}
+	
 	/**
 	 * Seek the block buffer cursor forward by a specific offset.
 	 * @param tblsp The tablespace to seek
@@ -318,6 +330,7 @@ public class BufferPool {
 	public synchronized boolean seekFwd(int tblsp, long offset) throws IOException {
 		return blockBuffer[tblsp].seek_fwd(blks[tblsp].getBlockAccessIndex(), offset);
 	}
+	
 	/**
 	 * Write osize bytes current block buffer cursor position.
 	 * @param tblsp The tablespace to write to
@@ -328,6 +341,7 @@ public class BufferPool {
 	public synchronized void writen(int tblsp, byte[] o, int osize) throws IOException {
 		blockBuffer[tblsp].writen(blks[tblsp].getBlockAccessIndex(), o, osize);
 	}
+	
 	/**
 	 * Delete Osize bytes from the address block and offset
 	 * @param adr The virtual block and offset within that block to delete
@@ -340,6 +354,7 @@ public class BufferPool {
 		blockBuffer[tblsp].deleten(blks[tblsp].getBlockAccessIndex(), osize);
 		return tblsp;
 	}
+	
 	/**
 	* objseek - seek to offset within block
 	* @param adr block/offset to seek to
@@ -353,6 +368,7 @@ public class BufferPool {
 		blks[tblsp].getBlockAccessIndex().setByteindex(adr.getOffset());
 		return tblsp;
 	}
+	
 	/**
 	* objseek - seek to offset within block
 	* @param adr long block to seek to
@@ -366,7 +382,5 @@ public class BufferPool {
 		blks[tblsp].getBlockAccessIndex().setByteindex((short) 0);
 		return tblsp;
 	}
-
-
 		
 	}

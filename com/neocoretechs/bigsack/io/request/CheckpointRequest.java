@@ -11,7 +11,7 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
 
 /**
  * A special case of request the does not propagate outward to workers but instead is
- * used to serialize commit/rollback etc. on the request queue. In lieu of waiting for a synchronization
+ * used to serialize checkpoint etc. on the request queue. In lieu of waiting for a synchronization
  * or waiting for the queue to empty, queue this type of special request to assure completion.
  * This is an intent parallel computation component of a tablespace wide request.
  * We are using a CyclicBarrier set up with the number of tablespaces and after each thread
@@ -23,15 +23,15 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2014
  *
  */
-public final class CommitRequest implements IoRequestInterface {
+public final class CheckpointRequest implements IoRequestInterface {
 	private static boolean DEBUG = false;
 	private MappedBlockBuffer blockManager;
 	private CyclicBarrier barrierSynch;
 	private int tablespace;
 	private CountDownLatch barrierCount;
 	private RecoveryLogManager recoveryLog;
-	private IoInterface ioManager;
-	public CommitRequest(MappedBlockBuffer blockBuffer, RecoveryLogManager rlog, CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
+
+	public CheckpointRequest(MappedBlockBuffer blockBuffer, RecoveryLogManager rlog, CyclicBarrier barrierSynch, CountDownLatch barrierCount) {
 		this.blockManager = blockBuffer;
 		this.recoveryLog = rlog;
 		this.barrierSynch = barrierSynch;
@@ -41,27 +41,26 @@ public final class CommitRequest implements IoRequestInterface {
 	public void process() throws IOException {
 		// dealloc outstanding block, call commit buffer flush in global IO, call recovery log manager commit
 		if( DEBUG  )
-			System.out.println("CommitRequest.process "+blockManager+" "+barrierSynch+" "+barrierCount);
+			System.out.println("CheckpointRequest.process "+blockManager+" "+barrierSynch+" "+barrierCount);
 		blockManager.commitBufferFlush(recoveryLog);
 		try {
 			if( DEBUG  )
-				System.out.println("CommitRequest.process "+blockManager+" awaiting barrier "+barrierSynch);
+				System.out.println("CheckpointRequest.process "+blockManager+" awaiting barrier "+barrierSynch);
 			barrierSynch.await();
 		} catch (InterruptedException |  BrokenBarrierException e) {
 			// executor requests shutdown
+			barrierCount.countDown();
+			return;
 		}
-		// all buffers flushed, call commit
-		recoveryLog.commit();
-		// if we have local io manager that has file ops, call the close
-		//if( ioManager != null ) {
-		//	ioManager.Fclose();
-		//}
+		// all buffers flushed, call checkpoint
+		try {
+			recoveryLog.checkpoint();
+		} catch (IllegalAccessException e) { 
+			throw new IOException(e);
+		}
 		barrierCount.countDown();
-		//CommitBufferFlushRequest cbfr = new CommitBufferFlushRequest(blockManager, recoveryLog, barrierCount, barrierSynch);
-		//cbfr.setIoInterface(ioManager);
-		//blockManager.queueRequest(cbfr);	
 		if( DEBUG )
-			System.out.println("CommitRequest queued flushed buffer, tablespace "+tablespace+ " latches "+barrierCount+
+			System.out.println("CheckpointRequest queued flushed buffer, tablespace "+tablespace+ " latches "+barrierCount+
 				" barrier waiters:"+barrierSynch.getNumberWaiting()+
 				" barrier parties:"+barrierSynch.getParties()+
 				" barier broken:"+barrierSynch.isBroken());
@@ -81,7 +80,6 @@ public final class CommitRequest implements IoRequestInterface {
 	 */
 	@Override
 	public void setIoInterface(IoInterface ioi) {
-		ioManager = ioi;
 	}
 	
 	@Override
@@ -89,7 +87,7 @@ public final class CommitRequest implements IoRequestInterface {
 		this.tablespace = tablespace;
 	}
 	public String toString() {
-		return "Commit Request for tablespace "+tablespace;
+		return "Checkpoint Request for tablespace "+tablespace;
 	}
 
 }

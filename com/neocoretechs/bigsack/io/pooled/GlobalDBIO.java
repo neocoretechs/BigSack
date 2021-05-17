@@ -43,7 +43,7 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 * Treats collections of tablespaces (files, etc) as cohesive IO units.  We utilize three caches.
 * In our nomenclature, Level 1 cache is the deserialized in-memory tables of Objects.  Level
 * 2 cache is the buffer pool of pages (blocks).  Level 3 cache is the memory mapped or filesystem file. 
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 1997,2020,2021
 */
 
 public class GlobalDBIO {
@@ -452,6 +452,14 @@ public class GlobalDBIO {
 	public synchronized void commitBufferFlush() throws IOException {
 		ioManager.commitBufferFlush();
 	}
+	
+	/**
+	 * Flush the page pool buffer and commit the outstanding blocks
+	 * @throws IOException
+	 */
+	public synchronized void checkpointBufferFlush() throws IOException {
+		ioManager.checkpointBufferFlush();
+	}
 	/**
 	 * Flush the page pool buffers and discard outstanding blocks.
 	 */
@@ -526,8 +534,7 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */	
 	public synchronized void deallocOutstandingCommit() throws IOException {
-		ioManager.deallocOutstandingCommit();
-		
+		ioManager.deallocOutstandingCommit();	
 	}
 	
 	/**

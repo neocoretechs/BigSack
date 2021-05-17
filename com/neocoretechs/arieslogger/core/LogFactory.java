@@ -171,47 +171,6 @@ public interface LogFactory extends Corruptable {
 
 
 	/*
-	 * Enable the log archive mode, when log archive mode is 
-	 * on the system keeps all the old log files instead
-	 * of deleting them at the checkpoint.
-	 * logArchive mode is persistent across the boots.
-	 * @exception Exception - thrown on error
-	*/
-	public void enableLogArchiveMode() throws IOException;
-
-		
-	/*
-	 * Disable the log archive mode, when log archive mode is 
-	 * off the system will delete  old log files(not required 
-	 * for crash recovery) after each checkpoint. 
-	 * @exception Exception - thrown on error
-	*/
-	public void disableLogArchiveMode() throws IOException;
-
-	/*
-	 * Deletes the archived log files store in the log directory path.
-	 * This call is typically used after a successful version level
-	 * backup to clean up the old log files that are no more
-	 * required to do roll-forward recovery from the last
-	 * backup taken.
-	*/
-	public void deleteOnlineArchivedLogFiles() throws IOException;
-
-	//Is the transaction in rollforward recovery
-	public boolean inRFR();
-
-	/**	
-	 * redoing a checkpoint  during rollforward recovery
-	 * @param cinstant The LogInstance of the checkpoint
-	 * @param redoLWM  Redo Low Water Mark in the check point record
-	 * @param undoLWM Undo Low Water Mark in the checkpoint
-	 * @param df - the data factory
-	 * @exception Exception - encounter exception during checkpoint
-	 */
-	public void checkpointInRFR(LogInstance cinstant, long redoLWM, long undoLWM) throws IOException;
-
-	
-	/*
 	 * start the transaction log backup, the transaction log is  is required
 	 * to bring the database to the consistent state on restore. 
 	 * copies the log control information , active log files to the given 

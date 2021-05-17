@@ -50,6 +50,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
@@ -150,10 +151,11 @@ import java.util.zip.CRC32;
 
 public final class LogToFile implements LogFactory, java.security.PrivilegedExceptionAction
 {
-	private static final boolean DEBUG = false;
-	private static final boolean DUMPLOG = false;
-	private static final boolean MEASURE = false; // take stats of log writes etc
-	static final boolean ALERT = false; // return status for recovery, also for FileLogger recover
+	public static boolean DEBUG = true; // general debug
+	public static boolean DEBUGDELETE = false; // track deletion of surplus log files
+	public static boolean DUMPLOG = false; // dump log in recovery
+	public static boolean MEASURE = false; // take stats of log writes etc
+	public static boolean ALERT = true; // return status for recovery, also for FileLogger recover
 	public static final String DBG_FLAG = DEBUG ? "LogTrace" : null;
 	public static final String DUMP_LOG_ONLY = DEBUG ? "DumpLogOnly" : null;
 	public static final String DUMP_LOG_FROM_LOG_FILE = DEBUG ? "bigsack.logDumpStart" : null;
@@ -195,9 +197,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private int     logSwitchInterval   = DEFAULT_LOG_SWITCH_INTERVAL;
     
 	private FileLogger fileLogger = null;
-	private LogAccessFile logOut;		// an output stream to the log file
-								// (access of the variable should sync on this)
-	//private RandomAccessFile theLog = null;
+	private LogAccessFile logOut = null;		// an output stream to the log file
+
 	protected long		    endPosition = LOG_FILE_HEADER_SIZE; // end position of the current log file
 	private long			lastFlush = 0;	// the position in the current log
 											// file that has been flushed to disk
@@ -356,12 +357,30 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		return dbName;
 	}
 
-    public long getPreviousLogInstance() { return previousLogInstance; }
-    public long getHeaderLogInstance() { return headerLogInstance; }
+    public LogAccessFile getLogOut() { 
+    	return logOut; 
+    }
     
-	/*
-	** Methods of Corruptable
-	*/
+    public long getPreviousLogInstance() { 
+    	return previousLogInstance; 
+    }
+    
+    public long getHeaderLogInstance() { 
+    	return headerLogInstance; 
+    }
+    
+    /**
+     * Is the transaction in rollforward recovery?<p/>
+     * Logging System does not differentiate between the
+     * crash-recovery and a rollforward recovery.
+     * Except in case of rollforward attempt on 
+     * read only databases to check for pending Transaction.
+     * (See the comments in recovery() function)
+     * @return boolean recoveryNeeded
+     */
+	public boolean inRFR() {
+		return recoveryNeeded;
+	}
 
 	/**
      * Once the log factory is marked as corrupt then the raw store will
@@ -469,6 +488,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 		if (recoveryNeeded)
 		{
+			if(DEBUG)
+				System.out.printf("Recovery needed for Database %s tablespace %d%n", dbName, tablespace);
 			try
 			{
 				/////////////////////////////////////////////////////////////
@@ -652,7 +673,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// Finished recovery, instead of a checkpoint our simplified protocol will get rid of old logs
 				// and start the new sequence for processing
 				logger.reset();
-				deleteObsoleteLogfilesOnCommit();
+				deleteObsoleteLogfiles();
 				initializeLogFileSequence();
 				recoveryNeeded = false;
 			}
@@ -1223,7 +1244,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		return new LogAccessFile(logFile, theLog, logSize);
 	}
 	/**
-	 * Assume we have a randomaccesfile positioned at end for append, header should be in and ready to go
+	 * Assume we have a randomaccessfile positioned at end for append, header should be in and ready to go
 	 * set up the logAccessFile instance
 	 * @param logFile
 	 * @throws IOException
@@ -1928,7 +1949,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			
 			setFirstLogFileNumber(logFileNumber);
 			if(corrupt == null && !logArchived() && !keepAllLogs )	{
-				deleteObsoleteLogfilesOnCommit();
+				deleteObsoleteLogfiles();
 				if( DEBUG )
 					System.out.println("Truncated log file "+logFileNumber);
 			} else {
@@ -2004,177 +2025,35 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			System.out.println();
 		}	
 		// delete obsolete log files,left around by earlier crashes
-		// if we have no corruption, are not in log archive mode, and the keep all logs flag is false
-		if(corrupt == null && !logArchived() && !keepAllLogs) {
+		// if we are not in log archive mode, and the keep all logs flag is false
+		if(!logArchived() && !keepAllLogs) {
 			deleteObsoleteLogfiles();
 		}
 	}
 
-	/* Delete the log files that might have been left around after failure.
-	 * This method should be invoked immediately after the checkpoint before truncation of logs completed.
+	/* Delete the log files that might have been left around after commit or rollback or failure.
 	 */
 	private void deleteObsoleteLogfiles() throws IOException {
-		File logDir;
-		//find the first log file number that is  useful
-		long firstLogNeeded = getFirstLogNeeded(currentCheckpoint);
-        if (firstLogNeeded == -1)
-			return;
-        // when  backup is in progress, log files that are yet to
-        // be copied to the backup should not be deleted,  even 
-        // if they are not required  for crash recovery.
-        if(backupInProgress) {
-            long logFileNeededForBackup = logFileToBackup;
-            // check if the log file number is yet to be copied 
-            // to the backup is less than the log file required 
-            // for crash recovery, if it is then make the first 
-            // log file that should not be deleted is the log file 
-            // that is yet to  be copied to the backup.  
-            if (logFileNeededForBackup < firstLogNeeded)
-                firstLogNeeded = logFileNeededForBackup;
-        }
-		logDir = getLogDirectory();
-		/*	
-		String[] logfiles = privList(logDir);
-		if (logfiles != null)
-		{
-			File uselessLogFile = null;
-			long fileNumber;
-			for(int i=0 ; i < logfiles.length; i++)
-			{
-				// delete the log files that are not needed any more
-				if(logfiles[i].endsWith(".log"))
-				{
-					String fileIndex = "";
-					for(int k = (logfiles[i].length()-5); k > 0; k--) {
-						if( logfiles[i].charAt(k) < '0' || logfiles[i].charAt(k) > '9')
-							break;
-						fileIndex = logfiles[i].charAt(k)+fileIndex;
-					}
-					fileNumber = Long.parseLong(fileIndex);
-					if(fileNumber < firstLogNeeded )
-					{
-						uselessLogFile = new File(logDir, logfiles[i]);
-						if (privDelete(uselessLogFile)) {
-							if (DEBUG) {
-								System.out.println("LogToFile.deleteObsoleteLogFiles truncating obsolete log file " + uselessLogFile.getPath());
-							}
-						} else {
-								System.out.println("LogToFile.deleteObsoleteLogFiles Fail to truncate obsolete log file " + uselessLogFile.getPath());
-						}
-					}
-				}
-			}
-		}
-		*/
-		List<Path> logfiles = listLogFiles(logDir);
-		File uselessLogFile = null;
-		long fileNumber;
-		for(int i=0 ; i < logfiles.size(); i++) {
-			// delete the log files that are not needed any more
-			//File flog = new File(logfiles[i]);
-			if( DEBUG )
-				System.out.println("LogToFile.deleteObsoleteLogfiles examining log file: "+logfiles.get(i)+" for tablespace:"+tablespace+" for "+dbName+" for fileset size:"+logfiles.size());
-			String fileIndex = "";
-			for(int k = (logfiles.get(i).toString().length()-5); k > 0; k--) {
-					if( logfiles.get(i).toString().charAt(k) < '0' || logfiles.get(i).toString().charAt(k) > '9')
-						break;
-					fileIndex = logfiles.get(i).toString().charAt(k)+fileIndex;
-			}
-			fileNumber = Long.parseLong(fileIndex);
-			if(fileNumber < firstLogNeeded ) {
-					uselessLogFile = new File(logfiles.get(i).toString());
-					if (privDelete(uselessLogFile)) {
-						if (DEBUG) {
-							System.out.println("LogToFile.deleteObsoleteLogFiles truncating obsolete log file " + uselessLogFile.getPath());
-						}
-					} else {
-							System.out.println("LogToFile.deleteObsoleteLogFiles Fail to truncate obsolete log file " + uselessLogFile.getPath());
-					}
-			}
-		}
-	}
-	
-	/* Delete the log files that might have been left around after commit.
-	 * This relies on the resetLogs method which will reset log file 1 and so
-	 * our task here is to delete those files from 2 onward if they exist.
-	 */
-	public synchronized void deleteObsoleteLogfilesOnCommit() throws IOException {
 		File logDir = getLogDirectory();
-		/*	
-		String[] logfiles = privList(logDir);
-		if (logfiles != null)
-		{
-			File uselessLogFile = null;
-			long fileNumber;
-			for(int i=0 ; i < logfiles.length; i++)
-			{
-				// delete the log files that are not needed any more
-				//File flog = new File(logfiles[i]);
-				if( DEBUG )
-					System.out.println("Examining log file: "+logfiles[i]+" for "+dbName);
-				if(logfiles[i].startsWith(dbName) && logfiles[i].endsWith(".log"))
-				{
-					String fileIndex = "";
-					for(int k = (logfiles[i].length()-5); k > 0; k--) {
-						if( logfiles[i].charAt(k) < '0' || logfiles[i].charAt(k) > '9')
-							break;
-						fileIndex = logfiles[i].charAt(k)+fileIndex;
-					}
-					fileNumber = Long.parseLong(fileIndex);
-					if( fileNumber > 1 ) {
-						uselessLogFile = new File(logDir, logfiles[i]);
-						if (privDelete(uselessLogFile))
-						{
-							if (DEBUG) {
-								System.out.println("LogToFile.deleteObsoleteLogfilesOnCommit Deleted obsolete log file " + uselessLogFile.getPath());
-							}
-						}
-						else
-						{
-							// if we cant delete, throw exception
-							// if we try something like truncate to header + 0 for EOF then later
-							// we regret it because we have no previous instance linkage to re-init our file
-							throw new IOException("Cannot delete obsolete log file "+uselessLogFile+", try manual deletion and continue");
-						}
-					}
-				}
-			}
-		}
-		*/
 		List<Path> logfiles = listLogFiles(logDir);
 		File uselessLogFile = null;
-		long fileNumber;
-		for(int i=0 ; i < logfiles.size(); i++)
-		{
-			// delete the log files that are not needed any more
-			//File flog = new File(logfiles[i]);
-			if( DEBUG )
-				System.out.println("LogToFile.deleteObsoleteLogFilesOnCommit Examining log file: "+logfiles.get(i)+" for "+dbName+" tablespace "+tablespace);
-	
-				String fileIndex = "";
-				for(int k = (logfiles.get(i).toString().length()-5); k > 0; k--) {
-					if( logfiles.get(i).toString().charAt(k) < '0' || logfiles.get(i).toString().charAt(k) > '9')
-						break;
-					fileIndex = logfiles.get(i).toString().charAt(k)+fileIndex;
-				}
-				fileNumber = Long.parseLong(fileIndex);
-				if( fileNumber > 1 ) {
-					uselessLogFile = new File(logfiles.get(i).toString());
-					if (privDelete(uselessLogFile))
-					{
-						if (DEBUG) {
-							System.out.println("LogToFile.deleteObsoleteLogfilesOnCommit Deleted obsolete log file " + uselessLogFile.getPath());
-						}
+		if( DEBUGDELETE ) {
+			System.out.printf("<<Thread %s deleteObsoleteLogFiles processing tablespace %d FILES:%s>>%n",Thread.currentThread().getName(),tablespace, Arrays.toString(logfiles.toArray()));
+		}
+		for(int i=0 ; i < logfiles.size(); i++) {
+			if( DEBUGDELETE )
+				System.out.printf("Thread %s LogToFile.deleteObsoleteLogfiles Examining log file: %s for %s tablespace %d%n",Thread.currentThread().getName(), logfiles.get(i), dbName, tablespace);
+				uselessLogFile = new File(logfiles.get(i).toString());
+				if (privDelete(uselessLogFile)) {
+					if (DEBUGDELETE) {
+						System.out.printf("Thread %s LogToFile.deleteObsoleteLogfiles Deleted obsolete log file %s%n",Thread.currentThread().getName(),uselessLogFile.getPath());
 					}
-					else
-					{
-						// if we cant delete, throw exception
-						// if we try something like truncate to header + 0 for EOF then later
-						// we regret it because we have no previous instance linkage to re-init our file
-						throw new IOException("Cannot delete obsolete log file "+uselessLogFile+", try manual deletion and continue");
-					}
+				} else {
+					throw new IOException("Thread "+Thread.currentThread().getName()+" Cannot delete obsolete log file "+uselessLogFile+", try manual deletion and continue");
 				}
 		}
+		if( DEBUGDELETE )
+			System.out.printf("<<<Thread %s deleteObsoleteLogFiles finished processing tablespace %d>>>%n",Thread.currentThread().getName(), tablespace);
 	}
 	/**
 	 * Extract specific database and tablespace logs for this instance
@@ -2185,12 +2064,12 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	private List<Path> listLogFiles(File logDir) throws IOException {
 		Path path = /*getLogDirectory()*/logDir.toPath();
 	    List<Path> result = new ArrayList<>();
-	    try (DirectoryStream<Path> stream = Files.newDirectoryStream(path, dbName+tablespace+".*.log")) {
+	    try (DirectoryStream<Path> stream = Files.newDirectoryStream(path, dbName+tablespace+".*")) {
 	           for (Path entry: stream) {
 	               result.add(entry);
 	           }
 	       } catch (DirectoryIteratorException ex) {
-	           // I/O error encounted during the iteration, the cause is an IOException
+	           // I/O error encountered during the iteration, the cause is an IOException
 	           throw ex.getCause();
 	       }
 	       return result;
@@ -2235,11 +2114,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
         }
 
 		if (logOut == null) {
-				//throw new IOException("Log null");
-			System.out.printf("<<<logOut was null in %s.appendLogRecord. deleteObsoleteLogFiles and initializeLogFileSequence in progress..%n", 
-					this.getClass().getName());
-			deleteObsoleteLogfiles();
-			initializeLogFileSequence();
+			String err = String.format("<<<logOut was null in %s.appendLogRecord.%n", this.getClass().getName());
+			throw new IOException(err);
         }
 		
 		// set up to call the write of log record and checksum
@@ -2853,16 +2729,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	public static final String TEST_MAX_LOGFILE_NUMBER = 
         DEBUG ? "testMaxLogFileNumber" : null;
 
-	
-	//enable the log archive mode
-	public void enableLogArchiveMode() throws IOException
-	{
-	}
-
-	// disable the log archive mode
-	public void disableLogArchiveMode() throws IOException
-	{
-	}
 
 
 	/*
@@ -2999,37 +2865,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	{
 		backupInProgress = false;
 	}
-
-
-	// Is the transaction in rollforward recovery
-	public boolean inRFR()
-	{
-		/*
-		 *Logging System does not differentiate between the
-		 *crash-recovery and a rollforward recovery.
-		 *Except in case of rollforward atttempt on 
-		 *read only databases to check for pending Transaction.
-		 *(See the comments in recovery() function)
-		 */
-		return recoveryNeeded;
-	}
-
-	/**	
-	 *	redo a checkpoint during rollforward recovery
-     * 
-     * @throws org.apache..iapi.error.StandardException 
-     */
-	public synchronized void checkpointInRFR(LogInstance cinstant, long redoLWM, long undoLWM) throws IOException {
-		//sync the data
-		//write the log control file; this will make sure that restart of the 
-		//rollfoward recovery will start this log instance next time instead of
-		//from the beginning.
-		if (!writeControlFile(getControlFileName(), ((LogCounter)cinstant).getValueAsLong()))
-		{
-				throw new IOException( "Cannot write control file "+getControlFileName());
-		}
-	}
-
 
 
 	/*preallocate the given log File to the logSwitchInterval size;
@@ -3213,7 +3048,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
            return new Boolean(activeFile.delete());
 		case 2:
 			// SECURITY PERMISSION - MP1 and/or OP4
-			// dependening on the value of activePerms
+			// depending on the value of activePerms
             boolean exists = activeFile.exists();
             Object result = new RandomAccessFile(activeFile, activePerms);
             return result;
@@ -3293,10 +3128,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		this.firstLogFileNumber = firstLogFileNumber;
 	}
 
-	@Override
-	public void deleteOnlineArchivedLogFiles() throws IOException {
-		deleteObsoleteLogfiles();	
-	}
 
 	public static LogRecord getRecord(LogToFile logFactory, LogInstance instance) throws IOException
 	{

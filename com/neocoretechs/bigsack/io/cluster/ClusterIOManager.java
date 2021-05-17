@@ -21,6 +21,7 @@ import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlockRequest;
 import com.neocoretechs.bigsack.io.request.cluster.GetNextFreeBlocksRequest;
 import com.neocoretechs.bigsack.io.request.cluster.FSyncRequest;
 import com.neocoretechs.bigsack.io.request.cluster.IsNewRequest;
+import com.neocoretechs.bigsack.io.request.cluster.RemoteCheckpointRequest;
 import com.neocoretechs.bigsack.io.request.cluster.RemoteCommitRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.AddBlockAccessNoReadRequest;
 import com.neocoretechs.bigsack.io.request.iomanager.ForceBufferClearRequest;
@@ -418,7 +419,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			System.out.println("ClusterIOManager.commitBufferFlush");
 		}
 		
-		bufferPool.commmitBufferFlush(ioWorker);
+		bufferPool.commitBufferFlush(ioWorker);
 
 		if( DEBUG ) {
 			System.out.println("ClusterIOManager.commitBufferFlush local buffers synched, messaging remote workers");
@@ -443,7 +444,38 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 			System.out.println("ClusterIOManager.commitBufferFlush exiting.");
 		}
 	}
+	
+	@Override
+	public void checkpointBufferFlush() throws IOException {
+		if( DEBUG ) {
+			System.out.println("ClusterIOManager.checkpointBufferFlush");
+		}
+		
+		bufferPool.checkpointBufferFlush(ioWorker);
 
+		if( DEBUG ) {
+			System.out.println("ClusterIOManager.checkpointBufferFlush local buffers synched, messaging remote workers");
+		}
+		// local buffers are flushed, queue request outbound to flush remote buffers, possibly updated by
+		// our commit of local buffers pushing blocks out.
+		CountDownLatch cdl = new CountDownLatch( DBPhysicalConstants.DTABLESPACES);
+		IoRequestInterface[] iori = new IoRequestInterface[DBPhysicalConstants.DTABLESPACES];
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			iori[i] = new RemoteCheckpointRequest(cdl);
+			iori[i].setTablespace(i);
+			ioWorker[i].queueRequest(iori[i]);
+		}
+		try {
+			cdl.await();
+		} catch (InterruptedException e) {}
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			// remove old requests
+			((DistributedIOWorker)ioWorker[i]).removeRequest((AbstractClusterWork) iori[i]);
+		}
+		if( DEBUG ) {
+			System.out.println("ClusterIOManager.checkpointBufferFlush exiting.");
+		}
+	}
 	@Override
 	public void directBufferWrite() throws IOException {
 		if( DEBUG )

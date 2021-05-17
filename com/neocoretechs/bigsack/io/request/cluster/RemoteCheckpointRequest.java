@@ -16,10 +16,10 @@ import com.neocoretechs.bigsack.io.cluster.NodeBlockBufferInterface;
  * which allows access to the NodeBlockBuffer.
  * The WorkerRequestProcessors are responsible for setting the fields for the ioUnit and countdownlatch.
  * Essentially, the transient fields are filled in by methods invoked by the processor before 'process' is called.
- * @author Jonathan Groff Copyright (C) NeoCoreTechs 2014
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
  */
-public final class RemoteCommitRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
+public final class RemoteCheckpointRequest extends AbstractClusterWork implements CompletionLatchInterface, Serializable  {
 	private static final boolean DEBUG = false;
 	private static final long serialVersionUID = 1L;
 	private int tablespace;
@@ -29,9 +29,9 @@ public final class RemoteCommitRequest extends AbstractClusterWork implements Co
 	/**
 	* Send out a remote commit to flush buffer pools at remote nodes 
 	*/
-	public RemoteCommitRequest() {}
+	public RemoteCheckpointRequest() {}
 	
-	public RemoteCommitRequest(CountDownLatch cdl) {
+	public RemoteCheckpointRequest(CountDownLatch cdl) {
 		this.barrierCount = cdl;
 	}
 
@@ -67,7 +67,7 @@ public final class RemoteCommitRequest extends AbstractClusterWork implements Co
 		this.tablespace = tablespace;
 	}
 	public String toString() {
-		return "Remote commit Request for tablespace "+tablespace+" io:"+this.ioUnit+" buffer pool:"+blockBuffer+" latch:"+barrierCount;
+		return "Remote checkpoint Request for tablespace "+tablespace+" io:"+this.ioUnit+" buffer pool:"+blockBuffer+" latch:"+barrierCount;
 	}
 	@Override
 	public CountDownLatch getCountDownLatch() {

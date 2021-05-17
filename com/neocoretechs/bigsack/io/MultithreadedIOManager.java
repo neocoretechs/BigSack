@@ -490,7 +490,14 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void commitBufferFlush() throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.commitBufferFlush invoked.");
-		bufferPool.commmitBufferFlush(ioWorker);
+		bufferPool.commitBufferFlush(ioWorker);
+	}
+	
+	@Override
+	public void checkpointBufferFlush() throws IOException {
+		if( DEBUG )
+			System.out.println("MultithreadedIOManager.checkpointBufferFlush invoked.");
+		bufferPool.checkpointBufferFlush(ioWorker);
 	}
 	
 	@Override
