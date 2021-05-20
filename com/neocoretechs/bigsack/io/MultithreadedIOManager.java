@@ -348,11 +348,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	public synchronized void deallocOutstandingRollback() throws IOException {
 			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-					//if(
-						bufferPool.rollback(i); 
-					//)
-					// TODO: Do we really wan this Fclose?
-					//((IoInterface)ioWorker[i]).Fclose();
+				System.out.printf("%s Rolling back %d%n",this.getClass().getName(), i);
+				bufferPool.rollback(i); 
 			}
 	}
 	/**
@@ -475,7 +472,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	}
 	
 	@Override
-	public BlockAccessIndex getUsedBlock(long loc) {
+	public BlockAccessIndex getUsedBlock(long loc) throws IOException {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.getUsedBlock "+GlobalDBIO.valueOf(loc));
 		//int tblsp = GlobalDBIO.getTablespace(loc);

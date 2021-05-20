@@ -397,7 +397,7 @@ public final class ClusterIOManager extends MultithreadedIOManager {
 	}
 
 	@Override
-	public BlockAccessIndex getUsedBlock(long loc) {
+	public BlockAccessIndex getUsedBlock(long loc) throws IOException {
 		if( DEBUG )
 			System.out.println("ClusterIOManager.getUsedBlock "+GlobalDBIO.valueOf(loc));
 		//int tblsp = GlobalDBIO.getTablespace(loc);

@@ -3,6 +3,7 @@ package com.neocoretechs.bigsack.test;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
@@ -29,30 +30,31 @@ public class BatteryBigSack4 {
 	//static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	static int i = 0;
+	static Integer zo = null;
 	/**
 	* Analysis test fixture
 	*/
 	public static void main(String[] argv) throws Exception {
 		if (argv.length == 0 || argv[0].length() == 0) {
-			 System.out.println("usage: java BatteryBigSack3 <database> <class>");
+			 System.out.println("usage: java BatteryBigSack3 <database>");
 			System.exit(1);
 		}
 		BigSackAdapter.setTableSpaceDir(argv[0]);
-		TransactionalTreeSet session = BigSackAdapter.getBigSackSetTransaction(Class.forName(argv[1]));//new TransactionalTreeSet(argv[0],l3CacheSize);
+		TransactionalTreeSet session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);//new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
+		BigSackAdapter.commitSet(bigtestx.class);
+		session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);
 		battery1A(session, argv);
 		battery1B(session, argv);
-		battery2A(session, argv);
+		
 		battery3A(session, argv);
 		battery3B(session, argv);
-		battery1D(session, argv);
+		
 		battery1E(session, argv);
 		battery3(session, argv);
-	
-		//SessionManager.stopCheckpointDaemon(argv[0]);
-		//session.commit();
-		BigSackAdapter.commitSet(Class.forName(argv[1]));
+
+		BigSackAdapter.commitSet(bigtestx.class);
 		System.out.println("TEST BATTERY 3 COMPLETE.");
 		
 	}
@@ -66,12 +68,12 @@ public class BatteryBigSack4 {
 	public static void battery1(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = max-1; i >= min; i--) {
-			bigtest b = new bigtest();
+			bigtestx b = new bigtestx();
 			b.init(i);
-			long ms = System.currentTimeMillis();
 			session.add(b);
-			System.out.println("Added "+i+" in "+(System.currentTimeMillis()-ms)+"ms.");
 		}
+		long ms = System.currentTimeMillis();
+		System.out.println("Added "+i+" in "+(System.currentTimeMillis()-ms)+"ms.");
 		 System.out.println("BATTERY1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
@@ -93,28 +95,16 @@ public class BatteryBigSack4 {
 		System.out.println("BATTERY1A SUCCESS "+i+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
-	 * Does a headset from last element, headset retrieve from head to strictly less
-	 * than target, hence head from last should be count-1 with 998 if 1000 records
+	 * See if first/last key/val works this can have unintended results 
 	 * @param session
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery2A(TransactionalTreeSet session, String[] argv) throws Exception {
+	public static void battery1B(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		i = 0;
-		session.headSetStream((Comparable) session.first()).forEach(o -> {			
-			System.out.println("["+(i++)+"]"+o);
-			bigtestx.zo = (Entry) o;
-		});
-			try {
-				if( session.size() != i+1 || (Integer)(bigtestx.zo).getKey() != max-2 ) {
-					System.out.println("BATTERY2A FAIL iterations:"+(i+1)+" reported size:"+session.size());
-					throw new Exception("BATTERY2A FAIL iterations:"+(i+1)+" reported size:"+session.size());
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-		System.out.println("BATTERY2A SUCCESS "+(i+1)+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
+		bigtestx f = (bigtestx) session.first();
+		bigtestx l = (bigtestx) session.last();
+		System.out.println("BATTERY1B SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * Does a tailset from first element, tailset retrieve from element greater or equal to end
@@ -127,7 +117,8 @@ public class BatteryBigSack4 {
 		long tims = System.currentTimeMillis();
 		i = 0;
 		session.tailSetStream((Comparable) session.first()).forEach(o -> {			
-			System.out.println("["+(i++)+"]"+o);
+			System.out.println("["+(i)+"]"+o);
+			++i;
 		});
 		if( session.size() != i ) {
 				System.out.println("BATTERY3A FAIL iterations:"+(i)+" reported size:"+session.size());
@@ -144,55 +135,54 @@ public class BatteryBigSack4 {
 	 */
 	public static void battery3B(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
+		i = 0;
 		session.tailSetStream((Comparable) session.last()).forEach(o -> {
-			System.out.println("["+(i++)+"]"+o);
-			bigtestx.zo = (Entry) o;
+			System.out.println("["+(i)+"]"+o);
+			++i;
+			zo = ((bigtestx) o).key;
 		});
-		if( 1 != i || (Integer)bigtestx.zo.getKey() != max-1) {
+		if( 1 != i || zo != max-1) {
 				System.out.println("BATTERY3B FAIL iterations:"+(i)+" reported size:"+session.size());
 				throw new Exception("BATTERY3B FAIL iterations:"+(i)+" reported size:"+session.size());
 		}
 		System.out.println("BATTERY3B SUCCESS "+(i)+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
-	/**
-	 * See if first/last key/val works this can have unintended results 
-	 * @param session
-	 * @param argv
-	 * @throws Exception
-	 */
-	public static void battery1B(TransactionalTreeSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		bigtest f = (bigtest) session.first();
-		bigtest l = (bigtest) session.last();
-		System.out.println("BATTERY1B SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
-	}
 
-	public static void battery1D(TransactionalTreeSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		for(int i = min; i < max; i++) {
-			bigtest b = new bigtest();
-			b.init(i);
-			session.add(b);
-			if( i == (max/2) ) BigSackAdapter.checkpointSetTransactions(Class.forName(argv[0]));//session.checkpoint();
-		}	
-		System.out.println("BATTERY1D SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
-	}
+
 	
 	public static void battery1E(TransactionalTreeSet session, String[] argv) throws Exception {
-		ArrayList<bigtest> al = new ArrayList<bigtest>();
 		long tims = System.currentTimeMillis();
-		for(int i = min; i < max; i++) {
-			bigtest b = new bigtest();
+		i = min;
+		boolean addflag;
+		for(; i < max; i++) {
+			bigtestx b = new bigtestx();
 			b.init(i);
-			session.add(b);
-			al.add(b);
+			if(session.contains(b)) {
+				session.remove(b);
+				System.out.printf("Removed %d%n", i);
+			} else {
+				System.out.printf("DIDNT FIND %d!%n", i);
+			}
 		}
-		BigSackAdapter.rollbackSet(Class.forName(argv[0]));//session.rollback();
+		BigSackAdapter.commitSet(bigtestx.class);
+		/*
+		session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);
+		for(i = min; i < max; i++) {
+			bigtestx b = new bigtestx();
+			b.init(i);
+			addflag = session.add(b);
+		}
+		BigSackAdapter.rollbackSet(bigtestx.class);
+		*/
+		session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);
 		boolean success = true;
 		// make sure these are not there..
-		for(bigtest bt : al) {
-			if( session.contains(bt) ) {
-				System.out.println("BATTERY1E FAIL found rollback element "+bt);
+		i = min;
+		for(; i < max; i++) {
+			bigtestx b = new bigtestx();
+			b.init(i);
+			if( session.contains(b) ) {
+				System.out.println("BATTERY1E FAIL found rollback element "+i);
 				success = false;
 			}
 		}
@@ -204,7 +194,8 @@ public class BatteryBigSack4 {
 		bigtestx key = new bigtestx();
 		key.init(123567);
 		session.add(key);
-		BigSackAdapter.rollbackSet(Class.forName(argv[0]));//session.rollback();
+		BigSackAdapter.rollbackSet(bigtestx.class);//session.rollback();
+		session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);
 		if( !session.contains(key) )
 			 System.out.println("BATTERY3 SUCCESS ");
 		else {
@@ -223,7 +214,6 @@ class bigtestx implements Serializable, Comparable {
 	private static final long serialVersionUID = 8890285185155972693L;
 	byte[] b = new byte[32767];
 	int key = 0;
-	static Entry zo = null;
 	//UUID uuid = null;
 	String randomUUIDString;
 	public bigtestx() {
@@ -232,6 +222,16 @@ class bigtestx implements Serializable, Comparable {
 		//uuid = UUID.randomUUID();
 		//randomUUIDString = uuid.toString();
 		this.key = key;
+	}
+	@Override
+	public boolean equals(Object arg0) {
+		//return randomUUIDString.compareTo(((bigtest)arg0).randomUUIDString);
+		if( key == ((bigtestx)arg0).key) return true;
+		return false;
+	}
+	@Override
+	public int hashCode() {
+		return Integer.hashCode(key);
 	}
 	@Override
 	public int compareTo(Object arg0) {

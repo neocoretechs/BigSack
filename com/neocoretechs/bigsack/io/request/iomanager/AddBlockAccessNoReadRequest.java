@@ -32,7 +32,7 @@ public final class AddBlockAccessNoReadRequest implements CompletionLatchInterfa
 	 */
 	@Override
 	public void process() throws IOException {
-		returnObject = blockBuffer.addBlockAccessNoRead(block);
+		returnObject = blockBuffer.addBlockAccessNoRead(block).get();
 		// trip the countdown latch in waiting processor thread
 		barrierCount.countDown();
 	}

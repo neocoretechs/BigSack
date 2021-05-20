@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.stream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.ref.SoftReference;
 
 import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
@@ -30,13 +31,13 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 /**
 * OutputStream writing directly from the DB blocks
 * obviates need for intermediate byte array
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public final class DBOutputStream extends OutputStream {
 	MappedBlockBuffer blockBuffer;
-	BlockAccessIndex lbai;
+	SoftReference<BlockAccessIndex> lbai;
 	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai = tlbai;
+		lbai =  new SoftReference<BlockAccessIndex>(tlbai);
 		blockBuffer = tsdbio;
 	}
 	/**
@@ -46,7 +47,7 @@ public final class DBOutputStream extends OutputStream {
 	 * @param tsdbio
 	 */
 	public void replaceSource(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai = tlbai;
+		lbai = new SoftReference<BlockAccessIndex>(tlbai);
 		blockBuffer = tsdbio;
 	}
 	

@@ -39,7 +39,6 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 */
 public class BufferedTreeSet {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	protected TreeSet<Comparable<?>> table = new TreeSet();
 	protected BigSackSession session;
 	public BigSackSession getSession() {
 		return session;
@@ -51,20 +50,17 @@ public class BufferedTreeSet {
 	* Each new instance of this will connect to a backing store
 	* to provide an in-mem cache. 
 	* @param tdbname The database name
-	* @param tobjectCacheSize The maximum size of in-mem cache , then backing store hits go up
 	* @exception IOException if global IO problem
 	* @exception IllegalAccessException if the database has been put offline
 	*/
-	public BufferedTreeSet(String tdbname, int tobjectCacheSize)
+	public BufferedTreeSet(String tdbname)
 		throws IOException, IllegalAccessException {
 		session = SessionManager.Connect(tdbname, null, true);
-		objectCacheSize = tobjectCacheSize;
 	}
 	
-	public BufferedTreeSet(String tdbname, String tremotedbname, int tobjectCacheSize)
+	public BufferedTreeSet(String tdbname, String tremotedbname)
 			throws IOException, IllegalAccessException {
 			session = SessionManager.Connect(tdbname, tremotedbname, true);
-			objectCacheSize = tobjectCacheSize;
 		}
 	/**
 	* Put an object to main cache and pool.  We may
@@ -73,25 +69,20 @@ public class BufferedTreeSet {
 	* @exception IOException if put to backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public void add(Comparable tvalue) throws IOException {
+	public boolean add(Comparable tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
-				if (table.size() >= objectCacheSize) {
-					// throw one out
-					Iterator<Comparable<?>> et = table.iterator();
-					//Object remo = 
-					et.next();
-					et.remove();
-				}
 				// now put new
-				session.put(tvalue);
+				boolean key = session.put(tvalue);
 				session.Commit();
-				table.add(tvalue);
+				return key;
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
-		return session.locate(tvalue);
+	public TreeSearchResult locate(Comparable tvalue) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.locate(tvalue);
+		}
 	}
 	
 	/**
@@ -103,12 +94,9 @@ public class BufferedTreeSet {
 	@SuppressWarnings("rawtypes")
 	public boolean contains(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-				boolean isin = table.contains(tkey);
-				if (!isin) {
-					isin = session.contains(tkey);
-				}
-				session.Commit();
-				return isin;
+			boolean isin = session.contains(tkey);
+			session.Commit();
+			return isin;
 		}
 	}
 	/**
@@ -120,7 +108,6 @@ public class BufferedTreeSet {
 	@SuppressWarnings("rawtypes")
 	public Object remove(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-				table.remove(tkey);
 				Object o = session.remove(tkey);
 				session.Commit();
 				return o;

@@ -64,8 +64,8 @@ public final class BTreeMain {
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;
 	private static boolean DEBUGDELETE = false;
-	private static boolean TEST = false; // Do a table scan and key count at startup
-	private static boolean ALERT = false; // Info level messages
+	private static boolean TEST = true; // Do a table scan and key count at startup
+	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = true; // flag to determine whether value data is overwritten for a key or its ignored
 	private static final boolean DEBUGOVERWRITE = false; // notify of overwrite of value for key
 	static int EOF = 2;
@@ -106,6 +106,7 @@ public final class BTreeMain {
 		// Consistency check test, also needed to get number of keys
 		// Performs full tree/table scan, tallys record count
 		if( TEST ) {
+			System.out.printf("MAXKEYS=%d T=%d%n", BTreeKeyPage.MAXKEYS,T);
 			// Attempt to retrieve last good key count
 			long numKeys = 0;
 			long tim = System.currentTimeMillis();

@@ -33,11 +33,9 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 * Semantics underlying the ARIES recovery protocol.
 * Java TreeSet backed by pooled serialized objects. Thread safety is enforced on the session at this level.<br>
 * The user has the responsibility here for commit/rollback.
-* @author Groff (C) NeoCoreTechs 2003,2014,2017
+* @author Jonathan Groff (C) NeoCoreTechs 2003,2014,2017
 */
 public class TransactionalTreeSet {
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	protected TreeSet<Comparable<?>> table = new TreeSet();
 	protected BigSackSession session;
 	public BigSackSession getSession() {
 		return session;
@@ -49,45 +47,38 @@ public class TransactionalTreeSet {
 	* Each new instance of this will connect to a backing store
 	* to provide an in-mem cache. 
 	* @param tdbname The database name
-	* @param tobjectCacheSize The maximum size of in-mem cache , then backing store hits go up
 	* @exception IOException if global IO problem
 	* @exception IllegalAccessException if the database has been put offline
 	*/
-	public TransactionalTreeSet(String tdbname, int tobjectCacheSize)
+	public TransactionalTreeSet(String tdbname)
 		throws IOException, IllegalAccessException {
 		session = SessionManager.Connect(tdbname, null, true);
-		objectCacheSize = tobjectCacheSize;
 	}
 	
-	public TransactionalTreeSet(String tdbname, String tremotename, int tobjectCacheSize)
+	public TransactionalTreeSet(String tdbname, String tremotename)
 			throws IOException, IllegalAccessException {
 			session = SessionManager.Connect(tdbname, tremotename, true);
-			objectCacheSize = tobjectCacheSize;
 	}
 	/**
 	* Put an object to main cache and pool.  We may
 	* toss out an old one when cache size surpasses objectCacheSize
 	* @param tvalue The value for the object
+	* @return true if key previously existed
 	* @exception IOException if put to backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public void add(Comparable tvalue) throws IOException {
+	public boolean add(Comparable tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
-				if (objectCacheSize > 0 && table.size() >= objectCacheSize) {
-					// throw one out
-					Iterator<Comparable<?>> et = table.iterator();
-					et.next();
-					et.remove();
-					table.add(tvalue);
-				}
 				// now put new
-				session.put(tvalue);
+				return session.put(tvalue);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
-		return session.locate(tvalue);
+	public TreeSearchResult locate(Comparable tvalue) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.locate(tvalue);
+		}
 	}
 	
 	/**
@@ -99,15 +90,7 @@ public class TransactionalTreeSet {
 	@SuppressWarnings("rawtypes")
 	public boolean contains(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-			if( objectCacheSize > 0 ) {
-				boolean isin = table.contains(tkey);
-				if (!isin) {
-					isin = session.contains(tkey);
-				}
-				return isin;
-			} else {
 				return session.contains(tkey);
-			}
 		}
 	}
 	/**
@@ -119,11 +102,7 @@ public class TransactionalTreeSet {
 	@SuppressWarnings("rawtypes")
 	public Object remove(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-			if( objectCacheSize > 0) {
-				table.remove(tkey);
-			}
-			Object o = session.remove(tkey);	
-			return o;
+			return session.remove(tkey);	
 		}
 	}
 	/**
@@ -209,14 +188,14 @@ public class TransactionalTreeSet {
 	@SuppressWarnings("rawtypes")
 	public Iterator<?> subSet(Comparable fkey, Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-				return session.subSet(fkey, tkey);
+			return session.subSet(fkey, tkey);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
 	public Stream<?> subSetStream(Comparable fkey, Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
-				return session.subSetStream(fkey, tkey);
+			return session.subSetStream(fkey, tkey);
 		}
 	}
 	/**
@@ -226,8 +205,8 @@ public class TransactionalTreeSet {
 	*/
 	public boolean isEmpty() throws IOException {
 		synchronized (session.getMutexObject()) {
-				boolean ret = session.isEmpty();
-				return ret;
+			boolean ret = session.isEmpty();
+			return ret;
 		}
 	}
 	/**
@@ -235,7 +214,9 @@ public class TransactionalTreeSet {
 	 * @throws IOException
 	 */
 	void commit() throws IOException {
-		session.Commit();
+		synchronized (session.getMutexObject()) {
+			session.Commit();
+		}
 	}
 	/**
 	 * Checkpoint the current database transaction state for roll forward recovery in event of crash
@@ -243,11 +224,15 @@ public class TransactionalTreeSet {
 	 * @throws IOException
 	 */
 	void checkpoint() throws IllegalAccessException, IOException {
-		session.Checkpoint();
+		synchronized (session.getMutexObject()) {
+			session.Checkpoint();
+		}
 	}
 	
 	void rollback() throws IOException {
-		session.Rollback();
+		synchronized (session.getMutexObject()) {
+			session.Rollback();
+		}
 	}
 	
 	public String getDBName() {

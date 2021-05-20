@@ -87,9 +87,9 @@ import java.util.Map.Entry;
 */
 
 public final class FileLogger implements Logger {
-
 	private static final boolean DEBUG = false;
-
+	private static final boolean DEBUGUNDO = false;
+	private static final boolean DEBUGLOGANDDO = false;
 	private LogRecord	logRecord;
 
 	private LogToFile logToFile;	// actually writes the log records.
@@ -154,7 +154,7 @@ public final class FileLogger implements Logger {
 			int completeLength = 0;
 			
 			byte[] buf = GlobalDBIO.getObjectAsBytes(logRecord);
-			if( DEBUG ) {
+			if( DEBUG || DEBUGLOGANDDO ) {
 				System.out.println("FileLogger.logAndDo: Log record byte array size:"+buf.length);
 			}
 			byte[] preparedLogArray = operation.getPreparedLog();
@@ -162,7 +162,7 @@ public final class FileLogger implements Logger {
 				optionalDataLength = preparedLogArray.length;
 			}
 			if(logOutputBuffer.remaining() < buf.length+optionalDataLength+4 ) {
-				if(DEBUG)
+				if(DEBUG || DEBUGLOGANDDO)
 				System.out.println("Not enough space in buffer for record:"+logOutputBuffer.remaining()+" reallocating to "+(buf.length+optionalDataLength+4));
 				logOutputBuffer = ByteBuffer.allocate(buf.length+optionalDataLength+4);
 			}
@@ -195,7 +195,7 @@ public final class FileLogger implements Logger {
 			
 			operation.applyChange(xact, logInstance, logOutputBuffer);
 		
-			if (DEBUG) {	    
+			if (DEBUG || DEBUGLOGANDDO) {	    
                 System.out.println("FileLogger.logAndDo: Write log record: tranId=" + transactionId +
                     " instance: " + logInstance.toString() + " length: " +
                     completeLength + " op:" + operation);    
@@ -304,7 +304,7 @@ public final class FileLogger implements Logger {
 	  */
 	public synchronized void undo(ObjectDBIO t, LogInstance undoStartAt, LogInstance undoStopAt) throws IOException {
 		assert(undoStartAt != null) : "FileLogger.undo startAt position cannot be null";
-		if (DEBUG)
+		if(DEBUG || DEBUGUNDO)
         {
             System.out.println("Undo transaction: " +
                         "start at " + undoStartAt != null ? undoStartAt.toString() : "NULL" + 
@@ -321,9 +321,10 @@ public final class FileLogger implements Logger {
 
 		try
 		{
-			if (undoStopAt != null && undoStartAt.lessThan(undoStopAt))
-			{
+			if (undoStopAt != null && undoStartAt.lessThan(undoStopAt)){
 			    // nothing to undo!
+				if(DEBUG || DEBUGUNDO)
+					System.out.printf("%s Nothing to undo! start @ %s stsop @ %s%n",this.getClass().getName(), undoStartAt, undoStopAt);
 				return;
 			}
 
@@ -333,7 +334,7 @@ public final class FileLogger implements Logger {
 			scanLog = (StreamLogScan)
 				logToFile.openBackwardsScan(undoStartInstance, undoStopAt);
 
-			if (DEBUG)
+			if (DEBUG || DEBUGUNDO)
 				assert(scanLog != null) : "cannot open log for undo";
 
 			HashMap<LogInstance, LogRecord> records;
@@ -345,7 +346,7 @@ public final class FileLogger implements Logger {
 				while(irecs.hasNext()) {
 					Entry<LogInstance, LogRecord> recEntry = irecs.next();
 					LogRecord record = recEntry.getValue();
-					if (DEBUG) {
+					if(DEBUG || DEBUGUNDO) {
 						assert(record.getTransactionId() == t.getTransId()) : "getNextRecord return unqualified log record for undo";
 					}
 					logrecordseen++;
@@ -353,7 +354,7 @@ public final class FileLogger implements Logger {
 						clrskipped++;
 						// cast to CompensationLogRecord so we can get undo instance
 						undoInstance = ((CompensationLogRecord)record).getUndoInstance();
-						if (DEBUG) {
+						if(DEBUG || DEBUGUNDO) {
 							System.out.println("FileLogger.undo: Skipping over CLRs, reset scan to " + undoInstance);
 						}
 						scanLog.resetPosition(new LogCounter(undoInstance.getValueAsLong()));
@@ -385,14 +386,12 @@ public final class FileLogger implements Logger {
 		{
 			if (compensation != null) 
             {
-                // errored out
+                // err out
 				compensation.releaseResource(t);
             }
-
 		}
 
-		if (DEBUG)
-        {
+		if(DEBUG || DEBUGUNDO) {
 			System.out.println("FileLogger.undo: Finish undo, clr generated = " + clrgenerated +
                         ", clr skipped = " + clrskipped + ", record seen = " + logrecordseen + "\n");
         }

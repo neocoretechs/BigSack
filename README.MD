@@ -129,14 +129,6 @@ Nodes: localhost:8000,localhost:8001,localhost:8002,localhost:8003,localhost:800
 # MMap is memory-mapped demand paging, preferred for very large tables
 L3Cache: MMap
 #
-# L1 cache size is the size of the object pool of deserialized, fully reconstituted objects kept in main memory.
-L1CacheSize: 100
-#
-# Number of pool blocks in runtime buffer pool (bytes=PoolBlocks*BlockSize)
-# This can also be modified without fear.  A large pool increases performance at the cost of memory
-#
-PoolBlocks: 8192
-#
 # The BlockSize constant is dangerous, dont change it after creating a table.
 # Try to use a blocksize that is 4 * your largest key size in serialized bytes. 
 # Add up the size of your primitives and add about 20% for overhead. BigSack aligns B+Tree key pages on page boundaries

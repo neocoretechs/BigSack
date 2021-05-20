@@ -151,7 +151,7 @@ import java.util.zip.CRC32;
 
 public final class LogToFile implements LogFactory, java.security.PrivilegedExceptionAction
 {
-	public static boolean DEBUG = true; // general debug
+	public static boolean DEBUG = false; // general debug
 	public static boolean DEBUGDELETE = false; // track deletion of surplus log files
 	public static boolean DUMPLOG = false; // dump log in recovery
 	public static boolean MEASURE = false; // take stats of log writes etc
@@ -488,7 +488,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 		if (recoveryNeeded)
 		{
-			if(DEBUG)
+			if(ALERT)
 				System.out.printf("Recovery needed for Database %s tablespace %d%n", dbName, tablespace);
 			try
 			{
@@ -673,8 +673,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 				// Finished recovery, instead of a checkpoint our simplified protocol will get rid of old logs
 				// and start the new sequence for processing
 				logger.reset();
-				deleteObsoleteLogfiles();
-				initializeLogFileSequence();
 				recoveryNeeded = false;
 			}
 			catch (IOException ioe)
@@ -700,9 +698,8 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			}
 			*/
 		} // if recoveryNeeded
-
-        // done with recovery        
-        
+        // done with recovery, stop, a boot is necessary to restart      
+        stop();
 	}
 
  
@@ -1813,11 +1810,10 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	}
 
 	/**
-		Boot up the log factory.
-		<P> MT- caller provide synchronization
-		@exception IOException log factory cannot start up
+	* Boot up the log factory for write operations.
+	* @throws IOException log factory cannot start up
 	*/
-	public synchronized void boot() throws IOException
+	public synchronized void bootForWrite() throws IOException
 	{
 		//if user does not set the right value for the log buffer size,
 		//default value is used instead.
@@ -1828,7 +1824,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
 		if (DEBUG) {
 			assert(fid != -1);//, "invalid log format Id");
-			System.out.println("RecoveryLogManager boot starting");
+			System.out.println("RecoveryLogManager boot for write starting");
 		}
 		
 		// try to access the log
@@ -1915,7 +1911,94 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 
     	bootTimeLogFileNumber = logFileNumber;
 		if( DEBUG )
-			System.out.println("LogToFile boot complete for"+dbName+" tablespace"+tablespace+" log file#:"+logFileNumber+" recovery "+(recoveryNeeded ? "IS " : "NOT ")+ "needed");
+			System.out.println("LogToFile bootForWrite complete for"+dbName+" tablespace"+tablespace+" log file#:"+logFileNumber+" recovery "+(recoveryNeeded ? "IS " : "NOT ")+ "needed");
+	} // end of boot
+
+	/**
+	* Boot up the log factory for read operations. Dont create new log files or control file, merely
+	* check for existence of them to effect recovery if they are present.
+	* @throws IOException log factory cannot start up
+	*/
+	public synchronized void bootForRead() throws IOException
+	{
+		//if user does not set the right value for the log buffer size,
+		//default value is used instead.
+		logBufferSize =  DEFAULT_LOG_BUFFER_SIZE;
+		logArchived = false;
+		checkpointInstance = LogCounter.INVALID_LOG_INSTANCE;
+		maxLogFileNumber = LogCounter.MAX_LOGFILE_NUMBER;
+
+		if (DEBUG) {
+			assert(fid != -1);//, "invalid log format Id");
+			System.out.println("RecoveryLogManager boot for read starting");
+		}
+		
+		// try to access the log directory, if it doesn't exist, create it.
+		// if it does exist, look for files to run recovery
+        try {
+            createLogDirectory();
+        } catch(DirectoryExistsException dex) {  }    		
+		File logControlFileName = getControlFileName();
+		if( DEBUG ) {
+			System.out.println("LogToFile.boot control file "+logControlFileName+" for db "+dbName+" tablespace "+tablespace);
+		}
+		File logFile;
+
+        if(privExists(logControlFileName)) {
+			try {
+					checkpointInstance = readControlFile(logControlFileName);
+			} catch (ChecksumException e) {
+				try {
+						checkpointInstance = readControlFile(getMirrorControlFileName());
+						// at this point we have a bad control file and a good mirror, restore main control file from mirror
+						writeControlFile(logControlFileName,checkpointInstance);
+					} catch (ChecksumException e1) {
+							throw new IOException("Control files for "+dbName+" are corrupt, cannot boot this table");
+					}
+			}					
+
+		}
+
+		if (checkpointInstance != LogCounter.INVALID_LOG_INSTANCE) {
+					logFileNumber = LogCounter.getLogFileNumber(checkpointInstance);
+		} else {
+					logFileNumber = 1;
+		}
+
+		logFile = getLogFileName(logFileNumber);
+				
+		if( DEBUG ) {
+					LogCounter cpi = new LogCounter(checkpointInstance);
+					System.out.println("boot "+dbName+" file#:"+logFileNumber+" tablespace "+tablespace+" found checkpoint instance:"+cpi);
+		}
+
+		// if log file is not there, we cant recover.
+        if (!privExists(logFile)) {
+        	recoveryNeeded = false;
+		} else {
+			// log file exists
+			if( DEBUG ) {
+					System.out.println("Boot "+dbName+" tablespace "+tablespace+" file:"+logFileNumber+" for checkpoint "+LogCounter.toDebugString(checkpointInstance));
+			}
+			// If format is bad, delete it and set createNewLog unless its the first file
+			// if we have a bad file 1 toss exception. verifyLogFormat closes file
+			headerLogInstance = verifyLogFormat(logFile, logFileNumber);
+						
+			// log file exist, need to run recovery if checkpoint is valid
+			if (checkpointInstance != LogCounter.INVALID_LOG_INSTANCE) {
+				if( ALERT )
+					System.out.println("Recovery indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition);
+				recoveryNeeded = true;
+			} else {
+				if( ALERT )
+					System.out.println("Recovery NOT indicated for "+dbName+" tablespace "+tablespace+" file#:"+logFileNumber+" end position:"+endPosition+" Checkpoint instance not valid.");
+				recoveryNeeded = false;
+			}
+		}
+
+    	bootTimeLogFileNumber = logFileNumber;
+		if( DEBUG )
+			System.out.println("LogToFile bootForRead complete for"+dbName+" tablespace"+tablespace+" log file#:"+logFileNumber+" recovery "+(recoveryNeeded ? "IS " : "NOT ")+ "needed");
 	} // end of boot
 
 	/**
@@ -1962,14 +2045,16 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			logErrMsg(e);
 			corrupt = e;
 			throw e;
-		}
-		
+		}	
 	}
 	
+	/**
+	 * Create a new set of logs.  Start from log file number 1.
+	 * First create or overwrite the log control file with an invalid
+	 * checkpoint instance since there is no checkpoint yet.
+	 * @throws IOException
+	 */
 	public synchronized void initializeLogFileSequence() throws IOException {
-		// brand new log.  Start from log file number 1.
-		// create or overwrite the log control file with an invalid
-		// checkpoint instance since there is no checkpoint yet
 		RandomAccessFile firstLog;
 		File logControlFileName = getControlFileName();
 		if (writeControlFile(logControlFileName, LogCounter.INVALID_LOG_INSTANCE)) {
@@ -1992,7 +2077,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 			logOut = null;
 			throw new IOException("Unable to write control file from recovery log boot, critical failure..");
 		}
-
 		recoveryNeeded = false;
 	}
 	

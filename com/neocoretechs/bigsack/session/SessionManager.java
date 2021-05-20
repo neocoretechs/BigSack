@@ -2,12 +2,21 @@ package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Vector;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.neocoretechs.arieslogger.core.LogInstance;
+import com.neocoretechs.arieslogger.core.impl.LogCounter;
+import com.neocoretechs.arieslogger.core.impl.LogRecord;
+import com.neocoretechs.arieslogger.core.impl.LogToFile;
+import com.neocoretechs.arieslogger.core.impl.Scan;
+import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -214,8 +223,8 @@ public final class SessionManager {
 			hps.forceClose();
 		}
 	}
-	protected static synchronized void setDBOnline(String name) {
-		OfflineDBs.removeElement(name);
+	protected static synchronized void setDBOnline(String dbname) {
+		OfflineDBs.removeElement(dbname);
 	}
 	public static synchronized boolean isDBOffline(String dbname) {
 		return OfflineDBs.contains(dbname);
@@ -244,6 +253,37 @@ public final class SessionManager {
 	 */
 	protected static ConcurrentHashMap<?, ?> getAdminSessionTable() {
 		return AdminSessionTable;
+	}
+
+	public static void analyze(String dbname, boolean verbose) throws Exception {
+		BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, null);
+		System.out.println("Proceeding to analyze "+dbname);
+		bss.analyze(verbose);
+	}
+	
+	/**
+	 * Perform a backward scan of log files.
+	 */
+	public static void AnalyzeLogs(String dbname) throws Exception {
+			// init with no recovery
+			BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, null);
+			ObjectDBIO gdb = bss.getBTree().getIO();
+			LogCounter startAt = new LogCounter(1,LogToFile.LOG_FILE_HEADER_SIZE);
+			Scan ls;
+			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				ls = (Scan) gdb.getIOManager().getUlog(i).getLogToFile().openForwardScan(startAt, null);
+				HashMap<LogInstance, LogRecord> records = null;
+				// backward scan records in reverse order
+				while ((records =  ls.getNextRecord(0)) != null) 
+				{
+					Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
+					while(irecs.hasNext()) {
+						Entry<LogInstance, LogRecord> recEntry = irecs.next();
+						LogRecord record = recEntry.getValue();
+						System.out.printf("Tablespace %d Log record:%s%n",i,record);
+					}
+				}
+			}
 	}
 
 

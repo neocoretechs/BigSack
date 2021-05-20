@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.pooled;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.Date;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -43,19 +44,30 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	private transient int accesses = 0;
 	private long blockNum = -1L;
 	protected short byteindex = -1;
+	public static long expiryTimeDelta = 5000;
+	transient private long expiryTime; // 5000 ms cache expiration time
 	//private transient ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
 	public BlockAccessIndex(boolean init) throws IOException {
+		expiryTime = System.currentTimeMillis() + expiryTimeDelta;
 		if(init) init();
-
 	}
 	/** This constructor used for setting search templates */
 	public BlockAccessIndex() {
+		expiryTime = System.currentTimeMillis() + expiryTimeDelta;
 	}
+    /**
+     * Check cache expiration for SoftReference cache.<p/>
+     * If expiration time delta is reached AND accesses = 0 AND block is not incore AND not root block
+     * @return true if expired and can be removed from cache
+     */
+    public boolean isExpired() {
+        return (System.currentTimeMillis() > expiryTime && accesses == 0 && !blk.isIncore() && blockNum != 0L);
+    }
 	/** This method can be used for ThreadLocal post-init after using default ctor 
 	 * @throws IOException if block superceded a block under write or latched 
 	 * */
-	public synchronized void init() throws IOException {
+	private synchronized void init() throws IOException {
 		//if( lock.isWriteLocked() ) {
 		//	throw new IOException("init() Attempt to unlock write locked Datablock "+this);
 		//}
@@ -67,7 +79,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	}
 	
 	/**
-	 * Reset the block, set default block headers
+	 * Reset the block, set default block headers. Set byteindex to 0.
 	 * @param clearAccess True to clear the accesses latch
 	 */
 	public synchronized void resetBlock(boolean clearAccess) {
@@ -82,21 +94,32 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		byteindex = 0;
 		blk.resetBlock();
 	}
-	
+	/**
+	 * Get the number of accesses
+	 * @return
+	 */
 	public synchronized int getAccesses() {
 		return accesses;
 	}
-	
+	/**
+	 * Increment the access counter
+	 */
 	public synchronized void addAccess() {
 		//if( !lock.isWriteLocked() )
 		//		lock.writeLock().lock();
 		++accesses;
+		expiryTime = System.currentTimeMillis() + expiryTimeDelta;
 		//if( accesses > 1 ) {
 		//	System.out.println("BlockAccessIndex.addAccess access > 1 "+this);
 		//	new Throwable().printStackTrace();
 		//}
 	}
-	
+	/**
+	 * Decrement the accesses, if block is incore, under write, we wont allow accesses to go to zero.<p/>
+	 * Neither will we allow accesses to go negative.
+	 * @return the number of accesses after decrement, or after we reject decrement.
+	 * @throws IOException
+	 */
 	public synchronized int decrementAccesses() throws IOException {
 		if( accesses == 1 && blk.isIncore() )
 			return accesses;
@@ -128,6 +151,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		db.append(byteindex);
 		db.append(" inLog:");
 		db.append(blk == null ?  "null block" : blk.isInlog());
+		db.append(" Expires:");
+		db.append(new Date(expiryTime));
+		db.append(" is Expired:");
+		db.append(isExpired());
 		db.append(".");
 		return db.toString();
 	}
@@ -178,24 +205,19 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 
 	@Override
 	public synchronized int compareTo(Object o) {
-		if (blockNum < ((BlockAccessIndex) o).blockNum)
-			return -1;
-		if (blockNum > ((BlockAccessIndex) o).blockNum)
-			return 1;
-		return 0;
+		return new Long(blockNum).compareTo(((BlockAccessIndex) o).blockNum);
 	}
+	
 	@Override
 	public synchronized boolean equals(Object o) {
 		return (blockNum == ((BlockAccessIndex) o).blockNum);
 	}
-	/**
-	 * If the buffers are per tablespace and we are below 4 gig this should be unique
-	 * and offer optimum distribution
-	 */
+
 	@Override
 	public synchronized int hashCode() {
-		return (int) (0xFFFFFFFF & blockNum);
+		return (int) new Long(blockNum).hashCode();
 	}
+	
 	public synchronized Datablock getBlk() {
 		return blk;
 	}

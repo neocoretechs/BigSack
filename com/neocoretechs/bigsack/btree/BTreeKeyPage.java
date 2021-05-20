@@ -75,7 +75,7 @@ public final class BTreeKeyPage {
 	private static final boolean DEBUGPUTDATA = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	public static final int BTREEKEYSIZE = 28; // total size of non-transient recurring fields here
-	public static final int BTREEDATASIZE = 5; // total number of non transient single entry fields stored per block
+	public static final int BTREEDATASIZE = 13; // total number of non transient single entry fields stored per block (numkeys,page) plus 8 bytes for last BTree page pointer entry
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
 	// The number of maximum children is MAXKEYS+1 per node.
 	// Calculate the maximum number of odd keys that can fit per block.
@@ -98,7 +98,7 @@ public final class BTreeKeyPage {
 	transient BTreeKeyPage[] pageArray;
 	// The array of page ids from which the btree key page array is filled. This data is persisted as virtual page pointers. Since
 	// we align indexes on page boundaries we dont need an offset as we do with value data associated with the indexes for maps.
-	private long[] pageIdArray; // 8 bytes, MAXKEYS ENTRIES
+	private long[] pageIdArray; // 8 bytes, MAXKEYS+1 ENTRIES
 	// These are the data items for values associated with keys,
 	// These are lazily populated from the dataIdArray where an id exsists at that index.
 	transient Object[] dataArray;
@@ -324,6 +324,8 @@ public final class BTreeKeyPage {
 	*/
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	synchronized TreeSearchResult search(Comparable targetKey) throws IOException {
+		if(targetKey == null)
+			System.out.printf("%s.search target key is null", this.getClass().getName());
 		assert(keyArray.length > 0) : "BTreeKeyPage.search key array length zero";
 		int middleIndex = 1; 
         int leftIndex = 0;
@@ -333,6 +335,8 @@ public final class BTreeKeyPage {
         	return new TreeSearchResult(0, false);
         while (leftIndex <= rightIndex) {
         	middleIndex = leftIndex + ((rightIndex - leftIndex) / 2);
+    		if(getKey(middleIndex) == null)
+    			System.out.printf("%s.search getKey(%d) is null for page:%s%n", this.getClass().getName(),middleIndex,this);
         	int cmpRes = getKey(middleIndex).compareTo(targetKey);
         	if (cmpRes < 0 ) {
         		leftIndex = middleIndex + 1;

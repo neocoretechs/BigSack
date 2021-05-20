@@ -38,10 +38,8 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 * @author Groff (C) NeoCoreTechs 2003, 2017
 */
 public class BufferedTreeMap {
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	protected TreeMap<Comparable<?>, Object> table = new TreeMap();
 	protected BigSackSession session;
-	protected int objectCacheSize;
+
 	/**
 	* Get instance of BigSack session.
 	* Each new instance of this will connect to the same backing store
@@ -54,13 +52,11 @@ public class BufferedTreeMap {
 	public BufferedTreeMap(String tdbname, int tobjectCacheSize)
 		throws IOException, IllegalAccessException {
 		session = SessionManager.Connect(tdbname, null, true);
-		objectCacheSize = tobjectCacheSize;
 	}
 	
-	public BufferedTreeMap(String tdbname, String tremotename, int tobjectCacheSize)
+	public BufferedTreeMap(String tdbname, String tremotename)
 			throws IOException, IllegalAccessException {
 			session = SessionManager.Connect(tdbname, tremotename, true);
-			objectCacheSize = tobjectCacheSize;
 	}
 	/**
 	* Put a  key/value pair to main cache and pool.  We may
@@ -70,25 +66,20 @@ public class BufferedTreeMap {
 	* @exception IOException if put to backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public void put(Comparable tkey, Object tvalue) throws IOException {
+	public boolean put(Comparable tkey, Object tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
-				if (table.size() >= objectCacheSize) {
-					// throw one out
-					Iterator et = table.keySet().iterator();
-					//Object remo = 
-					et.next();
-					et.remove();
-				}
 				// now put new
-				session.put(tkey, tvalue);
+				boolean key = session.put(tkey, tvalue);
 				session.Commit();
-				table.put(tkey, tvalue);
+				return key;
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
-		return session.locate(tvalue);
+	public TreeSearchResult locate(Comparable tvalue) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.locate(tvalue);
+		}
 	}
 	
 	/**
@@ -115,7 +106,6 @@ public class BufferedTreeMap {
 	* @return The value for the key
 	* @exception IOException if get from backing store fails
 	*/
-	@SuppressWarnings("rawtypes")
 	public Object getValue(Object tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 				Object kvp = session.getValue(tkey);

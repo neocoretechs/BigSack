@@ -32,11 +32,9 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 * TransactionalTreeMap. The same underlying session objects are used here but the user has access to the transactional
 * Semantics underlying the ARIES recovery protocol. Thread safety is enforced on the session at this level.
 * Java TreeMap backed by pooled serialized objects. It is the users responsibility to commit/rollback/checkpoint.
-* @author Groff (C) NeoCoreTechs 2003,2014,2017
+* @author Jonathan Groff (C) NeoCoreTechs 2003,2014,2017,2021
 */
 public class TransactionalTreeMap {
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	protected TreeMap<Comparable<?>, Object> table = new TreeMap();
 	protected BigSackSession session;
 	protected int objectCacheSize;
 	/**
@@ -44,48 +42,39 @@ public class TransactionalTreeMap {
 	* Each new instance of this will connect to the same backing store
 	* with a different in-mem cache.
 	* @param tdbname The database name
-	* @param tobjectCacheSize The maximum size of in-mem cache , then backing store hits go up
 	* @exception IOException if global IO problem
 	* @exception IllegalAccessException if the database has been put offline
 	*/
-	public TransactionalTreeMap(String tdbname, int tobjectCacheSize)
+	public TransactionalTreeMap(String tdbname)
 		throws IOException, IllegalAccessException {
 		session = SessionManager.Connect(tdbname, null, true);
-		objectCacheSize = tobjectCacheSize;
 	}
 	
-	public TransactionalTreeMap(String tdbname, String tremotedbname, int tobjectCacheSize)
+	public TransactionalTreeMap(String tdbname, String tremotedbname)
 			throws IOException, IllegalAccessException {
 			session = SessionManager.Connect(tdbname, tremotedbname, true);
-			objectCacheSize = tobjectCacheSize;
 		}
 	/**
 	* Put a  key/value pair to main cache and pool.  We may
 	* toss out an old one when cache size surpasses objectCacheSize
 	* @param tkey The key for the pair
 	* @param tvalue The value for the pair
+	* @return true if key previously existed and was not added
 	* @exception IOException if put to backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public void put(Comparable tkey, Object tvalue) throws IOException {
+	public boolean put(Comparable tkey, Object tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
-				if (table.size() >= objectCacheSize) {
-					// throw one out
-					Iterator et = table.keySet().iterator();
-					//Object remo = 
-					et.next();
-					et.remove();
-				}
 				// now put new
-				session.put(tkey, tvalue);
-				// commit later
-				table.put(tkey, tvalue);
+				return session.put(tkey, tvalue);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public synchronized TreeSearchResult locate(Comparable tvalue) throws IOException {
-		return session.locate(tvalue);
+	public TreeSearchResult locate(Comparable tvalue) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.locate(tvalue);
+		}
 	}
 	/**
 	* Get a value from backing store if not in cache.
@@ -220,7 +209,7 @@ public class TransactionalTreeMap {
 	*/
 	public Object last() throws IOException {
 		synchronized (session.getMutexObject()) {
-				return session.last();
+			return session.last();
 		}
 	}
 	/**
@@ -364,7 +353,9 @@ public class TransactionalTreeMap {
 	 * @throws IOException
 	 */
 	void commit() throws IOException {
-		session.Commit();
+		synchronized (session.getMutexObject()) {
+			session.Commit();
+		}
 	}
 	/**
 	 * Checkpoint the current database transaction state for roll forward recovery in event of crash
@@ -372,15 +363,20 @@ public class TransactionalTreeMap {
 	 * @throws IOException
 	 */
 	void checkpoint() throws IllegalAccessException, IOException {
-		session.Checkpoint();
+		synchronized (session.getMutexObject()) {
+			session.Checkpoint();
+		}
 	}
 	/**
 	 * Roll back the outstanding transactions
 	 * @throws IOException
 	 */
 	void rollback() throws IOException {
-		session.Rollback();
+		synchronized (session.getMutexObject()) {
+			session.Rollback();
+		}
 	}
+	
 	public String getDBName() {
 		return session.getDBname();
 	}

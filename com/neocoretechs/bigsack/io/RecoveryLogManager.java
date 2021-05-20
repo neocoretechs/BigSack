@@ -71,16 +71,18 @@ public final class RecoveryLogManager  {
 		this.tblk = new BlockAccessIndex(true); // for writeLog reserved
 		this.ltf = new LogToFile(blockIO, tablespace);
 		this.fl = (FileLogger) ltf.getLogger();
-		ltf.boot();
+		ltf.bootForRead(); // Fopen may initiate recovery, and is guaranteed to call stop()
 	}
 	
 	public LogToFile getLogToFile() {
 		return ltf;
 	}
 	/**
-	* Write log entry - uses current db. Set inlog true
-	* This is initiated before buffer pool block flush (writeblk). Get the original block
-	* from deep store and log it as undoable
+	* Write log entry. If necessary, boot the LogToFile for write if LogOut is null.<p/>
+	* Get the original block from deep store and log it as undoable using FileLogger,
+	* this will write the changed block to the DB after logging.<p/>
+	* Set changed block inlog true. Set incore false. Reset and clear BlockAccessIndex access latch.<p/>
+	* This is initiated before buffer pool block flush (writeblk), for instance. 
 	* @param blk The block instance, payload of block about to be written to log
 	* @exception IOException if cannot open or write
 	*/
@@ -90,14 +92,9 @@ public final class RecoveryLogManager  {
 		}
 		// Have we issued an intermediate commit or rollbacK?
 		if(ltf.getLogOut() == null)
-			ltf.boot();
+			ltf.bootForWrite(); // commit will call stop on LogToFile
 		tblk.setBlockNumber(blk.getBlockNum());
 		assert( tablespace == GlobalDBIO.getTablespace(blk.getBlockNum()));
-		// Write directly to deep store at this point.
-		//synchronized(blockIO.getIOManager().getDirectIO(tablespace)) {
-		//	blockIO.getIOManager().getDirectIO(tablespace).Fseek(GlobalDBIO.getBlock(blk.getBlockNum()));
-		//	tblk.getBlk().read(blockIO.getIOManager().getDirectIO(tablespace));
-		//}
 		ioManager.readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		if( firstTrans == null )
@@ -128,12 +125,14 @@ public final class RecoveryLogManager  {
 	 */
 	public synchronized void rollBack() throws IOException {
 		rollBackCache(); // synch main file buffs
-		blockIO.forceBufferClear(); // flush buffer pools
 		if( firstTrans != null) {
+			System.out.printf("%s Rolling back %d%n",this.getClass().getName(), tablespace);
 			fl.undo(blockIO, firstTrans, null);
 			if(DEBUG) System.out.println("RecoveryLogManager.rollback Undo initial transaction recorded for rollback in tablespace "+tablespace+" in "+ltf.getDBName());
 			firstTrans = null;
 			ltf.stop();
+		} else {
+			System.out.printf("%s NOT Rolling back, firstTrans was null %d%n",this.getClass().getName(), tablespace);
 		}
 	}
 	

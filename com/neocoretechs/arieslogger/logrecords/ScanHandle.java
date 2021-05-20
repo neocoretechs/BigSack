@@ -22,11 +22,8 @@
 package com.neocoretechs.arieslogger.logrecords;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
-import com.neocoretechs.bigsack.session.BigSackSession;
 
 /**
   Interface for scanning the log from outside.

@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
+import java.lang.ref.SoftReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 
@@ -110,7 +111,7 @@ public class BufferPool {
 	public synchronized void findOrAddBlock(int tblsp, long tbn) throws IOException {
 		if( DEBUG )
 			System.out.println("BufferPool.findOrAddBlock1 tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+blks[tblsp]);
-		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn));
+		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn).get());
 		if( DEBUG )
 			System.out.println("BufferPool.findOrAddBlock1 RETURN tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+blks[tblsp]);
 	}
@@ -127,7 +128,7 @@ public class BufferPool {
 			System.out.println("BufferPool.findOrAddBlock2 tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+blks[tblsp]);
 		// If the current entry is the one we are looking for, set byteindex to 0 and return
 		// if not, call 'dealloc' and find our target
-		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn));
+		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn).get());
 		if( DEBUG )
 			System.out.println("BufferPool.findOrAddBlock2 RETURN tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn)+" current:"+blks[tblsp]);
 		return tblsp;
@@ -142,11 +143,10 @@ public class BufferPool {
 	public synchronized boolean rollback(int i) throws IOException {
 		if( blks[i] != null & blks[i].getBlockAccessIndex() != null ) {
 			blks[i].getBlockAccessIndex().decrementAccesses();
-			forceBufferClear();
-			ulog[i].rollBack();
-			return true;
 		}
-		return false;
+		forceBufferClear();
+		ulog[i].rollBack();
+		return true;
 	}
 
 	/**
@@ -195,7 +195,7 @@ public class BufferPool {
 			if( DEBUG )
 				System.out.println("MultithreadedIOManager.deallocOutstanding current "+GlobalDBIO.valueOf(pos));
 		} else {
-			BlockAccessIndex bai = blockBuffer[tablespace].get(pos);
+			BlockAccessIndex bai = blockBuffer[tablespace].get(pos).get();
 			if( bai != null) {
 				if( bai.getBlk().isIncore() ) {
 					//deallocOutstandingWriteLog(tablespace, bai);
@@ -241,7 +241,7 @@ public class BufferPool {
 	 */
 	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(Lbn);
-		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].addBlockAccessNoRead(Lbn));
+		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].addBlockAccessNoRead(Lbn).get());
 		return blks[tblsp].getBlockAccessIndex();
 	}
 	
@@ -255,7 +255,7 @@ public class BufferPool {
 		if( DEBUG )
 			System.out.println("MultithreadedIOManager.findOrAddBlockAccess "+GlobalDBIO.valueOf(bn));
 		int tblsp = GlobalDBIO.getTablespace(bn);
-		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(bn));
+		blks[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(bn).get());
 		return blks[tblsp].getBlockAccessIndex();
 	}
 	
@@ -263,10 +263,11 @@ public class BufferPool {
 	 * Formulate a request to get a block already in the pool.
 	 * @param loc
 	 * @return
+	 * @throws IOException 
 	 */
-	public synchronized BlockAccessIndex getUsedBlock(long loc) {
+	public synchronized BlockAccessIndex getUsedBlock(long loc) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(loc);
-		return blockBuffer[tblsp].getUsedBlock(loc);
+		return blockBuffer[tblsp].getUsedBlock(loc).get();
 	}
 	
 	/**
@@ -328,7 +329,7 @@ public class BufferPool {
 	 * @throws IOException
 	 */
 	public synchronized boolean seekFwd(int tblsp, long offset) throws IOException {
-		return blockBuffer[tblsp].seek_fwd(blks[tblsp].getBlockAccessIndex(), offset);
+		return blockBuffer[tblsp].seek_fwd(new SoftReference<BlockAccessIndex>(blks[tblsp].getBlockAccessIndex()), offset);
 	}
 	
 	/**
@@ -339,7 +340,7 @@ public class BufferPool {
 	 * @throws IOException
 	 */
 	public synchronized void writen(int tblsp, byte[] o, int osize) throws IOException {
-		blockBuffer[tblsp].writen(blks[tblsp].getBlockAccessIndex(), o, osize);
+		blockBuffer[tblsp].writen(new SoftReference<BlockAccessIndex>(blks[tblsp].getBlockAccessIndex()), o, osize);
 	}
 	
 	/**
@@ -351,7 +352,7 @@ public class BufferPool {
 	 */
 	public synchronized int deleten(Optr adr, int osize) throws IOException {
 		int tblsp = objseek(adr);
-		blockBuffer[tblsp].deleten(blks[tblsp].getBlockAccessIndex(), osize);
+		blockBuffer[tblsp].deleten(new SoftReference<BlockAccessIndex>(blks[tblsp].getBlockAccessIndex()), osize);
 		return tblsp;
 	}
 	

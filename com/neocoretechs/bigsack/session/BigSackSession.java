@@ -57,7 +57,7 @@ import com.neocoretechs.bigsack.stream.TailSetStream;
 * and handling commit and rollback.
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
-public final class BigSackSession {
+final class BigSackSession {
 	private boolean DEBUG = false;
 	public static final boolean COMMIT = false;
 	public static final boolean ROLLBACK = true;
@@ -79,21 +79,30 @@ public final class BigSackSession {
 			System.out.println("BigSackSession constructed with db:"+getDBPath()+" using remote DB:"+getRemoteDBName());
 	}
 
-	public long getTransactionId() { return bTree.getIO().getTransId(); }
+	protected long getTransactionId() { return bTree.getIO().getTransId(); }
 	
-	public String getDBname() {
+	protected String getDBname() {
 		return bTree.getIO().getDBName();
 	}
-	public String getDBPath() {
+	protected String getDBPath() {
 		return bTree.getIO().getDBPath();
 	}
-	public String getRemoteDBName() {
+	protected String getRemoteDBName() {
 		return bTree.getIO().getRemoteDBName();
 	}
 	@Override
 	public String toString() {
 		return "BigSackSession using DB:"+getDBname()+" path:"+getDBPath()+" remote:"+getRemoteDBName();
 	}
+	@Override
+	public int hashCode() {
+		return Integer.hashCode((int)getTransactionId());
+	}
+	@Override
+	public boolean equals(Object o) {
+		return( getTransactionId() == ((Long)o).longValue());
+	}
+	
 	protected int getUid() {
 		return uid;
 	}
@@ -101,35 +110,57 @@ public final class BigSackSession {
 		return gid;
 	}
 
-	public Object getMutexObject() {
+	protected Object getMutexObject() {
 		return bTree;
 	}
 
 	@SuppressWarnings("rawtypes")
-	public boolean put(Comparable o) throws IOException {
+	protected boolean put(Comparable o) throws IOException {
 		return (bTree.add(o) == 0 ? false : true);
 	}
-
+	
+	/**
+	 * Call the add method of BTreeMain.
+	 * @param key The key value to attempt add
+	 * @param o The value for the key to add
+	 * @return true if the key existed and was not added
+	 * @throws IOException
+	 */
 	@SuppressWarnings("rawtypes")
-	public boolean put(Comparable key, Object o) throws IOException {
+	protected boolean put(Comparable key, Object o) throws IOException {
 		return (bTree.add(key, o) == 0 ? false : true);
 	}
-
+	/**
+	 * Cause the bTree to seekKey for the Comparable type.
+	 * @param o the Comparable object to seek.
+	 * @return the value of object associated with the key, null if key was not found
+	 * @throws IOException
+	 */
 	@SuppressWarnings("rawtypes")
-	public Object get(Comparable o) throws IOException {
+	protected Object get(Comparable o) throws IOException {
 		TreeSearchResult tsr = bTree.seekKey(o);
 		if(tsr.atKey)
 			return bTree.getCurrentObject();
 		return null;
 	}
-	
+	/**
+	 * Retrieve an object with this value for first key found to have it.
+	 * @param o the object value to seek
+	 * @return the object, null if not found
+	 * @throws IOException
+	 */
 	@SuppressWarnings("rawtypes")
-	public Object getValue(Object o) throws IOException {
+	protected Object getValue(Object o) throws IOException {
 		return bTree.seekObject(o);
 	}
-	
+	/**
+	 * Locate a TreeSearchResult for a given key.
+	 * @param key The Comparable key to search
+	 * @return The TreeSearchResult, which has atKey true if key was actually located, the page, and index on that page. if insertPoint > 0 then insertPoint-1 point to key that immediately precedes target key.
+	 * @throws IOException
+	 */
 	@SuppressWarnings("rawtypes")
-	public TreeSearchResult locate(Comparable key) throws IOException {
+	protected TreeSearchResult locate(Comparable key) throws IOException {
 		TreeSearchResult tsr = bTree.locate(key);
 		return tsr;
 	}
@@ -143,12 +174,18 @@ public final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> subSet(Comparable fkey, Comparable tkey)
+	protected Iterator<?> subSet(Comparable fkey, Comparable tkey)
 		throws IOException {
 		return new SubSetIterator(fkey, tkey, bTree);
 	}
-	
-	public Stream<?> subSetStream(Comparable fkey, Comparable tkey)
+	/**
+	 * Return a Stream that delivers the subset of fkey to tkey
+	 * @param fkey the from key
+	 * @param tkey the to key
+	 * @return the stream from which the lambda expression can be utilized
+	 * @throws IOException
+	 */
+	protected Stream<?> subSetStream(Comparable fkey, Comparable tkey)
 			throws IOException {
 		return new SubSetStream(new SubSetIterator(fkey, tkey, bTree));
 	}
@@ -162,12 +199,18 @@ public final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> subSetKV(Comparable fkey, Comparable tkey)
+	protected Iterator<?> subSetKV(Comparable fkey, Comparable tkey)
 		throws IOException {
 		return new SubSetKVIterator(fkey, tkey, bTree);
 	}
-	
-	public Stream<?> subSetKVStream(Comparable fkey, Comparable tkey)
+	/**
+	 * Return a Streamof key/value pairs that delivers the subset of fkey to tkey
+	 * @param fkey the from key
+	 * @param tkey the to key
+	 * @return the stream from which the lambda expression can be utilized
+	 * @throws IOException
+	 */
+	protected Stream<?> subSetKVStream(Comparable fkey, Comparable tkey)
 			throws IOException {
 			return new SubSetKVStream(fkey, tkey, bTree);
 	}
@@ -177,11 +220,15 @@ public final class BigSackSession {
 	* @return The Iterator over the entrySet
 	* @exception IOException If we cannot obtain the iterator
 	*/
-	public Iterator<?> entrySet() throws IOException {
+	protected Iterator<?> entrySet() throws IOException {
 		return new EntrySetIterator(bTree);
 	}
-	
-	public Stream<?> entrySetStream() throws IOException {
+	/**
+	 * Get a stream of entry set
+	 * @return
+	 * @throws IOException
+	 */
+	protected Stream<?> entrySetStream() throws IOException {
 		return new EntrySetStream(bTree);
 	}
 	/**
@@ -191,11 +238,16 @@ public final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> headSet(Comparable tkey) throws IOException {
+	protected Iterator<?> headSet(Comparable tkey) throws IOException {
 		return new HeadSetIterator(tkey, bTree);
 	}
-	
-	public Stream<?> headSetStream(Comparable tkey) throws IOException {
+	/**
+	 * Get a stream of headset
+	 * @param tkey
+	 * @return
+	 * @throws IOException
+	 */
+	protected Stream<?> headSetStream(Comparable tkey) throws IOException {
 		return new HeadSetStream(tkey, bTree);
 	}
 	/**
@@ -205,11 +257,16 @@ public final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> headSetKV(Comparable tkey) throws IOException {
+	protected Iterator<?> headSetKV(Comparable tkey) throws IOException {
 		return new HeadSetKVIterator(tkey, bTree);
 	}
-	
-	public Stream<?> headSetKVStream(Comparable tkey) throws IOException {
+	/**
+	 * Get a stream of head set
+	 * @param tkey
+	 * @return
+	 * @throws IOException
+	 */
+	protected Stream<?> headSetKVStream(Comparable tkey) throws IOException {
 		return new HeadSetKVStream(tkey, bTree);
 	}
 	/**
@@ -217,11 +274,15 @@ public final class BigSackSession {
 	* @return The Iterator over the keySet
 	* @exception IOException If we cannot obtain the iterator
 	*/
-	public Iterator<?> keySet() throws IOException {
+	protected Iterator<?> keySet() throws IOException {
 		return new KeySetIterator(bTree);
 	}
-	
-	public Stream<?> keySetStream() throws IOException {
+	/**
+	 * Get a keyset stream
+	 * @return
+	 * @throws IOException
+	 */
+	protected Stream<?> keySetStream() throws IOException {
 		return new KeySetStream(bTree);
 	}
 	/**
@@ -231,11 +292,16 @@ public final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> tailSet(Comparable fkey) throws IOException {
+	protected Iterator<?> tailSet(Comparable fkey) throws IOException {
 		return new TailSetIterator(fkey, bTree);
 	}
-	
-	public Stream<?> tailSetStream(Comparable fkey) throws IOException {
+	/**
+	 * Return a tail set stream
+	 * @param fkey
+	 * @return
+	 * @throws IOException
+	 */
+	protected Stream<?> tailSetStream(Comparable fkey) throws IOException {
 		return new TailSetStream(fkey, bTree);
 	}
 	/**
@@ -245,11 +311,16 @@ public final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> tailSetKV(Comparable fkey) throws IOException {
+	protected Iterator<?> tailSetKV(Comparable fkey) throws IOException {
 		return new TailSetKVIterator(fkey, bTree);
 	}
-	
-	public Stream<?> tailSetKVStream(Comparable fkey) throws IOException {
+	/**
+	 * Return a tail set key/value stream
+	 * @param fkey from key of tailset
+	 * @return the stream from which the lambda can be utilized
+	 * @throws IOException
+	 */
+	protected Stream<?> tailSetKVStream(Comparable fkey) throws IOException {
 		return new TailSetKVStream(fkey, bTree);
 	}
 	/**
@@ -259,7 +330,7 @@ public final class BigSackSession {
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	public boolean containsValue(Object o) throws IOException {
+	protected boolean containsValue(Object o) throws IOException {
 		Object obj = bTree.seekObject(o);
 		if( obj != null ) {
 			bTree.getIO().deallocOutstanding();
@@ -278,7 +349,7 @@ public final class BigSackSession {
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	public boolean contains(Comparable o) throws IOException {
+	protected boolean contains(Comparable o) throws IOException {
 		// return TreeSearchResult
 		TreeSearchResult tsr = bTree.seekKey(o);
 		bTree.getIO().deallocOutstanding();
@@ -286,53 +357,78 @@ public final class BigSackSession {
 	}
 	
 	/**
+	* Remove the key and value of the parameter.
 	* @return null or previous object
 	*/
 	@SuppressWarnings("rawtypes")
-	public Object remove(Comparable o) throws IOException {
+	protected Object remove(Comparable o) throws IOException {
 		bTree.delete(o);
 		return o; //fluent interface style
 	}
-	
-	public Object first() throws IOException {
+	/**
+	 * Get the value of the object associated with first key
+	 * @return Object from first key
+	 * @throws IOException
+	 */
+	protected Object first() throws IOException {
 		bTree.rewind();
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
 		bTree.clearStack();
 		return retVal;
 	}
-	
+	/**
+	 * Get the first key
+	 * @return The Comparable first key in the BTree
+	 * @throws IOException
+	 */
 	@SuppressWarnings("rawtypes")
-	public Comparable firstKey() throws IOException {
+	protected Comparable firstKey() throws IOException {
 		bTree.rewind();
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
 		bTree.clearStack();
 		return retVal;
 	}
-	
-	public Object last() throws IOException {
+	/**
+	 * Get the last object associated with greatest valued key in the BTree
+	 * @return The Object of the greatest key
+	 * @throws IOException
+	 */
+	protected Object last() throws IOException {
 		bTree.toEnd();
 		Object retVal = bTree.getCurrentObject();
 		bTree.getIO().deallocOutstanding();
 		bTree.clearStack();
 		return retVal;
 	}
-	
+	/**
+	 * Get the last key in the BTree
+	 * @return The last, greatest valued key in the BTree.
+	 * @throws IOException
+	 */
 	@SuppressWarnings("rawtypes")
-	public Comparable lastKey() throws IOException {
+	protected Comparable lastKey() throws IOException {
 		bTree.toEnd();
 		Comparable retVal = bTree.getCurrentKey();
 		bTree.getIO().deallocOutstanding();
 		bTree.clearStack();
 		return retVal;
 	}
-	
-	public long size() throws IOException {
+	/**
+	 * Get the number of keys total.
+	 * @return The size of the BTree.
+	 * @throws IOException
+	 */
+	protected long size() throws IOException {
 		return bTree.count();
 	}
-
-	public boolean isEmpty() throws IOException {
+	/**
+	 * Is the BTree empty?
+	 * @return true if BTree is empty.
+	 * @throws IOException
+	 */
+	protected boolean isEmpty() throws IOException {
 		return bTree.isEmpty();
 	}
 
@@ -341,18 +437,21 @@ public final class BigSackSession {
 	* @param rollback true to roll back, false to commit
 	* @exception IOException For low level failure
 	*/
-	public void Close(boolean rollback) throws IOException {
+	protected void Close(boolean rollback) throws IOException {
 		rollupSession(rollback);
 	}
-	
-	public void Open() throws IOException {
+	/**
+	 * Open the files associated with the BTree for the instances of class
+	 * @throws IOException
+	 */
+	protected void Open() throws IOException {
 		bTree.getIO().getIOManager().Fopen();
 	}
 	
 	/**
 	* @exception IOException for low level failure
 	*/
-	public void Rollback() throws IOException {
+	protected void Rollback() throws IOException {
 		Close(true);
 	}
 	
@@ -360,7 +459,7 @@ public final class BigSackSession {
 	* Commit the blocks.
 	* @exception IOException For low level failure
 	*/
-	public void Commit() throws IOException {
+	protected void Commit() throws IOException {
 		Close(false);
 	}
 	/**
@@ -368,7 +467,7 @@ public final class BigSackSession {
 	 * @throws IOException 
 	 * @throws IllegalAccessException 
 	 */
-	public void Checkpoint() throws IllegalAccessException, IOException {
+	protected void Checkpoint() throws IllegalAccessException, IOException {
 			bTree.getIO().checkpointBufferFlush();
 	}
 	/**
@@ -397,10 +496,9 @@ public final class BigSackSession {
 	protected void forceClose() throws IOException {
 		Close(true);
 	}
-	/**
-	 * hidden easter egg or dangerous secret, its up to you
-	 */
-	public BTreeMain getBTree() { return bTree; }
+
+	protected BTreeMain getBTree() { return bTree; }
+	
 	/**
 	 * Scans through tablespaces and analyzes space utilization
 	 * BEWARE - doing this under multithreading, well, youre asking for it..
@@ -452,8 +550,5 @@ public final class BigSackSession {
 		int aTotal = (int) ((totutil / (float)tTotal) * 100.0); // ratio of total to used
 		System.out.println("Maximum possible utilization is "+tTotal+" bytes, making data Utilization "+aTotal+"%");
 	}
-	
-	public boolean equals(Object o) {
-		return( getTransactionId() == ((Long)o).longValue());
-	}
+
 }

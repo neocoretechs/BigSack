@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.channel;
 
 import java.io.IOException;
+import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 //import java.nio.channels.SeekableByteChannel;
@@ -20,12 +21,12 @@ import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 public final class DBSeekableByteChannel implements ByteChannel {
 	private static boolean DEBUG = false;
 	private MultithreadedIOManager sdbio;
-	private BlockAccessIndex lbai;
+	private SoftReference<BlockAccessIndex> lbai;
 	private long blockNum;
 	private int position = 0;
 	private long size = 0;
 	public DBSeekableByteChannel(BlockAccessIndex tlbai, MultithreadedIOManager tsdbio) {
-		lbai = tlbai;
+		lbai = new SoftReference<BlockAccessIndex>(tlbai);
 		sdbio = tsdbio;
 	}
 	/**

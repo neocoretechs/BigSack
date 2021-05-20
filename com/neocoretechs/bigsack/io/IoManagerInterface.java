@@ -44,8 +44,9 @@ public interface IoManagerInterface {
 	* Get a block access control instance from L2 cache
 	* @param tmpBai2 The template containing the block number, used to locate key
 	* @return The key found or whatever set returns otherwise if nothing a null is returned
+	* @throws IOException 
 	*/
-	public BlockAccessIndex getUsedBlock(long loc);
+	public BlockAccessIndex getUsedBlock(long loc) throws IOException;
 	/**
 	 * Set the initial free blocks after buckets created or bucket initial state
 	 * Since our directory head gets created in block 0 tablespace 0, the next one is actually the start

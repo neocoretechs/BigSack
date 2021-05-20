@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.io.stream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.SoftReference;
 
 import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
@@ -34,9 +35,9 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 */
 public final class DBInputStream extends InputStream {
 	MappedBlockBuffer blockBuffer;
-	BlockAccessIndex lbai;
+	SoftReference<BlockAccessIndex> lbai;
 	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai = tlbai;
+		lbai = new SoftReference<BlockAccessIndex>(tlbai);
 		blockBuffer = tsdbio;
 	}
 	/**
@@ -46,7 +47,7 @@ public final class DBInputStream extends InputStream {
 	 * @param tsdbio
 	 */
 	public void replaceSource(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai = tlbai;
+		lbai = new SoftReference<BlockAccessIndex>(tlbai);
 		blockBuffer = tsdbio;
 	}
 	

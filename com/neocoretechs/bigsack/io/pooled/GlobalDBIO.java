@@ -229,7 +229,9 @@ public class GlobalDBIO {
 	public String getDBName() {
 		return dbName;
 	}
-
+	/**
+  	* remoteDBName the path to remote tablespace if it differs from log dir
+  	*/
 	public String getRemoteDBName() {
 		return remoteDBName;	
 	}

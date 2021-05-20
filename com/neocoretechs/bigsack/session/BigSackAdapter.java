@@ -74,7 +74,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new BufferedTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
+			ret =  new BufferedTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
 			classToIsoTreeSet.put(xClass, ret);
 		}
 		return ret;
@@ -102,7 +102,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackMap About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new BufferedTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
+			ret =  new BufferedTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
 			classToIsoTreemap.put(xClass, ret);
 		}
 		return ret;
@@ -130,7 +130,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackSetTransaction About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new TransactionalTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
+			ret =  new TransactionalTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
 			classToIsoXTreeset.put(xClass, ret);
 		}
 		return ret;
@@ -158,7 +158,7 @@ public class BigSackAdapter {
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackMapTransaction About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new TransactionalTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null), Props.toInt("L1CacheSize"));
+			ret =  new TransactionalTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
 			classToIsoXTreemap.put(xClass, ret);
 		}
 		return ret;
