@@ -10,11 +10,11 @@ import com.neocoretechs.bigsack.session.SessionManager;
 public class AnalyzeDB {
 	public static void main(String[] args) throws Exception {
 		if( args.length < 2) {
-			System.out.println("analyzedb <database> <true | false verbose>");
+			System.out.println("analyzedb <database> <true | false verbose> <BTree, HMap db type>");
 			System.exit(1);
 		}
 		System.out.println("Proceeding to analyze "+args[0]);
 		// init with no recovery
-		SessionManager.analyze(args[0], args[1].equals("true") ? true : false);
+		SessionManager.analyze(args[0], args[2], args[1].equals("true") ? true : false);
 	}
 }

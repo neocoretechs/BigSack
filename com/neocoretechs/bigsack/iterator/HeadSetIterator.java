@@ -3,7 +3,10 @@ import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
 * All rights reserved.
@@ -35,18 +38,17 @@ public class HeadSetIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable toKey, nextKey, retKey;
 	@SuppressWarnings("unchecked")
-	public HeadSetIterator(@SuppressWarnings("rawtypes") Comparable toKey, BTreeMain bTree) throws IOException {
-		super(bTree);
+	public HeadSetIterator(@SuppressWarnings("rawtypes") Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
+		super(kvMain);
 		this.toKey = toKey;
-		synchronized (bTree) {
-			bTree.rewind();
-			bTree.setCurrentKey();
-			nextKey = bTree.getCurrentKey();
+		synchronized (kvMain) {
+			kvMain.rewind();
+			nextKey = current.getmKey();
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
 				nextKey = null;
-				bTree.clearStack();
+				kvMain.clearStack();
 			}
-			bTree.getIO().deallocOutstanding();
+			kvMain.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
@@ -54,25 +56,28 @@ public class HeadSetIterator extends AbstractIterator {
 	}
 	@SuppressWarnings("unchecked")
 	public Object next() {
-		synchronized (bTree) {
+		synchronized (kvMain) {
 			try {
 				// move nextelem to retelem, search nextelem, get nextelem
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in HeadSetIterator");
 				retKey = nextKey;
-				if ( !bTree.seekKey(nextKey).atKey )
+				KeySearchResult ksr = kvMain.seekKey(nextKey);
+				if ( !ksr.atKey )
 					throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
-				if (bTree.gotoNextKey() == 0) {
-					nextKey = bTree.getCurrentKey();
+				TraversalStackElement tse = new TraversalStackElement(ksr);	
+				if((tse = kvMain.gotoNextKey(tse)) != null) {
+					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+					nextKey = current.getmKey();
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextKey = null;
-						bTree.clearStack();
+						kvMain.clearStack();
 					}
 				} else {
 					nextKey = null;
-					bTree.clearStack();
+					kvMain.clearStack();
 				}
-				bTree.getIO().deallocOutstanding();
+				kvMain.getIO().deallocOutstanding();
 				return retKey;
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

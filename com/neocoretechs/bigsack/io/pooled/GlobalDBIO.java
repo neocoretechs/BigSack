@@ -1,19 +1,36 @@
 package com.neocoretechs.bigsack.io.pooled;
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.nio.channels.ByteChannel;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
+import java.util.LinkedHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.Props;
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
+import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.btree.BTreeRootKeyPage;
+import com.neocoretechs.bigsack.hashmap.HMapChildRootKeyPage;
+import com.neocoretechs.bigsack.hashmap.HMapKeyPage;
+import com.neocoretechs.bigsack.hashmap.HMapMain;
+import com.neocoretechs.bigsack.hashmap.HMapRootKeyPage;
 import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
-import com.neocoretechs.bigsack.io.cluster.ClusterIOManager;
+import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
 /*
 * Copyright (c) 1997,2003,2014 NeoCoreTechs
@@ -47,33 +64,37 @@ import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
+	private static final boolean DEBUGDESERIALIZE = false; // called upon every deserialization
+	private static final boolean DEBUGLOGINIT = true; // view blocks written to log and store
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
-	private int MAXKEYS = 5; // Number of keys per page max
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 	private String[][] nodePorts = null; // remote worker nodes and their ports, if present
+	// Are we using custom class loader for serialized versions?
+	private boolean isCustomClassLoader;
+	private ClassLoader customClassLoader;
 	
 	private String dbName;
-	private String remoteDBName;
 	private long transId;
-	protected boolean isNew = false; // if we create and no data yet
-	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();, ClusterIOManager, etc.
 
+	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();, ClusterIOManager, etc.
+	private KeyValueMainInterface keyValueMain = null;
 	public IoManagerInterface getIOManager() {
 		return ioManager;
 	}
 	
 	/**
-	* Translate the virtual tablespace (first 3 bits) and block to real block
-	* @param tvblock The virtual block
-	* @return The actual block for that tablespace
+	* Translate the virtual block, composed of tablespace and physical block (first 3 bits/last 61 bits),
+	* to a physical block by masking out the first 3 tablespace bits.
+	* @param tvblock The virtual block of tablespace/physical block
+	* @return The physical block in that tablespace
 	*/
 	public static long getBlock(long tvblock) {
 		return tvblock & 0x1FFFFFFFFFFFFFFFL;
 	}
 
 	/**
-	* Extract the tablespace from virtual block
+	* Extract the tablespace from virtual block. Mask out last 61 bits and shift 61 right, leaving 0-7 tablespace value.
 	* @param tvblock The virtual block
 	* @return The tablespace for that block
 	*/
@@ -103,79 +124,48 @@ public class GlobalDBIO {
 	
 	/**
 	* Constructor will utilize values from props file to initialize 
-	* global IO.  The level 3 cache type (L3Cache) can currently be MMap
-	* or File or Cluster.  The number of buffer pool entries is controlled by the PoolBlocks
-	* property. 
+	* global IO.  The backing store type indicates filesystem or memory map etc.<p/>
+	* The number of buffer pool entries is controlled by PoolBlocks
 	* @param dbname Fully qualified path of DB
-	* @param remoteDBName the path to remote tablespace if it differs from log dir
-	* @param create true to create the database if it does not exist
+	* @param keystoreType "BTree" or "HMap"
+	* @param backingstoreType "MMap" or "File" etc
 	* @param transId Transaction Id of current owner
+	* @param poolBlocks Maximum blocks in bufffer pool
 	* @exception IOException if open problem
 	*/
-	public GlobalDBIO(String dbname, String remoteDBName, boolean create, long transId) throws IOException {
+	public GlobalDBIO(String dbname, String keystoreType, String backingstoreType, long transId, int poolBlocks) throws IOException {
 		this.dbName = dbname;
-		this.remoteDBName = remoteDBName;
 		this.transId = transId;
-		// Set up the proper IO manager based on the execution model of cluster main cluster node or standalone
-		if (Props.toString("L3Cache").equals("MMap")) {
-			L3cache = 0;
-		} else {
-			if (Props.toString("L3Cache").equals("File")) {
+		switch(keystoreType) {
+			case "BTree":
+				keyValueMain =  new BTreeMain(this);
+				break;
+			case "HMap":
+				keyValueMain = new HMapMain(this);
+				break;
+			default:
+				keyValueMain =  new BTreeMain(this);
+				break;
+		}
+		// Set up the proper backing store
+		switch(backingstoreType) {
+			case "MMap":
+				L3cache = 0;
+				break;
+			case "File":
 				L3cache = 1;
-			} else {
-					throw new IOException("Unsupported L3 cache type");
-			}
+				break;
+			default:
+				throw new IOException("Unsupported L3 cache type");
 		}
 		
-		// MAXBLOCKS may be set by PoolBlocks property
-		try {
-			setMAXBLOCKS(Props.toInt("PoolBlocks"));
-		} catch(IllegalArgumentException iae) {} // use default;
-		// MAXKEYS, maximum keys per page may also be set as it coincides with page size
-		try {
-			setMAXKEYS(Props.toInt("MaxKeysPerPage"));
-		} catch(IllegalArgumentException iae) {} // use default;
-		
-		if (Props.toString("Model").startsWith("Cluster")) {
-			if( DEBUG )
-				System.out.println("Cluster Node IO Manager coming up...");
-			// see if we assign the array of target worker nodes in cluster
-			if( Props.toString("Nodes") != null ) {
-				String[] nodes = Props.toString("Nodes").split(",");
-				nodePorts = new String[nodes.length][];
-				for(int i = 0; i < nodes.length; i++) {
-					nodePorts[i] = nodes[i].split(":");
-				}
-				if( DEBUG )
-					for(int i = 0; i < nodePorts.length; i++)
-						System.out.println("Node "+nodePorts[i][0]+" port "+nodePorts[i][1]);
-			}
-			ioManager = new ClusterIOManager((ObjectDBIO) this);
-		} else {
-			if( DEBUG )
-				System.out.println("Multithreaded IO Manager coming up...");
-			ioManager = new MultithreadedIOManager((ObjectDBIO) this);
-		}
-		
-		Fopen(dbName, remoteDBName, create);
-		if(create && isNew()) {
-			isNew = true;
-		}
+		setMAXBLOCKS(poolBlocks);
 
-	}
-
-	/**
-	* Constructor creates DB if not existing, otherwise open
-	* @param dbname Fully qualified path or URL of DB
-	* @param transId
-	* @exception IOException if IO problem
-	*/
-	public GlobalDBIO(String dbname, String remoteDbName, long transId) throws IOException {
-		this(dbname, remoteDbName, true, transId);
-	}
-	
-	private boolean isNew() {
-		return ioManager.isNew();
+		if( DEBUG )
+			System.out.println("Multithreaded IO Manager coming up...");
+		ioManager = new MultithreadedIOManager((GlobalDBIO) this, L3cache);
+		
+		ioManager.initialize();
 	}
 
 	/**
@@ -200,41 +190,12 @@ public class GlobalDBIO {
 	}
 
 	/**
-	* If create is true, create primary tablespace else try to open all existing
-	* Call the ioManager Fopen instance
-	* @param fname String file name
-	* @param remote The remote database path
-	* @param create true to create if not existing
-	* @exception IOException if problems opening/creating
-	* @return true if successful
-	* @see IoInterface
-	*/
-	synchronized boolean Fopen(String fname, String remote, boolean create) throws IOException {
-		if( DEBUG )
-			System.out.println("GlobalDBIO.Fopen "+fname+" "+remote+" "+create);
-		return ioManager.Fopen(fname, remote, L3cache, create);
-	}
-	
-	/**
-	 * Re-open tablespace
-	 * @throws IOException
-	 */
- 	synchronized void Fopen() throws IOException {
- 		ioManager.Fopen();
-	}
-
-	/**
 	* @return DB name as String
 	*/
 	public String getDBName() {
 		return dbName;
 	}
-	/**
-  	* remoteDBName the path to remote tablespace if it differs from log dir
-  	*/
-	public String getRemoteDBName() {
-		return remoteDBName;	
-	}
+	
 	/**
 	 * Applies to local log directory if remote dir differs
 	 * @return
@@ -292,7 +253,7 @@ public class GlobalDBIO {
 	* @return Object instance
 	* @exception IOException cannot convert
 	*/
-	public static Object deserializeObject(ObjectDBIO sdbio, byte[] obuf) throws IOException {
+	public static Object deserializeObject(GlobalDBIO sdbio, byte[] obuf) throws IOException {
 		Object Od;
 		try {
 			ObjectInputStream s;
@@ -458,8 +419,9 @@ public class GlobalDBIO {
 	/**
 	 * Flush the page pool buffer and commit the outstanding blocks
 	 * @throws IOException
+	 * @throws IllegalAccessException 
 	 */
-	public synchronized void checkpointBufferFlush() throws IOException {
+	public synchronized void checkpointBufferFlush() throws IOException, IllegalAccessException {
 		ioManager.checkpointBufferFlush();
 	}
 	/**
@@ -485,8 +447,9 @@ public class GlobalDBIO {
 	}
 	/**
 	 * Find the block at the desired vblock in the page pool or allocate the resources and
-	 * bring block into pool from deep store.
-	 * @param pos
+	 * bring block into pool from deep store. Eventually the call reached the {@link MappedBlockBuffer} for
+	 * a particular tablespace and the block is processed setting its 'accesses' up by 1.
+	 * @param pos The virtual block to find or add via call to {@link IoManagerInterfce}
 	 * @throws IOException
 	 */
 	public synchronized BlockAccessIndex findOrAddBlock(long pos) throws IOException {
@@ -501,26 +464,24 @@ public class GlobalDBIO {
 		ioManager.deallocOutstanding();	
 	}
 	/**
-	 * Deallocate the resources for the pooled block at the desired position
-	 * @param pos The long vblock of the resource
-	 * @throws IOException
-	 */
-	public synchronized void deallocOutstanding(long pos) throws IOException {
-		ioManager.deallocOutstanding(pos);	
-	}
-	/**
-	 * Selects a tablespace to prepare call the ioManager.
-	 * (ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface), in order to acquire the
-	 * blockbuffer for that tablespace to steal a block from the freechain or acquire it into the 
-	 * BlockAccessIndex buffer for that tablespace.
-	 * At that point the buffers are set for cursor based retrieval from the tablespace buffer.
-	 * @return The BlockAccessIndex from the random tablespace, with byte index set to 0
+	 * Selects a tablespace to prepare call the ioManager
+	 * {@link MultithreadedIOManager}, implementing {@link IoManagerInterface} to acquire the {@link MappedBlockBuffer} part
+	 * of the {@link BufferPool}.<p/> 
+	 * In order to acquire the {@link BlockAccessIndex} block, find the smallest tablespace free block list,
+	 * and remove it for use by placing it into the {@link MappedBlockBuffer} BlockAccessIndex buffer for that tablespace.<p/>
+	 * At that point the buffers are set for cursor based retrieval from the {@link BlockStream} part of 
+	 * the tablespace {@link BufferPool}.
+	 * @return The BlockAccessIndex from the random tablespace freelist, with byte index set to 0
 	 * @throws IOException
 	 */
 	public synchronized BlockAccessIndex stealblk() throws IOException {
-		int tbsp = ioManager.getFreeBlockAllocator().nextTablespace();
+		BlockAccessIndex blk = ioManager.getNextFreeBlock();
+		if(DEBUG)
+			System.out.printf("%s.stealblk got block %s%n", this.getClass().getName(),GlobalDBIO.valueOf(blk.getBlockNum()));
+		ioManager.addBlockAccess(blk);
+		//ioManager.getBlockStream(GlobalDBIO.getTablespace(blk.getBlockNum())).setBlockAccessIndex(blk);
 		// ioManager = ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface
-		return ioManager.getBlockBuffer(tbsp).stealblk(ioManager.getBlockStream(tbsp).getBlockAccessIndex());
+		return blk;
 	}
 	/**
 	 * Deallocate the outstanding buffer resources, block latches, etc. for 
@@ -536,55 +497,389 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */	
 	public synchronized void deallocOutstandingCommit() throws IOException {
-		ioManager.deallocOutstandingCommit();	
+		ioManager.deallocOutstandingCommit();
+		if(DEBUGLOGINIT)
+			System.out.printf("%s.deallocOutstandingCommit reInitLogs%n", this.getClass().getName());
+		ioManager.reInitLogs();
 	}
 	
 	/**
-	* Create initial buckets
+	* Create initial buckets. As blocks are allocated, they are placed on the free block chain.<p/>
+	* We first scan the existing allocation and determine the extent of free blocks there as our initial extent
+	* may encompass the entirety of the free tablespace.<p/>
+	* @param freeBlockList The free block list to recieve the newly created buckets, per tablespace, so physical block is used.
 	* @exception IOException if buckets cannot be created
 	*/
-	public synchronized void createBuckets() throws IOException {
-		Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
-		d.resetBlock();
-		for (int ispace = 0;ispace < DBPhysicalConstants.DTABLESPACES;ispace++) {
-			long xsize = 0L;
-			// write bucket blocks
-			for (int i = 0; i < DBPhysicalConstants.DBUCKETS; i++) {
-				// check for tablespace 0 , pos 0 and add our btree root
-				ioManager.FseekAndWriteFully(makeVblock(ispace, xsize), d);
-				xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
-			}
+	public synchronized void createBuckets(int ispace, LinkedHashMap<Long, BlockAccessIndex> freeBlockList, boolean isNew) throws IOException {
+		long xsize = 0L;
+		if(!isNew) {
+			xsize = ioManager.Fsize(ispace);
+			if(DEBUG)
+				System.out.printf("%s.createBuckets extending tablespace:%d from:%d to %d. free block list size=%d%n",this.getClass().getName(),ispace,xsize,(xsize+(DBPhysicalConstants.DBUCKETS*DBPhysicalConstants.DBLOCKSIZ)),freeBlockList.size());
+			ioManager.extend(ispace, xsize+(DBPhysicalConstants.DBUCKETS*DBPhysicalConstants.DBLOCKSIZ));
 		}
-		long rootbl = makeVblock(0, 0);
-		// This constructor for BtreeKeyPage takes a block from freechain and allocates it
-		BTreeKeyPage broot = new BTreeKeyPage((ObjectDBIO) this, rootbl, true);
-		// Set all fields to be written
-		broot.setUpdated(true);
-		broot.setAllUpdated(true);
-		// Put the page into the block byte buffer
-		broot.putPage();
-		if( DEBUG ) {
-				System.out.println("Main btree create root: "+broot+" with block "+broot.getBlockAccessIndex());
+		// write bucket blocks
+		for (int i = 0; i < DBPhysicalConstants.DBUCKETS; i++) {
+			long vblock = makeVblock(ispace, xsize);
+			Datablock d = new Datablock(DBPhysicalConstants.DATASIZE);
+			d.resetBlock();
+			ioManager.FseekAndWriteFully(vblock, d);
+			BlockAccessIndex bai = new BlockAccessIndex(this, vblock, d);
+			freeBlockList.put(xsize, bai);
+			xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
 		}
-		if( DEBUG ) System.out.println("GlobalDBIO.CreateBuckets Added root key page @:"+broot);
-
 	}
 	/**
-	 * Immediately after log write, we come here to make sure block
-	 * is written back to main store. We do not use the queues as this operation
-	 * is always adjunct to a processed queue request
+	 * Used for direct access to deep store.
+	 * The header data and used bytes are read into the specified (@link Datablock}
 	 * @param toffset
 	 * @param tblk
 	 * @throws IOException
 	 */
+	public synchronized void FseekAndRead(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.printf("%s.FseekAndRead offset:%s%n",this.getClass().getName(),valueOf(toffset));
+		// send write command and queues be damned, writes only happen
+		// immediately after log writes
+		ioManager.FseekAndRead(toffset, tblk);
+		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+	}	
+	/**
+	 * Utility write. Immediately after log write, we come here to make sure header of the block
+	 * is written back to main store. We do not use the queues as this operation
+	 * is always adjunct to a processed queue request. We go through the {@link IoManagerInterface} 
+	 * which translates the tablespace and block writes always perform Fforce after write.
+	 * @param toffset The virtual block to write
+	 * @param tblk the datablock with header payload
+	 * @throws IOException
+	 */
 	public synchronized void FseekAndWrite(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
-			System.out.print("GlobalDBIO.FseekAndWrite:"+valueOf(toffset)+" "+tblk.blockdump()+"|");
+			System.out.printf("%s.FseekAndWrite offset:%s Datablock blockdump:%s%n",this.getClass().getName(),valueOf(toffset),tblk.blockdump());
 		// send write command and queues be damned, writes only happen
 		// immediately after log writes
 		ioManager.FseekAndWrite(toffset, tblk);
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
-	}	
+	}
+	/**
+	 * Utility header write for log commit maintenance.
+	 * @param toffset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public synchronized void FseekAndWriteHeader(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.printf("%s.FseekAndWriteHeader offset:%s Datablock blockdump:%s%n",this.getClass().getName(),valueOf(toffset),tblk.blockdump());
+		// send write command and queues be damned, writes only happen
+		// immediately after log writes
+		ioManager.FseekAndWriteHeader(toffset, tblk);
+		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
+	}
+	/**
+	 * Used for direct access to deep store for direct operations such as resetting inlog after commit.
+	 * @param toffset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public void FseekAndReadHeader(long toffset, Datablock tblk) throws IOException {
+		if( DEBUG )
+			System.out.printf("%s.FseekAndReadHeader offset:%s%n",this.getClass().getName(),valueOf(toffset));
+		// send write command and queues be damned, writes only happen
+		// immediately after log writes
+		ioManager.FseekAndReadHeader(toffset, tblk);	
+	}
+	/**
+	 * 
+	 * @return main HMapMain, BTreeMain or other main interface to keystore implementation
+	 */
+	public KeyValueMainInterface getKeyValueMain() {
+			return keyValueMain;
+	}
+	/**
+	* Get a page from the buffer pool based on the specified location.<p/>
+	* No effort is made to guarantee the record being accessed is a viable KeyPageInterface, that is assumed.
+	* The KeyPageInterface constructor is called with option true to read the page upon access.
+	* @param sdbio The BufferPool io instance
+	* @param pos The block containing page
+	* @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and BTreeMain
+	* @exception IOException If retrieval fails
+	*/
+	public static BTreeKeyPage getBTreePageFromPool(GlobalDBIO sdbio, long pos) throws IOException {
+		assert(pos != -1L) : "Page index invalid in getPage "+sdbio.getDBName();
+		BlockAccessIndex bai = sdbio.findOrAddBlock(pos);
+		BTreeKeyPage btk = new BTreeKeyPage(sdbio.getKeyValueMain(), bai, true);
+		if( DEBUG ) 
+			System.out.printf("getBtreePageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
+		//for(int i = 0; i <= MAXKEYS; i++) {
+		//	btk.pageArray[i] = btk.getPage(sdbio,i);
+		//}
+		return btk;
+	}
+	/**
+	 * Get a new page from the pool from round robin tablespace.
+	 * Call stealblk, create KeyPageInterface with the page Id of stolen block.
+	 * KeyPageInterface constructor is called with option false (no read), set up for new block instead.
+	 * This will set the updated flag in the block since the block is new,
+	 * @param sdbio The io module to talk to deep store.
+	 * @param btnode The new node
+	 * @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and new node
+	 * @throws IOException
+	 */
+	public static BTreeKeyPage getBTreePageFromPool(GlobalDBIO sdbio, NodeInterface btnode) throws IOException {
+		// Get a fresh block
+		BlockAccessIndex lbai = sdbio.stealblk();
+		// initialize transients, set page with this block, false=no read, set up for new block instead
+		// this will set updated since the block is new
+		BTreeKeyPage btk = new BTreeKeyPage(sdbio.getKeyValueMain(), lbai, true);
+		btk.setNode(btnode);
+		if( DEBUG ) 
+			System.out.printf("getBTreePageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,lbai);
+		return btk;
+	}
+	
+	public static BTreeRootKeyPage getBTreeRootPageFromPool(GlobalDBIO sdbio) throws IOException {
+		BlockAccessIndex bai = sdbio.findOrAddBlock(0L);
+		BTreeRootKeyPage btk = new BTreeRootKeyPage(sdbio.getKeyValueMain(), bai, true);
+		if( DEBUG ) 
+			System.out.printf("getBTreeRootPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
+		return btk;
+	}
+	/**
+	* Get a page from the buffer pool based on the specified location.<p/>
+	* No effort is made to guarantee the record being accessed is a viable KeyPageInterface, that is assumed.
+	* The KeyPageInterface constructor is called with option true to read the page upon access.
+	* @param sdbio The BufferPool io instance
+	* @param pos The block containing page
+	* @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and BTreeMain
+	* @exception IOException If retrieval fails
+	*/
+	public static HMapKeyPage getHMapPageFromPool(GlobalDBIO sdbio, long pos) throws IOException {
+		//assert(pos != -1L) : "Page index invalid in getPage "+sdbio.getDBName();
+		BlockAccessIndex bai;
+		if(pos == -1L) {
+			bai = sdbio.stealblk();
+		} else {
+			bai = sdbio.findOrAddBlock(pos);
+		}
+		HMapKeyPage btk = new HMapKeyPage((HMapMain) sdbio.getKeyValueMain(), bai, true);
+		if( DEBUG ) 
+			System.out.printf("getHMapPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
+		return btk;
+	}
+
+	/**
+	 * Have a node, need to get a page. <p/>
+	 * Get a new page from the pool from round robin tablespace.
+	 * Call stealblk, create KeyPageInterface with the page Id of stolen block.
+	 * KeyPageInterface constructor is called with option false (no read), set up for new block instead.
+	 * This will set the updated flag in the block since the block is new,
+	 * @param sdbio The io module to talk to deep store.
+	 * @param btnode The new node
+	 * @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and new node
+	 * @throws IOException
+	 */
+	public static HMapKeyPage getHMapPageFromPool(GlobalDBIO sdbio, NodeInterface btnode) throws IOException {
+		// Get a fresh block if necessary
+		BlockAccessIndex lbai = null;
+		if(btnode.getPageId() == -1L) {
+			lbai = sdbio.stealblk();
+			btnode.setPageId(lbai.getBlockNum());
+		} else {
+			lbai = sdbio.findOrAddBlock(btnode.getPageId());
+		}
+		// initialize transients, set page with this block, false=no read, set up for new block instead
+		// this will set updated since the block is new
+		HMapKeyPage btk = new HMapKeyPage((HMapMain) sdbio.getKeyValueMain(), lbai, true);
+		btk.setNode(btnode);
+		if( DEBUG ) 
+			System.out.printf("getHMapPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,lbai);
+		return btk;
+	}
+	/**
+	* Get the first Root page from the buffer pool from 0 block of tablespace.<p/>
+	* No effort is made to guarantee the record being accessed is a viable KeyPageInterface, that is assumed.
+	* The RootKeyPageInterface constructor is called with option true to read the page upon access.
+	* @param sdbio The BufferPool io instance
+	* @param tablespace The tablespace
+	* @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and BTreeMain
+	* @exception IOException If retrieval fails
+	*/
+	public static HMapRootKeyPage getHMapRootPageFromPool(GlobalDBIO sdbio, int tablespace) throws IOException {
+		long pos = GlobalDBIO.makeVblock(tablespace, 0L);
+		BlockAccessIndex bai = sdbio.findOrAddBlock(pos);
+		HMapRootKeyPage btk = new HMapRootKeyPage((HMapMain) sdbio.getKeyValueMain(), bai, true);
+		if( DEBUG ) 
+			System.out.printf("getHMapRootPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
+		return btk;
+	}
+	/**
+	 * Get a child of the root HMap page from the pool. Upon acquiring a new page we have to prepare it by setting the contents
+	 * so the page pointers come back as -1 so that as we fan out our key space the intermediary pointers read as empty.<p/>
+	 * This is because our numKeys is essentially a high water mark.
+	 * @param sdbio
+	 * @param pos block number, if -1, acquire block from freechain
+	 * @return The HMapChildRootKeyPage as derived from the BlockAccessIndex.
+	 * @throws IOException
+	 */
+	public static HMapChildRootKeyPage getHMapChildRootPageFromPool(GlobalDBIO sdbio, long pos) throws IOException {
+		// Get a fresh block if necessary
+		BlockAccessIndex lbai = null;
+		if(pos == -1L) {
+			lbai = sdbio.stealblk();
+		} else {
+			lbai = sdbio.findOrAddBlock(pos);
+		}
+		// initialize transients, set page with this block, false=no read, set up for new block instead
+		// this will set updated since the block is new
+		HMapChildRootKeyPage btk = new HMapChildRootKeyPage((HMapMain) sdbio.getKeyValueMain(), lbai, true);
+		if( DEBUG ) 
+			System.out.printf("%s getHMapChildPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",BlockAccessIndex.class.getName(), btk,lbai);
+		return btk;
+	}
+	
+	public static DataOutputStream getBlockOutputStream(BlockAccessIndex bai) {
+		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
+		bks.setBlockAccessIndex(bai); // sets byteindex to 0
+		return bks.getDBOutput();
+	}
+	
+	public static DataInputStream getBlockInputStream(BlockAccessIndex bai) {
+		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
+		bks.setBlockAccessIndex(bai); // sets byteindex to 0
+		return bks.getDBInput();
+	}
+	
+	public static DataOutputStream getBlockOutputStream(BlockAccessIndex bai, short byteindex) {
+		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
+		bks.setBlockAccessIndex(bai, byteindex); // sets byteindex to 0
+		return bks.getDBOutput();
+	}
+	
+	public static DataInputStream getBlockInputStream(BlockAccessIndex bai, short byteindex) {
+		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
+		bks.setBlockAccessIndex(bai, byteindex); // sets byteindex to 0
+		return bks.getDBInput();
+	}
+	
+	/**
+	* delete an object at the given block and offset
+	*/
+	public static void deleteFromOptr(GlobalDBIO sdbio, Optr pos, Object target) throws IOException {
+		if(pos == null || pos == Optr.emptyPointer) 
+			throw new IOException("Object index "+pos+" invalid in deleteFromOptr for db:"+sdbio.getDBName()+" for key:"+target);
+		byte[] b = GlobalDBIO.getObjectAsBytes(target);
+		sdbio.delete_object(pos, b.length);
+	}
+		/**
+		* delete_object and potentially reclaim space
+		* @param loc Location of object
+		* @param osize object size
+		* @exception IOException if the block cannot be sought or written
+		*/
+		public synchronized void delete_object(Optr loc, int osize) throws IOException {
+			//System.out.println("GlobalDBIO.delete_object "+loc+" "+osize);
+			ioManager.objseek(loc);
+			ioManager.deleten(loc, osize);
+		}
+		
+		/**
+		 * Add an object, which in this case is a load of bytes.
+		 * @param loc Location to add this
+		 * @param o The byte payload to add to pool
+		 * @param osize  The size of the payload to add from array
+		 * @exception IOException If the adding did not happen
+		 */
+		public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
+			int tblsp = ioManager.objseek(loc);
+			//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
+			ioManager.writen(tblsp, o, osize);
+			//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
+			//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
+			//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
+			
+			//ioManager.deallocOutstandingWriteLog(tblsp);
+		}
+
+		/**
+		* Read Object in pool: deserialize the byte array.
+		* @param iloc The location of the object to retrieve from backing store
+		* @return The Object extracted from the backing store
+		* @exception IOException if the op fails
+		*/
+		public synchronized Object deserializeObject(long iloc) throws IOException {
+			// read Object at ptr to byte array
+			if(DEBUG)
+				System.out.print(" Deserialize "
+						+GlobalDBIO.valueOf(iloc)+" current block "+GlobalDBIO.valueOf(iloc));
+			Object Od = null;
+			try {
+				ObjectInput s;
+				if (isCustomClassLoader())
+					s =	new CObjectInputStream(
+							GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc)),
+							getCustomClassLoader());
+				else
+					s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc)));
+				Od = s.readObject();
+				s.close();
+			} catch (IOException | ClassNotFoundException ioe) {
+				throw new IOException(
+					"deserializeObject from long: "
+						+ ioe.toString()
+						+ ": Class Unreadable, may have been modified beyond version compatibility "
+						+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
+			} 
+			if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
+			return Od;
+		}
+		/**
+		* Read Object in pool: deserialize the byte array.
+		* @param sdbio the session database IO object from which we get our DBInput stream and perhaps custom class loader
+		* @param iloc The location of the object
+		* @return the Object from dir. entry ptr.
+		* @exception IOException if the op fails
+		*/
+		public synchronized Object deserializeObject(Optr iloc) throws IOException {
+			// read Object at ptr to byte array
+			Object Od;
+			if(DEBUGDESERIALIZE)
+				System.out.print(" Deserialize "+iloc);
+			try {
+				ObjectInput s;
+				ioManager.objseek(iloc);
+				if (isCustomClassLoader())
+					s =	new CObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()), getCustomClassLoader());
+				else
+					s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()));
+				Od = s.readObject();
+				s.close();
+			} catch (IOException | ClassNotFoundException ioe) {
+				throw new IOException(
+					"deserializeObject from pointer: "
+						+ ioe.toString()
+						+ ": Class Unreadable, may have been modified beyond version compatibility "
+						+ iloc+" in "+getDBName());
+			}
+			if( DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
+			return Od;
+		}
+		
+		public synchronized boolean isCustomClassLoader() {
+			return isCustomClassLoader;
+		}
+
+		public synchronized void setCustomClassLoader(boolean isCustomClassLoader) {
+			this.isCustomClassLoader = isCustomClassLoader;
+		}
+
+		public synchronized ClassLoader getCustomClassLoader() {
+			return customClassLoader;
+		}
+
+		public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
+			this.customClassLoader = customClassLoader;
+		}
+		
 
 	public long getTransId() {
 		return transId;
@@ -597,13 +892,6 @@ public class GlobalDBIO {
 	public void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
 	}
-	
-	public int getMAXKEYS() {
-		return MAXKEYS;
-	}
 
-	public synchronized void setMAXKEYS(int mAXKEYS) {
-		MAXKEYS = mAXKEYS;
-		BTreeKeyPage.MAXKEYS = MAXKEYS;
-	}
+	
 }

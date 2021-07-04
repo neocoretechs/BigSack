@@ -1,13 +1,13 @@
 package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.neocoretechs.bigsack.Props;
+import com.neocoretechs.bigsack.DBPhysicalConstants;
+
 
 /**
- * This class enforces a strong typing for the BigSack using the database naming convention linked to the
+ * This factory class enforces a strong typing for the BigSack using the database naming convention linked to the
  * class name of the class stored there.
  * 
  * The main function of this adapter is to ensure that the appropriate map or set is instantiated.
@@ -24,7 +24,7 @@ import com.neocoretechs.bigsack.Props;
  * This can affect different OS configs for cluster testing and heterogeneous clusters.
  * The class name is translated into the appropriate file name via a simple translation table to give us a
  * database/class/tablespace identifier for each file used.
- * @author jg Copyright (C) NeoCoreTechs 2014,2015
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2014,2015,2021
  *
  */
 public class BigSackAdapter {
@@ -34,10 +34,7 @@ public class BigSackAdapter {
 	private static final char[] ILLEGAL_CHARS = { '[', ']', '!', '+', '=', '|', ';', '?', '*', '\\', '<', '>', '|', '\"', ':' };
 	private static final char[] OK_CHARS = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E' };
 
-	private static ConcurrentHashMap<String, TransactionalTreeSet> classToIsoXTreeset = new ConcurrentHashMap<String,TransactionalTreeSet>();
-	private static ConcurrentHashMap<String, TransactionalTreeMap> classToIsoXTreemap = new ConcurrentHashMap<String,TransactionalTreeMap>();
-	private static ConcurrentHashMap<String, BufferedTreeSet> classToIsoTreeSet = new ConcurrentHashMap<String,BufferedTreeSet>();
-	private static ConcurrentHashMap<String, BufferedTreeMap> classToIsoTreemap = new ConcurrentHashMap<String,BufferedTreeMap>();
+	private static ConcurrentHashMap<String, SetInterface> classToIso = new ConcurrentHashMap<String,SetInterface>();
 	
 	public static String getTableSpaceDir() {
 		return tableSpaceDir;
@@ -58,8 +55,8 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static BufferedTreeSet getBigSackSet(Comparable clazz) throws IllegalAccessException, IOException {
-		return getBigSackSet(clazz.getClass());
+	public static BufferedTreeSet getBigSackTreeSet(Comparable clazz) throws IllegalAccessException, IOException {
+		return getBigSackTreeSet(clazz.getClass());
 	}
 	/**
 	 * Get a TreeSet via Java Class type.
@@ -68,14 +65,14 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static BufferedTreeSet getBigSackSet(Class clazz) throws IllegalAccessException, IOException {
+	public static BufferedTreeSet getBigSackTreeSet(Class clazz) throws IllegalAccessException, IOException {
 		String xClass = translateClass(clazz.getName());
-		BufferedTreeSet ret = classToIsoTreeSet.get(xClass);
+		BufferedTreeSet ret = (BufferedTreeSet) classToIso.get(xClass);
 		if(DEBUG)
-			System.out.println("BigSackAdapter.getBigSackSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
+			System.out.println("BigSackAdapter.getBigSackTreeSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new BufferedTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
-			classToIsoTreeSet.put(xClass, ret);
+			ret =  new BufferedTreeSet(tableSpaceDir+xClass, DBPhysicalConstants.BACKINGSTORE, DBPhysicalConstants.DBUCKETS);
+			classToIso.put(xClass, ret);
 		}
 		return ret;
 	}
@@ -86,8 +83,8 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static BufferedTreeMap getBigSackMap(Comparable clazz) throws IllegalAccessException, IOException {
-		return getBigSackMap(clazz.getClass());
+	public static BufferedTreeMap getBigSackTreeMap(Comparable clazz) throws IllegalAccessException, IOException {
+		return getBigSackTreeMap(clazz.getClass());
 	}
 	/**
 	 * Get a TreeMap via Java Class type.
@@ -96,14 +93,14 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static BufferedTreeMap getBigSackMap(Class clazz) throws IllegalAccessException, IOException {
+	public static BufferedTreeMap getBigSackTreeMap(Class clazz) throws IllegalAccessException, IOException {
 		String xClass = translateClass(clazz.getName());
-		BufferedTreeMap ret = classToIsoTreemap.get(xClass);
+		BufferedTreeMap ret = (BufferedTreeMap) classToIso.get(xClass);
 		if(DEBUG)
-			System.out.println("BigSackAdapter.getBigSackMap About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
+			System.out.println("BigSackAdapter.getBigSackTreeMap About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new BufferedTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
-			classToIsoTreemap.put(xClass, ret);
+			ret =  new BufferedTreeMap(tableSpaceDir+xClass, DBPhysicalConstants.BACKINGSTORE, DBPhysicalConstants.DBUCKETS);
+			classToIso.put(xClass, ret);
 		}
 		return ret;
 	}
@@ -114,8 +111,8 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static TransactionalTreeSet getBigSackSetTransaction(Comparable clazz) throws IllegalAccessException, IOException {
-		return getBigSackSetTransaction(clazz.getClass());
+	public static TransactionalTreeSet getBigSackTransactionalTreeSet(Comparable clazz) throws IllegalAccessException, IOException {
+		return getBigSackTransactionalTreeSet(clazz.getClass());
 	}
 	/**
 	 * Get a TransactionalTreeSet via Java Class type.
@@ -124,14 +121,14 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static TransactionalTreeSet getBigSackSetTransaction(Class clazz) throws IllegalAccessException, IOException {
+	public static TransactionalTreeSet getBigSackTransactionalTreeSet(Class clazz) throws IllegalAccessException, IOException {
 		String xClass = translateClass(clazz.getName());
-		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
+		TransactionalTreeSet ret = (TransactionalTreeSet) classToIso.get(xClass);
 		if(DEBUG)
-			System.out.println("BigSackAdapter.getBigSackSetTransaction About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
+			System.out.println("BigSackAdapter.getBigSackTransactionalTreeSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new TransactionalTreeSet(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
-			classToIsoXTreeset.put(xClass, ret);
+			ret =  new TransactionalTreeSet(tableSpaceDir+xClass, DBPhysicalConstants.BACKINGSTORE, DBPhysicalConstants.DBUCKETS);
+			classToIso.put(xClass, ret);
 		}
 		return ret;
 	}
@@ -142,8 +139,8 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static TransactionalTreeMap getBigSackMapTransaction(Comparable clazz) throws IllegalAccessException, IOException {
-		return getBigSackMapTransaction(clazz.getClass());
+	public static TransactionalTreeMap getBigSackTransactionalTreeMap(Comparable clazz) throws IllegalAccessException, IOException {
+		return getBigSackTransactionalTreeMap(clazz.getClass());
 	}
 	/**
 	 * Get a TransactionalTreeMap via Java Class type.
@@ -152,106 +149,55 @@ public class BigSackAdapter {
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	public static TransactionalTreeMap getBigSackMapTransaction(Class clazz) throws IllegalAccessException, IOException {
+	public static TransactionalTreeMap getBigSackTransactionalTreeMap(Class clazz) throws IllegalAccessException, IOException {
 		String xClass = translateClass(clazz.getName());
-		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
+		TransactionalTreeMap ret = (TransactionalTreeMap) classToIso.get(xClass);
 		if(DEBUG)
 			System.out.println("BigSackAdapter.getBigSackMapTransaction About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
 		if( ret == null ) {
-			ret =  new TransactionalTreeMap(tableSpaceDir+xClass, (remoteDir != null ? remoteDir+xClass : null));
-			classToIsoXTreemap.put(xClass, ret);
+			ret =  new TransactionalTreeMap(tableSpaceDir+xClass, DBPhysicalConstants.BACKINGSTORE, DBPhysicalConstants.DBUCKETS);
+			classToIso.put(xClass, ret);
 		}
 		return ret;
 	}
 	
-	public static void checkpointMapTransactions(Class clazz) throws IllegalAccessException, IOException {
-		String xClass = translateClass(clazz.getName());
-		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
-		ret.checkpoint();
+	public static BufferedHashSet getBigSackHashSet(Comparable clazz) throws IllegalAccessException, IOException {
+		return getBigSackHashSet(clazz.getClass());
 	}
 	
-	public static void checkpointSetTransactions(Class clazz) throws IllegalAccessException, IOException {
+	public static BufferedHashSet getBigSackHashSet(Class clazz) throws IllegalAccessException, IOException {
 		String xClass = translateClass(clazz.getName());
-		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
-		ret.checkpoint();
-	}
-	
-	public static void commitMap(Class clazz) throws IOException {
-		String xClass = translateClass(clazz.getName());
-		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
-		ret.commit();
-		classToIsoXTreemap.remove(xClass);
-	}
-	
-	public static void commitSet(Class clazz) throws IOException {
-		String xClass = translateClass(clazz.getName());
-		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
-		ret.commit();
-		classToIsoXTreeset.remove(clazz);
-	}
-	
-	public static void rollbackMap(Class clazz) throws IOException {
-		String xClass = translateClass(clazz.getName());
-		TransactionalTreeMap ret = classToIsoXTreemap.get(xClass);
-		ret.rollback();
-		classToIsoXTreemap.remove(xClass);
-	}
-	
-	public static void rollbackSet(Class clazz) throws IOException {
-		String xClass = translateClass(clazz.getName());
-		TransactionalTreeSet ret = classToIsoXTreeset.get(xClass);
-		ret.rollback();
-		classToIsoXTreeset.remove(clazz);
-	}
-	
-	public static void commitMap(TransactionalTreeMap ret) throws IOException {
-		ret.commit();	
-		for(Map.Entry<String, TransactionalTreeMap> me : classToIsoXTreemap.entrySet()) {
-			if(me.getValue() == ret) {
-				classToIsoXTreemap.remove(me.getKey());
-				break;
-			}
+		BufferedHashSet ret = (BufferedHashSet) classToIso.get(xClass);
+		if(DEBUG)
+			System.out.println("BigSackAdapter.getBigSackHashSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
+		if( ret == null ) {
+			ret =  new BufferedHashSet(tableSpaceDir+xClass, DBPhysicalConstants.BACKINGSTORE, DBPhysicalConstants.DBUCKETS);
+			classToIso.put(xClass, ret);
 		}
-		
+		return ret;
 	}
 	
-	public static void commitSet(TransactionalTreeSet ret) throws IOException {
-		ret.commit();
-		for(Map.Entry<String, TransactionalTreeSet> me : classToIsoXTreeset.entrySet()) {
-			if(me.getValue() == ret) {
-				classToIsoXTreeset.remove(me.getKey());
-				break;
-			}
-		}
+	public static void checkpointTransaction(Class clazz) throws IllegalAccessException, IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionInterface ret = (TransactionInterface) classToIso.get(xClass);
+		ret.Checkpoint();
 	}
 	
-	public static void rollbackMap(TransactionalTreeMap ret) throws IOException {
-		ret.rollback();
-		for(Map.Entry<String, TransactionalTreeMap> me : classToIsoXTreemap.entrySet()) {
-			if(me.getValue() == ret) {
-				classToIsoXTreemap.remove(me.getKey());
-				break;
-			}
-		}
+	public static void commitTransaction(Class clazz) throws IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionInterface ret = (TransactionInterface) classToIso.get(xClass);
+		ret.Commit();
+		classToIso.remove(xClass);
 	}
 	
-	public static void rollbackSet(TransactionalTreeSet ret) throws IOException {
-		ret.rollback();
-		for(Map.Entry<String, TransactionalTreeSet> me : classToIsoXTreeset.entrySet()) {
-			if(me.getValue() == ret) {
-				classToIsoXTreeset.remove(me.getKey());
-				break;
-			}
-		}
+	public static void rollbackTransaction(Class clazz) throws IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionInterface ret = (TransactionInterface) classToIso.get(xClass);
+		ret.Rollback();
+		classToIso.remove(xClass);
 	}
 	
-	public static void checkpointMapTransactions(TransactionalTreeMap ret) throws IllegalAccessException, IOException {
-		ret.checkpoint();
-	}
 	
-	public static void checkpointSetTransactions(TransactionalTreeSet ret) throws IllegalAccessException, IOException {
-		ret.checkpoint();
-	}
 	/**
 	 * Translate a class name into a legitimate file name with some aesthetics.
 	 * @param clazz
@@ -275,4 +221,5 @@ public class BigSackAdapter {
 		//	System.out.println("Class name translated from "+clazz+" to "+sb.toString());
 		return sb.toString();
 	}
+
 }

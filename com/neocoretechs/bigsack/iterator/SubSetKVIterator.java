@@ -3,8 +3,10 @@ import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
-import com.neocoretechs.bigsack.btree.TreeSearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -37,12 +39,12 @@ public class SubSetKVIterator extends AbstractIterator {
 	Comparable fromKey, toKey, nextKey, retKey;
 	Object nextElem, retElem;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public SubSetKVIterator(Comparable fromKey, Comparable toKey, BTreeMain bTree) throws IOException {
+	public SubSetKVIterator(Comparable fromKey, Comparable toKey, KeyValueMainInterface bTree) throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		this.toKey = toKey;
 		synchronized (bTree) {
-			TreeSearchResult tsr = bTree.seekKey(fromKey);
+			KeySearchResult tsr = bTree.seekKey(fromKey);
 			nextKey = tsr.page.getKey(tsr.insertPoint);
 			nextElem = tsr.page.getData(tsr.insertPoint);
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
@@ -59,27 +61,30 @@ public class SubSetKVIterator extends AbstractIterator {
 	public Object next() {
 		try {
 			// move nextelem to retelem, search nextelem, get nextelem
-			synchronized (bTree) {
+			synchronized (kvMain) {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if ( !bTree.seekKey(nextKey).atKey )
+				KeySearchResult ksr = kvMain.seekKey(nextKey);
+				if ( !ksr.atKey )
 					throw new ConcurrentModificationException("Next SubSetKVIterator element rendered invalid. Last good key:"+nextKey);
-				if (bTree.gotoNextKey() == 0) {
-					nextKey = bTree.getCurrentKey();
-					nextElem = bTree.getCurrentObject();
+				TraversalStackElement tse = new TraversalStackElement(ksr);	
+				if((tse = kvMain.gotoNextKey(tse)) != null) {
+					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+					nextKey = current.getmKey();
+					nextElem = current.getmValue();
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextKey = null;
 						nextElem = null; //exclusive
-						bTree.clearStack();
+						kvMain.clearStack();
 					}
 				} else {
 					nextKey = null;
 					nextElem = null;
-					bTree.clearStack();
+					kvMain.clearStack();
 				}
-				bTree.getIO().deallocOutstanding();
+				kvMain.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);
 			}
 		} catch (IOException ioe) {

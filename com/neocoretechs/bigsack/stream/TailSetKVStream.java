@@ -3,8 +3,8 @@ package com.neocoretechs.bigsack.stream;
 
 import java.io.IOException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 
 public class TailSetKVStream extends SackStream {
 
@@ -12,8 +12,8 @@ public class TailSetKVStream extends SackStream {
 		super(esi);
 	}
 
-	public TailSetKVStream(Comparable fkey, BTreeMain bTree) throws IOException {
-		this(new TailSetKVIterator(fkey, bTree));
+	public TailSetKVStream(Comparable fkey, KeyValueMainInterface kvMain) throws IOException {
+		this(new TailSetKVIterator(fkey, kvMain));
 	}
 
 

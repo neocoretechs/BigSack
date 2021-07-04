@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -23,7 +24,7 @@ import java.util.concurrent.ThreadFactory;
  *
  */
 public class ThreadPoolManager {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static String DEFAULT_THREAD_POOL = "SACKIO";
 	private int threadNum = 0;
     private static Map<String, ExecutorService> executor = new HashMap<String, ExecutorService>();// = Executors.newCachedThreadPool(dtf);
@@ -36,7 +37,7 @@ public class ThreadPoolManager {
 			if( threadPoolManager == null ) {
 				threadPoolManager = new ThreadPoolManager();
 				// set up pool for system processes
-				executor.put(DEFAULT_THREAD_POOL, Executors.newCachedThreadPool(getInstance().new LocalThreadFactory(DEFAULT_THREAD_POOL)));
+				executor.put(DEFAULT_THREAD_POOL, Executors.newCachedThreadPool(threadPoolManager.new LocalThreadFactory(DEFAULT_THREAD_POOL)));
 			}
 		}
 		return threadPoolManager;
@@ -85,8 +86,10 @@ public class ThreadPoolManager {
 			}
 	}
 	
-	public void spin(Runnable r, ThreadGroup group) {
-	    executor.get(group.getName()).execute(r);
+	public Future<?> spin(Callable<Object> ioWorker, String ioWorkerNames) throws InterruptedException, ExecutionException {
+		if(DEBUG)
+			System.out.printf("%s.spin(%s,%s) executor=%s%n",this.getClass().getName(), ioWorker, ioWorkerNames, executor.get(ioWorkerNames));
+	    return executor.get(ioWorkerNames).submit(ioWorker);
 	}
 	
 	public void spin(Runnable r, String group) {

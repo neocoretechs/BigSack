@@ -4,7 +4,8 @@ import java.util.Iterator;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 
-import com.neocoretechs.bigsack.btree.TreeSearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -35,13 +36,12 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 * The user has the responsibility here for commit/rollback.
 * @author Jonathan Groff (C) NeoCoreTechs 2003,2014,2017
 */
-public class TransactionalTreeSet {
+public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetInterface {
 	protected BigSackSession session;
-	public BigSackSession getSession() {
+	public TransactionInterface getSession() {
 		return session;
 	}
 
-	protected int objectCacheSize;
 	/**
 	* Get instance of BigSack session.
 	* Each new instance of this will connect to a backing store
@@ -50,15 +50,10 @@ public class TransactionalTreeSet {
 	* @exception IOException if global IO problem
 	* @exception IllegalAccessException if the database has been put offline
 	*/
-	public TransactionalTreeSet(String tdbname)
-		throws IOException, IllegalAccessException {
-		session = SessionManager.Connect(tdbname, null, true);
+	public TransactionalTreeSet(String tdbname, String backingStore, int poolBlocks) throws IOException, IllegalAccessException {
+		session = SessionManager.Connect(tdbname, "BTree", backingStore, poolBlocks);
 	}
 	
-	public TransactionalTreeSet(String tdbname, String tremotename)
-			throws IOException, IllegalAccessException {
-			session = SessionManager.Connect(tdbname, tremotename, true);
-	}
 	/**
 	* Put an object to main cache and pool.  We may
 	* toss out an old one when cache size surpasses objectCacheSize
@@ -67,15 +62,21 @@ public class TransactionalTreeSet {
 	* @exception IOException if put to backing store fails
 	*/
 	@SuppressWarnings("rawtypes")
-	public boolean add(Comparable tvalue) throws IOException {
+	public boolean put(Comparable tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
 				// now put new
 				return session.put(tvalue);
 		}
 	}
 	
+	@Override
+	public Object get(Comparable o) throws IOException {
+		
+		return session.get(o);
+	}
+
 	@SuppressWarnings("rawtypes")
-	public TreeSearchResult locate(Comparable tvalue) throws IOException {
+	public KeySearchResult locate(Comparable tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.locate(tvalue);
 		}
@@ -173,6 +174,7 @@ public class TransactionalTreeSet {
 				return session.tailSet(tkey);
 		}
 	}
+	
 	@SuppressWarnings("rawtypes")
 	public Stream<?> tailSetStream(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
@@ -209,33 +211,110 @@ public class TransactionalTreeSet {
 			return ret;
 		}
 	}
+	@Override
 	/**
 	 * Commit the outstanding transaction
 	 * @throws IOException
 	 */
-	void commit() throws IOException {
+	public void Commit() throws IOException {
 		synchronized (session.getMutexObject()) {
 			session.Commit();
 		}
 	}
+	
+	@Override
 	/**
 	 * Checkpoint the current database transaction state for roll forward recovery in event of crash
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	void checkpoint() throws IllegalAccessException, IOException {
+	public void Checkpoint() throws IllegalAccessException, IOException {
 		synchronized (session.getMutexObject()) {
 			session.Checkpoint();
 		}
 	}
 	
-	void rollback() throws IOException {
+	@Override
+	public void Rollback() throws IOException {
 		synchronized (session.getMutexObject()) {
 			session.Rollback();
 		}
 	}
+
+	@Override
+	public long getTransactionId() {
+		synchronized (session.getMutexObject()) {
+			return session.getTransactionId();
+		}
+	}
+
+	@Override
+	public void Close(boolean rollback) throws IOException {
+		rollupSession(rollback);
+	}
+
+	@Override
+	public void rollupSession(boolean rollback) throws IOException {
+		synchronized (session.getMutexObject()) {
+			session.rollupSession(rollback);
+		}
+	}
+	@Override
+	public Iterator<?> iterator() throws IOException {
+		synchronized(session.getMutexObject()) {
+			return session.tailSet(session.firstKey());
+		}
+	}
+
+	@Override
+	public void Open() throws IOException {
+		synchronized(session.getMutexObject()) {
+			session.Open();
+		}
+		
+	}
+
+	@Override
+	public void forceClose() throws IOException {
+		synchronized(session.getMutexObject()) {
+			session.forceClose();
+		}
+		
+	}
 	
+	@Override
+	public KeyValueMainInterface getKVStore() {
+		synchronized(session.getMutexObject()) {
+			return session.getKVStore();
+		}
+	}
+
+	@Override
 	public String getDBName() {
 		return session.getDBname();
 	}
+
+	@Override
+	public String getDBPath() {
+		return session.getDBPath();
+	}
+
+	@Override
+	public int getUid() {
+		return session.getUid();
+	}
+
+	@Override
+	public int getGid() {
+		return session.getGid();
+	}
+
+	@Override
+	public Object getMutexObject() {
+		return session.getMutexObject();
+	}
+
+
+
+
 }

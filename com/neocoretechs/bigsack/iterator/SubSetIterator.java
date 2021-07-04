@@ -3,8 +3,10 @@ import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
-import com.neocoretechs.bigsack.btree.TreeSearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -37,16 +39,15 @@ public class SubSetIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public SubSetIterator(Comparable fromKey, Comparable toKey, BTreeMain bTree) throws IOException {
-		super(bTree);
+	public SubSetIterator(Comparable fromKey, Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
+		super(kvMain);
 		this.fromKey = fromKey;
 		this.toKey = toKey;
 		if( DEBUG )
-			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+bTree);
-		synchronized (bTree) {
-			TreeSearchResult tsr = bTree.seekKey(fromKey);
-			bTree.setCurrent(tsr);
-			nextKey = bTree.getCurrentKey();
+			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+kvMain);
+		synchronized (kvMain) {
+			KeySearchResult tsr = kvMain.seekKey(fromKey);
+			nextKey = tsr.page.getKey(tsr.insertPoint);
 			if( DEBUG )
 				System.out.println("SubSetIterator.init nextKey:"+nextKey);
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
@@ -58,9 +59,9 @@ public class SubSetIterator extends AbstractIterator {
 						System.out.println("SubSetIterator init nextKey null toKey:"+toKey+" fromKey:"+fromKey);
 				}
 				nextKey = null; //exclusive
-				bTree.clearStack();	
+				kvMain.clearStack();	
 			}
-			bTree.getIO().deallocOutstanding();
+			kvMain.getIO().deallocOutstanding();
 		}
 	}
 	/**
@@ -77,28 +78,29 @@ public class SubSetIterator extends AbstractIterator {
 	public Object next() {
 		try {
 			// move nextelem to retelem, search nextelem, get nextelem
-			synchronized (bTree) {
+			synchronized (kvMain) {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetIterator");
 				retKey = nextKey;
-				TreeSearchResult tsr = bTree.seekKey(nextKey);
-				if (!tsr.atKey)
+				KeySearchResult ksr = kvMain.seekKey(nextKey);
+				if (!ksr.atKey)
 					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid. Last good key:"+nextKey);
-				bTree.setCurrent(tsr);
-				if (bTree.gotoNextKey() == 0) {
-					nextKey = bTree.getCurrentKey();
+				TraversalStackElement tse = new TraversalStackElement(ksr);	
+				if((tse = kvMain.gotoNextKey(tse)) != null) {
+					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+					nextKey = current.getmKey();
 					if ( DEBUG )
 						System.out.println("SubSetIterator.next nextKey returned:"+nextKey);
 					if (nextKey.compareTo(toKey) >= 0) {
 					//if (toKey.compareTo(nextKey) < 0) {
 						nextKey = null;
-						bTree.clearStack();
+						kvMain.clearStack();
 					}
 				} else {
 					nextKey = null;
-					bTree.clearStack();
+					kvMain.clearStack();
 				}
-				bTree.getIO().deallocOutstanding();
+				kvMain.getIO().deallocOutstanding();
 				return retKey;
 			}
 		} catch (IOException ioe) {

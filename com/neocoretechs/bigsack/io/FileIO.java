@@ -1,5 +1,9 @@
 package com.neocoretechs.bigsack.io;
 import java.nio.channels.*;
+
+import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.io.pooled.Datablock;
+
 import java.io.*;
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
@@ -35,6 +39,7 @@ public final class FileIO implements IoInterface {
 	private File WO;
 	private FileOutputStream FO;
 	private RandomAccessFile RA;
+	long iSize;
 	
 	public FileIO(String fname, boolean create) throws IOException {
 		Fopen(fname, create);
@@ -63,6 +68,12 @@ public final class FileIO implements IoInterface {
 			RA = new RandomAccessFile(WO, "rw");
 			fisnew = false;
 		}
+		FileChannel FC = RA.getChannel();
+		if (FC.size() == 0L)
+			iSize =
+				DBPhysicalConstants.DBLOCKSIZ * DBPhysicalConstants.DBUCKETS;
+		else
+			iSize = FC.size();
 		fisopen = true;
 		return true;
 	}
@@ -182,5 +193,48 @@ public final class FileIO implements IoInterface {
 	@Override
 	public byte Fread_byte() throws IOException {
 		return RA.readByte();
+	}
+	@Override
+	public synchronized void FseekAndWriteFully(Long block, Datablock dblk) throws IOException {
+		RA.seek(block);
+		RA.write(dblk.getData());
+	}
+
+	@Override
+	public synchronized void FseekAndWrite(Long block, Datablock dblk) throws IOException {
+		RA.seek(block);
+		RA.write(dblk.getData(), 0, dblk.getBytesinuse());
+	}
+
+	@Override
+	public synchronized void FseekAndReadFully(Long block, Datablock dblk) throws IOException {
+		RA.seek(block);
+		RA.read(dblk.getData());
+	}
+
+	@Override
+	public synchronized void FseekAndRead(Long block, Datablock dblk) throws IOException {
+		RA.seek(block);
+		RA.read(dblk.getData());
+	}
+	
+	@Override
+	public void FseekAndWriteHeader(Long block, Datablock dblk) throws IOException {
+		RA.seek(block);
+		RA.writeLong(dblk.getPrevblk());
+		RA.writeLong(dblk.getNextblk());
+		RA.writeShort(dblk.getBytesused());
+		RA.writeShort(dblk.getBytesinuse());
+		RA.writeByte(dblk.isInlog() ? 1 : 0);
+	}
+	
+	@Override
+	public void FseekAndReadHeader(Long block, Datablock dblk) throws IOException {
+		RA.seek(block);
+		dblk.setPrevblk(RA.readLong());
+		dblk.setNextblk(RA.readLong());
+		dblk.setBytesused(RA.readShort());
+		dblk.setBytesinuse(RA.readShort());
+		dblk.setInLog(RA.readByte());
 	}
 }

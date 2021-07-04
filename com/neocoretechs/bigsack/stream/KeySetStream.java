@@ -2,8 +2,8 @@ package com.neocoretechs.bigsack.stream;
 
 import java.io.IOException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.iterator.KeySetIterator;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 
 public class KeySetStream extends SackStream {
 
@@ -11,8 +11,8 @@ public class KeySetStream extends SackStream {
 		super(esi);
 	}
 
-	public KeySetStream(BTreeMain bTree) throws IOException {
-		this(new KeySetIterator(bTree));
+	public KeySetStream(KeyValueMainInterface kvMain) throws IOException {
+		this(new KeySetIterator(kvMain));
 	}
 
 

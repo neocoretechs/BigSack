@@ -4,10 +4,10 @@ import java.io.IOException;
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.impl.FileLogger;
 import com.neocoretechs.arieslogger.core.impl.LogToFile;
-import com.neocoretechs.bigsack.DBPhysicalConstants;
+
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 
 /*
 * Copyright (c) 1997,2002,2003,2014 NeoCoreTechs
@@ -44,34 +44,34 @@ import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 * recovery. At the end of recovery we restore the logs to their initial state, as we do on a commit. 
 * There is a simple paradigm at work here, we carry a single block access index in this class and use it
 * to cursor through the blocks as we access them.
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2015,2021
 */
 public final class RecoveryLogManager  {
 	private static boolean DEBUG = false;
-	private ObjectDBIO blockIO;
-	private IoManagerInterface ioManager;
+	private GlobalDBIO globalDBIO;
 	private FileLogger fl = null;
 	private LogToFile ltf = null;
 	private LogInstance firstTrans = null;
 	private BlockAccessIndex tblk = null;
 	private int tablespace;
 	
-	public ObjectDBIO getBlockIO() {
-		return blockIO;
+	public GlobalDBIO getBlockIO() {
+		return globalDBIO;
 	}
 	/**
 	 * Call with IO manager, will create the LogToFile
 	 * @param tglobalio
 	 * @throws IOException
 	 */
-	public RecoveryLogManager(ObjectDBIO tglobalio, int tablespace) throws IOException {
-		this.blockIO = tglobalio;
-		this.ioManager = blockIO.getIOManager();
+	public RecoveryLogManager(GlobalDBIO tglobalio, int tablespace) throws IOException {
+		this.globalDBIO = tglobalio;
 		this.tablespace = tablespace;
-		this.tblk = new BlockAccessIndex(true); // for writeLog reserved
-		this.ltf = new LogToFile(blockIO, tablespace);
+		this.tblk = BlockAccessIndex.createPageForRecovery(globalDBIO); // for writeLog reserved
+		this.ltf = new LogToFile(globalDBIO, tablespace);
 		this.fl = (FileLogger) ltf.getLogger();
 		ltf.bootForRead(); // Fopen may initiate recovery, and is guaranteed to call stop()
+		if(DEBUG)
+			System.out.printf("%s constructed with temp blk=%s LogToFile=%s FileLogger=%s%n", this.getClass().getName(),this.tblk,this.ltf,this.fl);
 	}
 	
 	public LogToFile getLogToFile() {
@@ -88,22 +88,32 @@ public final class RecoveryLogManager  {
 	*/
 	public synchronized void writeLog(BlockAccessIndex blk) throws IOException {
 		if( DEBUG ) {
-			System.out.println("RecoveryLogManager.writeLog "+blk.toString());
+			System.out.printf("%s.writeLog ioManager=%s blk=%s%n",this.getClass().getName(),globalDBIO.getIOManager(),blk.toString());
 		}
 		// Have we issued an intermediate commit or rollbacK?
-		if(ltf.getLogOut() == null)
+		if(ltf.getLogOut() == null) {
 			ltf.bootForWrite(); // commit will call stop on LogToFile
+			if( DEBUG ) {
+				System.out.printf("%s.writeLog bootForWrite ltf=%s%n",this.getClass().getName(),ltf);
+			}
+		}
+		tblk.resetBlock(true);
 		tblk.setBlockNumber(blk.getBlockNum());
 		assert( tablespace == GlobalDBIO.getTablespace(blk.getBlockNum()));
-		ioManager.readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
+		globalDBIO.getIOManager().readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
+		if( DEBUG ) {
+			System.out.printf("%s.writeLog read original page=%s%n",this.getClass().getName(),tblk);
+		}
 		UndoableBlock undoBlk = new UndoableBlock(tblk, blk);
 		if( firstTrans == null )
-			firstTrans = fl.logAndDo(blockIO, undoBlk);
+			firstTrans = fl.logAndDo(globalDBIO, undoBlk);
 		else
-			fl.logAndDo(blockIO, undoBlk);
+			fl.logAndDo(globalDBIO, undoBlk);
+		if( DEBUG ) {
+			System.out.printf("%s.writeLog firstTrans=%s%n",this.getClass().getName(),firstTrans);
+		}
 		blk.getBlk().setInlog(true);
 		blk.getBlk().setIncore(false);
-		tblk.resetBlock(true); // reset and clear access latch
 		if( DEBUG ) {
 			System.out.println("RecoveryLogManager.writeLog EXIT with "+blk.toString());
 		}
@@ -113,9 +123,10 @@ public final class RecoveryLogManager  {
 	 * 
 	 * @throws IOException
 	 */
-	public synchronized void commit() throws IOException {
+	public synchronized void commit(MappedBlockBuffer pool) throws IOException {
 			if(DEBUG) System.out.println("RecoveryLogManager.commit called for db "+ltf.getDBName()+" tablespace "+tablespace+" log seq. int.");
 			firstTrans = null;
+			fl.commit(globalDBIO, pool);
 			ltf.stop();
 	}
 
@@ -127,7 +138,7 @@ public final class RecoveryLogManager  {
 		rollBackCache(); // synch main file buffs
 		if( firstTrans != null) {
 			System.out.printf("%s Rolling back %d%n",this.getClass().getName(), tablespace);
-			fl.undo(blockIO, firstTrans, null);
+			fl.undo(globalDBIO, firstTrans, null);
 			if(DEBUG) System.out.println("RecoveryLogManager.rollback Undo initial transaction recorded for rollback in tablespace "+tablespace+" in "+ltf.getDBName());
 			firstTrans = null;
 			ltf.stop();
@@ -141,10 +152,10 @@ public final class RecoveryLogManager  {
 	* therein
 	* @exception IOException If we can't replace blocks
 	*/
-	public synchronized void rollBackCache() throws IOException {
+	private synchronized void rollBackCache() throws IOException {
 		if(DEBUG )
 			System.out.println("RecoveryLogManager.rollbackCache invoked");
-		ioManager.Fforce(); // make sure we synch our main file buffers
+		globalDBIO.getIOManager().Fforce(); // make sure we synch our main file buffers
 	}
 	
 	/**
@@ -156,9 +167,9 @@ public final class RecoveryLogManager  {
 	 * @throws IOException
 	 */
 	public synchronized void checkpoint() throws IllegalAccessException, IOException {
-		blockIO.forceBufferWrite();
+		globalDBIO.forceBufferWrite();
 		ltf.checkpoint(true);
-		if( DEBUG ) System.out.println("RecoveryLogManager.checkpoint. Checkpoint taken for db "+blockIO.getDBName());
+		if( DEBUG ) System.out.println("RecoveryLogManager.checkpoint. Checkpoint taken for db "+globalDBIO.getDBName());
 	}
 
 

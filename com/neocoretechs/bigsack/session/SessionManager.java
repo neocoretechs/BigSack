@@ -14,8 +14,8 @@ import com.neocoretechs.arieslogger.core.impl.LogRecord;
 import com.neocoretechs.arieslogger.core.impl.LogToFile;
 import com.neocoretechs.arieslogger.core.impl.Scan;
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.btree.BTreeMain;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 
 /*
 * Copyright (c) 2003, NeoCoreTechs
@@ -54,6 +54,7 @@ public final class SessionManager {
 	private static ConcurrentHashMap<?, ?> AdminSessionTable = new ConcurrentHashMap();
 	private static Vector<String> OfflineDBs = new Vector<String>();
 	private static long globalTransId = System.currentTimeMillis();
+	private static String backingStoreType;
 	//
 	// Sets the maximum number users
 	@SuppressWarnings("unused")
@@ -130,20 +131,20 @@ public final class SessionManager {
 		return lastCommitTime;
 	}
 	/**
-	* Connect and return Session instance that is the session. It is possible to specify 2 separate dirs for
-	* storing logs and tablespace info. If remote db path is null, the structure expected is dependent on cluster
-	* or standalone.
+	* Connect and return Session instance that is the session.
 	* @param dbname The database name as full path
-	* @param remoteDBName remote database path and name, or null to use dbname path
-	* @param create Create database if not existing
+	* @param keystoreType "HMap", "BTree" etc.
+	* @param backingstoreType The type of filesystem of memory map "File" "MMap" etc.
+	* @param poolBlocks The number of blocks in the buffer pool
 	* @return BigSackSession The session we use to control access
 	* @exception IOException If low level IO problem
 	* @exception IllegalAccessException If access to database is denied
 	*/
-	public static synchronized BigSackSession Connect(String dbname, String remoteDBName, boolean create) throws IOException, IllegalAccessException {
+	public static synchronized BigSackSession Connect(String dbname, String keystoreType, String backingstoreType, int poolBlocks) throws IOException, IllegalAccessException {
 		if( DEBUG ) {
-			System.out.println("Connecting to "+dbname+" using remote DB:"+remoteDBName+" create:"+create);
+			System.out.printf("Connecting to database:%s with key store:%s and backing store:%s with pool blocks:%d%n", dbname, keystoreType, backingstoreType, poolBlocks);
 		}
+		backingStoreType = backingstoreType;
 		// translate user name to uid and group
 		// we can restrict access at database level here possibly
 		int uid = 0;
@@ -153,21 +154,20 @@ public final class SessionManager {
 			throw new IllegalAccessException("Database is offline, try later");
 		BigSackSession hps = (SessionTable.get(dbname));
 		if (hps == null) {
-			// did'nt find it, create anew, throws IllegalAccessException if no go
-			// Global IO and main Btree index
-			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName, create, getGlobalTransId());
-			BTreeMain bTree =  new BTreeMain(objIO);
-			hps = new BigSackSession(bTree, uid, gid);
+			// did'nt find it, create anew, throws IllegalAccessException if no go.
+			// Global IO and main Key/Value index
+			GlobalDBIO objIO = new GlobalDBIO(dbname, keystoreType, backingstoreType, getGlobalTransId(), poolBlocks);
+			KeyValueMainInterface keyValueMain =  objIO.getKeyValueMain();
+			hps = new BigSackSession(keyValueMain, uid, gid);
 			SessionTable.put(dbname, hps);
 			if( DEBUG )
-				System.out.println("New session for "+dbname+" "+hps+" "+bTree+" "+objIO);
+				System.out.printf("New session for db:%s session:%s kvmain:%s GlobalIo:%s%n",dbname,hps,keyValueMain,objIO);
 		} else {
 			// if closed, then open, else if open this does nothing
 			hps.Open();
 			if( DEBUG )
-				System.out.println("Existing session for "+dbname+" "+hps);
+				System.out.printf("Re-opening existing session for db:%s session:%s%n",dbname,hps);
 		}
-		//
 		return hps;
 	}
 	/**
@@ -179,7 +179,7 @@ public final class SessionManager {
 	 * @throws IOException
 	 * @throws IllegalAccessException
 	 */
-	public static synchronized BigSackSession ConnectNoRecovery(String dbname, String remoteDBName) throws IOException, IllegalAccessException {
+	public static synchronized BigSackSession ConnectNoRecovery(String dbname, String keystoreType, String backingstoreType, int poolBlocks) throws IOException, IllegalAccessException {
 		if( DEBUG ) {
 			System.out.println("Connecting WITHOUT RECOVERY to "+dbname);
 		}
@@ -193,13 +193,13 @@ public final class SessionManager {
 		BigSackSession hps = (SessionTable.get(dbname));
 		if (hps == null) {
 			// did'nt find it, create anew, throws IllegalAccessException if no go
-			// Global IO and main Btree index
+			// Global IO and main KeyValue implementation
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery bringing up IO");
-			ObjectDBIO objIO = new ObjectDBIO(dbname, remoteDBName);
+			GlobalDBIO objIO = new GlobalDBIO(dbname, keystoreType, backingstoreType, getGlobalTransId(), poolBlocks);
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery bringing up BTree");
-			BTreeMain bTree =  new BTreeMain(objIO);
+			KeyValueMainInterface bTree =  objIO.getKeyValueMain();
 			hps = new BigSackSession(bTree, uid, gid);
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery logging session");
@@ -210,6 +210,7 @@ public final class SessionManager {
 		//
 		return hps;
 	}
+	
 	/**
 	* Set the database offline, kill all sessions using it
 	* @param dbname The database to offline
@@ -229,7 +230,7 @@ public final class SessionManager {
 	public static synchronized boolean isDBOffline(String dbname) {
 		return OfflineDBs.contains(dbname);
 	}
-	protected static synchronized void releaseSession(BigSackSession DS) {
+	protected static synchronized void releaseSession(TransactionInterface DS) {
 		SessionTable.remove(DS);
 	}
 
@@ -255,8 +256,8 @@ public final class SessionManager {
 		return AdminSessionTable;
 	}
 
-	public static void analyze(String dbname, boolean verbose) throws Exception {
-		BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, null);
+	public static void analyze(String dbname, String keyStoreType, boolean verbose) throws Exception {
+		BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, keyStoreType, "File", 128);
 		System.out.println("Proceeding to analyze "+dbname);
 		bss.analyze(verbose);
 	}
@@ -264,10 +265,10 @@ public final class SessionManager {
 	/**
 	 * Perform a backward scan of log files.
 	 */
-	public static void AnalyzeLogs(String dbname) throws Exception {
+	public static void AnalyzeLogs(String dbname, String keyStoreType) throws Exception {
 			// init with no recovery
-			BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, null);
-			ObjectDBIO gdb = bss.getBTree().getIO();
+			BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, keyStoreType, "File", 128);
+			GlobalDBIO gdb = bss.getKVStore().getIO();
 			LogCounter startAt = new LogCounter(1,LogToFile.LOG_FILE_HEADER_SIZE);
 			Scan ls;
 			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {

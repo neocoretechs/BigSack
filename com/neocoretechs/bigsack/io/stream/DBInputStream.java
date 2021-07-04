@@ -3,8 +3,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
 
-import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 /*
 * Copyright (c) 1998,2003, NeoCoreTechs
 * All rights reserved.
@@ -49,6 +49,16 @@ public final class DBInputStream extends InputStream {
 	public void replaceSource(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai = new SoftReference<BlockAccessIndex>(tlbai);
 		blockBuffer = tsdbio;
+	}
+	
+	@Override
+	/**
+	 * Return the number available in this block, the bytesinuse - current, but ONLY for this block.<p/>
+	 * Primary use case is to determine if we are going to advance to next block on subsequent read or
+	 * determine of any data exists in this block.
+	 */
+	public int available() {
+		return (lbai.get().getBlk().getBytesused() - lbai.get().getByteindex());
 	}
 	
 	@Override

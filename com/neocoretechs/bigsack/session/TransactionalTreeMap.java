@@ -4,7 +4,8 @@ import java.util.Iterator;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
-import com.neocoretechs.bigsack.btree.TreeSearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -34,26 +35,21 @@ import com.neocoretechs.bigsack.btree.TreeSearchResult;
 * Java TreeMap backed by pooled serialized objects. It is the users responsibility to commit/rollback/checkpoint.
 * @author Jonathan Groff (C) NeoCoreTechs 2003,2014,2017,2021
 */
-public class TransactionalTreeMap {
+public class TransactionalTreeMap implements TransactionInterface, OrderedKVMapInterface {
 	protected BigSackSession session;
-	protected int objectCacheSize;
 	/**
-	* Get instance of BigSack session.
-	* Each new instance of this will connect to the same backing store
-	* with a different in-mem cache.
-	* @param tdbname The database name
-	* @exception IOException if global IO problem
-	* @exception IllegalAccessException if the database has been put offline
-	*/
-	public TransactionalTreeMap(String tdbname)
+	 * 
+	 * @param dbname
+	 * @param backingStore "MMap or "File" etc.
+	 * @param poolBlocks Number of blocks in buffer pool
+	 * @throws IOException
+	 * @throws IllegalAccessException
+	 */
+	public TransactionalTreeMap(String dbname, String backingStore, int poolBlocks)
 		throws IOException, IllegalAccessException {
-		session = SessionManager.Connect(tdbname, null, true);
+		session = SessionManager.Connect(dbname, "BTree", backingStore, poolBlocks);
 	}
 	
-	public TransactionalTreeMap(String tdbname, String tremotedbname)
-			throws IOException, IllegalAccessException {
-			session = SessionManager.Connect(tdbname, tremotedbname, true);
-		}
 	/**
 	* Put a  key/value pair to main cache and pool.  We may
 	* toss out an old one when cache size surpasses objectCacheSize
@@ -71,7 +67,7 @@ public class TransactionalTreeMap {
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public TreeSearchResult locate(Comparable tvalue) throws IOException {
+	public KeySearchResult locate(Comparable tvalue) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.locate(tvalue);
 		}
@@ -187,7 +183,7 @@ public class TransactionalTreeMap {
 	* @return First key in set
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object firstKey() throws IOException {
+	public Comparable firstKey() throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.firstKey();
 		}
@@ -196,7 +192,7 @@ public class TransactionalTreeMap {
 	* @return Last key in set
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object lastKey() throws IOException {
+	public Comparable lastKey() throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.lastKey();
 		}
@@ -302,16 +298,14 @@ public class TransactionalTreeMap {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> subMap(Comparable fkey, Comparable tkey)
-		throws IOException {
+	public Iterator<?> subMap(Comparable fkey, Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSet(fkey, tkey);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> subMapStream(Comparable fkey, Comparable tkey)
-		throws IOException {
+	public Stream<?> subMapStream(Comparable fkey, Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSetStream(fkey, tkey);
 		}
@@ -323,8 +317,7 @@ public class TransactionalTreeMap {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> subMapKV(Comparable fkey, Comparable tkey)
-		throws IOException {
+	public Iterator<?> subMapKV(Comparable fkey, Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSetKV(fkey, tkey);
 		}
@@ -337,6 +330,7 @@ public class TransactionalTreeMap {
 			return session.subSetKVStream(fkey, tkey);
 		}
 	}
+	
 	/**
 	* Return boolean value indicating whether the map is empty
 	* @return true if empty
@@ -347,38 +341,211 @@ public class TransactionalTreeMap {
 				return session.isEmpty();
 		}
 	}
-
+	
+	@Override
 	/**
 	 * Commit the outstanding transaction
 	 * @throws IOException
 	 */
-	void commit() throws IOException {
+	public void Commit() throws IOException {
 		synchronized (session.getMutexObject()) {
 			session.Commit();
 		}
 	}
+	
+	@Override
 	/**
 	 * Checkpoint the current database transaction state for roll forward recovery in event of crash
 	 * @throws IllegalAccessException
 	 * @throws IOException
 	 */
-	void checkpoint() throws IllegalAccessException, IOException {
+	public void Checkpoint() throws IllegalAccessException, IOException {
 		synchronized (session.getMutexObject()) {
 			session.Checkpoint();
 		}
 	}
+	
+	@Override
 	/**
 	 * Roll back the outstanding transactions
 	 * @throws IOException
 	 */
-	void rollback() throws IOException {
+	public void Rollback() throws IOException {
 		synchronized (session.getMutexObject()) {
 			session.Rollback();
 		}
 	}
-	
+
+	@Override
+	public long getTransactionId() {
+		synchronized (session.getMutexObject()) {
+			return session.getTransactionId();
+		}
+	}
+
+	@Override
+	public void Close(boolean rollback) throws IOException {
+		rollupSession(rollback);
+	}
+
+	@Override
+	public void rollupSession(boolean rollback) throws IOException {
+		synchronized (session.getMutexObject()) {
+			session.rollupSession(rollback);
+		}
+	}
+
+	@Override
 	public String getDBName() {
 		return session.getDBname();
+	}
+
+	@Override
+	public String getDBPath() {
+		return session.getDBPath();
+	}
+
+	@Override
+	public int getUid() {
+		return session.getUid();
+	}
+
+	@Override
+	public int getGid() {
+		return session.getGid();
+	}
+
+	@Override
+	public Object getMutexObject() {
+		return session.getMutexObject();
+	}
+	
+	@Override
+	public boolean put(Comparable o) throws IOException {
+		synchronized (session.getMutexObject()) {
+			// now put new in context of current transaction
+			return session.put(o);
+		}
+	}
+
+	@Override
+	public Iterator<?> iterator() throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.keySet();
+		}
+	}
+
+	@Override
+	public boolean contains(Comparable o) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.contains(o);
+		}
+	}
+
+	@Override
+	public void Open() throws IOException {
+		synchronized (session.getMutexObject()) {
+			session.Open();
+		}
+	}
+
+	@Override
+	public void forceClose() throws IOException {
+		synchronized (session.getMutexObject()) {
+			session.forceClose();
+		}
+		
+	}
+
+	@Override
+	public KeyValueMainInterface getKVStore() {
+		synchronized (session.getMutexObject()) {
+			return session.getKVStore();
+		}
+	}
+
+	@Override
+	public Iterator<?> subSet(Comparable fkey, Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.subSet(fkey, tkey);
+		}
+	}
+
+	@Override
+	public Stream<?> subSetStream(Comparable fkey, Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.subSetStream(fkey, tkey);
+		}
+	}
+
+	@Override
+	public Iterator<?> headSet(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.headSet(tkey);
+		}
+	}
+
+	@Override
+	public Stream<?> headSetStream(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.headSetStream(tkey);
+		}
+	}
+
+	@Override
+	public Iterator<?> tailSet(Comparable fkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.tailSet(fkey);
+		}
+	}
+
+	@Override
+	public Stream<?> tailSetStream(Comparable fkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.tailSetStream(fkey);
+		}
+	}
+
+	@Override
+	public Iterator<?> subSetKV(Comparable fkey, Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.subSetKV(fkey, tkey);
+		}
+	}
+
+	@Override
+	public Stream<?> subSetKVStream(Comparable fkey, Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.subSetKVStream(fkey, tkey);
+		}
+	}
+
+	@Override
+	public Iterator<?> headSetKV(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.headSetKV(tkey);
+		}
+	}
+
+	@Override
+	public Stream<?> headSetKVStream(Comparable tkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.headSetKVStream(tkey);
+		}
+	}
+
+	@Override
+	public Iterator<?> tailSetKV(Comparable fkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.tailSetKV(fkey);
+		}
+	}
+
+	@Override
+	public Stream<?> tailSetKVStream(Comparable fkey) throws IOException {
+		synchronized (session.getMutexObject()) {
+			return session.tailSetKVStream(fkey);
+		}
 	}
 
 }

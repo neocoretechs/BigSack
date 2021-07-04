@@ -4,6 +4,7 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 
 import com.neocoretechs.bigsack.iterator.KeyValuePair;
+import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.BufferedTreeMap;
 import com.neocoretechs.bigsack.session.SessionManager;
 /**
@@ -32,14 +33,10 @@ public class BatteryBigSack2 {
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
-	* Analysis test fixture
+	* Analysis test fixture, pass supplemental method payloads on cmdl.
 	*/
 	public static void main(String[] argv) throws Exception {
-		if (argv.length == 0 || argv[0].length() == 0) {
-			 System.out.println("usage: java BatteryBigSack2 <database>");
-			System.exit(1);
-		}
-		BufferedTreeMap session = new BufferedTreeMap(argv[0],l3CacheSize);
+		BufferedTreeMap session = BigSackAdapter.getBigSackTreeMap(key.getClass());
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
 		battery1(session, argv);

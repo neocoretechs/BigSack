@@ -2,8 +2,8 @@ package com.neocoretechs.bigsack.stream;
 
 import java.io.IOException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.iterator.SubSetKVIterator;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 
 public class SubSetKVStream extends SackStream {
 
@@ -11,8 +11,8 @@ public class SubSetKVStream extends SackStream {
 		super(esi);
 	}
 
-	public SubSetKVStream(Comparable fkey, Comparable tkey, BTreeMain bTree) throws IOException {
-		this(new SubSetKVIterator(fkey, tkey, bTree));
+	public SubSetKVStream(Comparable fkey, Comparable tkey, KeyValueMainInterface kvMain) throws IOException {
+		this(new SubSetKVIterator(fkey, tkey, kvMain));
 	}
 
 }

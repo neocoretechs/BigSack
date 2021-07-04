@@ -3,8 +3,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.ref.SoftReference;
 
-import com.neocoretechs.bigsack.io.MappedBlockBuffer;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 /*
 * Copyright (c) 1998,2003, NeoCoreTechs
 * All rights reserved.
@@ -38,6 +38,7 @@ public final class DBOutputStream extends OutputStream {
 	SoftReference<BlockAccessIndex> lbai;
 	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai =  new SoftReference<BlockAccessIndex>(tlbai);
+		tlbai.getBlk().setIncore(true);
 		blockBuffer = tsdbio;
 	}
 	/**

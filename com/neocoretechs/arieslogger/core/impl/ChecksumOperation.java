@@ -23,7 +23,7 @@ package com.neocoretechs.arieslogger.core.impl;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.Externalizable;
 import java.io.ObjectInput;
@@ -138,7 +138,7 @@ public class ChecksumOperation implements Loggable, Externalizable
 	 *	Nothing to do for the checksum log record because it does need to be
 	 *  applied during redo. 
 	 */
-	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException
+	public void applyChange(GlobalDBIO xact, LogInstance instance, Object in) throws IOException
 	{
 	}
 
@@ -157,7 +157,7 @@ public class ChecksumOperation implements Loggable, Externalizable
 		Checksum does not need to be redone, it is used to just verify that
 		log records are written completely.
 	*/
-	public boolean needsRedo(ObjectDBIO xact)
+	public boolean needsRedo(GlobalDBIO xact)
 	{
 		return false;
 	}
@@ -165,7 +165,7 @@ public class ChecksumOperation implements Loggable, Externalizable
 	/**
 	  Checksum has no resources to release
 	*/
-	public void releaseResource(ObjectDBIO xact){}
+	public void releaseResource(GlobalDBIO xact){}
 
 	/**
 		Checksum is a raw store operation

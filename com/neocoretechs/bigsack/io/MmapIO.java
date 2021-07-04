@@ -4,6 +4,7 @@ import java.nio.*;
 import java.nio.channels.*;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.io.pooled.Datablock;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -317,6 +318,50 @@ public final class MmapIO implements IoInterface {
 		if( DEBUG )
 			System.out.println("MMapIO.getChannel:"+FC);
 		return FC;
+	}
+
+	@Override
+	public synchronized void FseekAndWriteFully(Long block, Datablock dblk) throws IOException {
+		Fseek(block);
+		Fwrite(dblk.getData());
+	}
+
+	@Override
+	public synchronized void FseekAndWrite(Long block, Datablock dblk) throws IOException {
+		Fseek(block);
+		Fwrite(dblk.getData(), dblk.getBytesinuse());
+	}
+
+	@Override
+	public synchronized void FseekAndReadFully(Long block, Datablock dblk) throws IOException {
+		Fseek(block);
+		Fread(dblk.getData());
+	}
+
+	@Override
+	public synchronized void FseekAndRead(Long block, Datablock dblk) throws IOException {
+		Fseek(block);
+		Fread(dblk.getData());
+	}
+
+	@Override
+	public void FseekAndWriteHeader(Long block, Datablock dblk) throws IOException {
+		Fseek(block);
+		Fwrite_long(dblk.getPrevblk());
+		Fwrite_long(dblk.getNextblk());
+		Fwrite_short(dblk.getBytesused());
+		Fwrite_short(dblk.getBytesinuse());
+		Fwrite_byte((byte) (dblk.isInlog() ? 1 : 0));
+	}
+	
+	@Override
+	public void FseekAndReadHeader(Long block, Datablock dblk) throws IOException {
+		Fseek(block);
+		dblk.setPrevblk(Fread_long());
+		dblk.setNextblk(Fread_long());
+		dblk.setBytesused(Fread_short());
+		dblk.setBytesinuse(Fread_short());
+		dblk.setInLog(Fread_byte());
 	}
 
 }

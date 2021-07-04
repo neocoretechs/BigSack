@@ -4,9 +4,6 @@ import java.util.Iterator;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.btree.BTreeMain;
-import com.neocoretechs.bigsack.btree.TreeSearchResult;
-import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
@@ -17,11 +14,13 @@ import com.neocoretechs.bigsack.iterator.SubSetIterator;
 import com.neocoretechs.bigsack.iterator.SubSetKVIterator;
 import com.neocoretechs.bigsack.iterator.TailSetIterator;
 import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.stream.EntrySetStream;
 import com.neocoretechs.bigsack.stream.HeadSetKVStream;
 import com.neocoretechs.bigsack.stream.HeadSetStream;
 import com.neocoretechs.bigsack.stream.KeySetStream;
-import com.neocoretechs.bigsack.stream.SackStream;
 import com.neocoretechs.bigsack.stream.SubSetKVStream;
 import com.neocoretechs.bigsack.stream.SubSetStream;
 import com.neocoretechs.bigsack.stream.TailSetKVStream;
@@ -51,53 +50,52 @@ import com.neocoretechs.bigsack.stream.TailSetStream;
 */
 /**
 * Session object. Returned by SessionManager.Connect().
-* Responsible for providing generic access to BTreeMain from which other
-* specific collection types can obtain their functionality.  Operations include
+* Responsible for providing access to Deep Store key/value interface implementations
+* such as BTree and HMap..  Operations include
 * handing out iterators, inserting and deleting objects, size, navigation, clearing,
 * and handling commit and rollback.
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
-final class BigSackSession {
+final class BigSackSession implements TransactionInterface {
 	private boolean DEBUG = false;
-	public static final boolean COMMIT = false;
-	public static final boolean ROLLBACK = true;
 	private int uid;
 	private int gid;
-	private BTreeMain bTree;
+	private KeyValueMainInterface kvStore;
 	/**
 	* Create a new session
-	* @param bTree The BTreeMain object than handles the BTree key pages indexing the objects in the deep store.
+	* @param kvMain The {@link KeyValueMainInterface} Main object than handles the key pages indexing the objects in the deep store.
 	* @param tuid The user
 	* @param tgis The group
 	* @exception IOException If global IO problem
 	*/
-	protected BigSackSession(BTreeMain bTree, int uid, int gid)  {
-		this.bTree = bTree;
+	protected BigSackSession(KeyValueMainInterface kvMain, int uid, int gid)  {
+		this.kvStore = kvMain;
 		this.uid = uid;
 		this.gid = gid;
 		if( DEBUG )
-			System.out.println("BigSackSession constructed with db:"+getDBPath()+" using remote DB:"+getRemoteDBName());
+			System.out.println("BigSackSession constructed with db:"+getDBPath());
 	}
 
-	protected long getTransactionId() { return bTree.getIO().getTransId(); }
+	public long getTransactionId() { return kvStore.getIO().getTransId(); }
 	
 	protected String getDBname() {
-		return bTree.getIO().getDBName();
+		return kvStore.getIO().getDBName();
 	}
+	
 	protected String getDBPath() {
-		return bTree.getIO().getDBPath();
+		return kvStore.getIO().getDBPath();
 	}
-	protected String getRemoteDBName() {
-		return bTree.getIO().getRemoteDBName();
-	}
+
 	@Override
 	public String toString() {
-		return "BigSackSession using DB:"+getDBname()+" path:"+getDBPath()+" remote:"+getRemoteDBName();
+		return "BigSackSession using DB:"+getDBname()+" path:"+getDBPath();
 	}
+	
 	@Override
 	public int hashCode() {
 		return Integer.hashCode((int)getTransactionId());
 	}
+	
 	@Override
 	public boolean equals(Object o) {
 		return( getTransactionId() == ((Long)o).longValue());
@@ -111,16 +109,16 @@ final class BigSackSession {
 	}
 
 	protected Object getMutexObject() {
-		return bTree;
+		return kvStore;
 	}
 
 	@SuppressWarnings("rawtypes")
 	protected boolean put(Comparable o) throws IOException {
-		return (bTree.add(o) == 0 ? false : true);
+		return (kvStore.add(o) == 0 ? false : true);
 	}
 	
 	/**
-	 * Call the add method of BTreeMain.
+	 * Call the add method of KeyValueMainInterface.
 	 * @param key The key value to attempt add
 	 * @param o The value for the key to add
 	 * @return true if the key existed and was not added
@@ -128,19 +126,19 @@ final class BigSackSession {
 	 */
 	@SuppressWarnings("rawtypes")
 	protected boolean put(Comparable key, Object o) throws IOException {
-		return (bTree.add(key, o) == 0 ? false : true);
+		return (kvStore.add(key, o) == 0 ? false : true);
 	}
 	/**
-	 * Cause the bTree to seekKey for the Comparable type.
+	 * Cause the KvStore to seekKey for the Comparable type.
 	 * @param o the Comparable object to seek.
 	 * @return the value of object associated with the key, null if key was not found
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Object get(Comparable o) throws IOException {
-		TreeSearchResult tsr = bTree.seekKey(o);
-		if(tsr.atKey)
-			return bTree.getCurrentObject();
+		KeySearchResult tsr = kvStore.seekKey(o);
+		if(tsr != null && tsr.atKey)
+			return tsr.page.getData(tsr.insertPoint);
 		return null;
 	}
 	/**
@@ -151,7 +149,7 @@ final class BigSackSession {
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Object getValue(Object o) throws IOException {
-		return bTree.seekObject(o);
+		return kvStore.seekObject(o);
 	}
 	/**
 	 * Locate a TreeSearchResult for a given key.
@@ -160,8 +158,8 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	protected TreeSearchResult locate(Comparable key) throws IOException {
-		TreeSearchResult tsr = bTree.locate(key);
+	protected KeySearchResult locate(Comparable key) throws IOException {
+		KeySearchResult tsr = kvStore.locate(key);
 		return tsr;
 	}
 	
@@ -176,7 +174,7 @@ final class BigSackSession {
 	@SuppressWarnings("rawtypes")
 	protected Iterator<?> subSet(Comparable fkey, Comparable tkey)
 		throws IOException {
-		return new SubSetIterator(fkey, tkey, bTree);
+		return new SubSetIterator(fkey, tkey, kvStore);
 	}
 	/**
 	 * Return a Stream that delivers the subset of fkey to tkey
@@ -187,7 +185,7 @@ final class BigSackSession {
 	 */
 	protected Stream<?> subSetStream(Comparable fkey, Comparable tkey)
 			throws IOException {
-		return new SubSetStream(new SubSetIterator(fkey, tkey, bTree));
+		return new SubSetStream(new SubSetIterator(fkey, tkey, kvStore));
 	}
 	
 	/**
@@ -201,7 +199,7 @@ final class BigSackSession {
 	@SuppressWarnings("rawtypes")
 	protected Iterator<?> subSetKV(Comparable fkey, Comparable tkey)
 		throws IOException {
-		return new SubSetKVIterator(fkey, tkey, bTree);
+		return new SubSetKVIterator(fkey, tkey, kvStore);
 	}
 	/**
 	 * Return a Streamof key/value pairs that delivers the subset of fkey to tkey
@@ -212,7 +210,7 @@ final class BigSackSession {
 	 */
 	protected Stream<?> subSetKVStream(Comparable fkey, Comparable tkey)
 			throws IOException {
-			return new SubSetKVStream(fkey, tkey, bTree);
+			return new SubSetKVStream(fkey, tkey, kvStore);
 	}
 	
 	/**
@@ -221,7 +219,7 @@ final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	protected Iterator<?> entrySet() throws IOException {
-		return new EntrySetIterator(bTree);
+		return new EntrySetIterator(kvStore);
 	}
 	/**
 	 * Get a stream of entry set
@@ -229,7 +227,7 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Stream<?> entrySetStream() throws IOException {
-		return new EntrySetStream(bTree);
+		return new EntrySetStream(kvStore);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -239,7 +237,7 @@ final class BigSackSession {
 	*/
 	@SuppressWarnings("rawtypes")
 	protected Iterator<?> headSet(Comparable tkey) throws IOException {
-		return new HeadSetIterator(tkey, bTree);
+		return new HeadSetIterator(tkey, kvStore);
 	}
 	/**
 	 * Get a stream of headset
@@ -248,7 +246,7 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Stream<?> headSetStream(Comparable tkey) throws IOException {
-		return new HeadSetStream(tkey, bTree);
+		return new HeadSetStream(tkey, kvStore);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -258,7 +256,7 @@ final class BigSackSession {
 	*/
 	@SuppressWarnings("rawtypes")
 	protected Iterator<?> headSetKV(Comparable tkey) throws IOException {
-		return new HeadSetKVIterator(tkey, bTree);
+		return new HeadSetKVIterator(tkey, kvStore);
 	}
 	/**
 	 * Get a stream of head set
@@ -267,7 +265,7 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Stream<?> headSetKVStream(Comparable tkey) throws IOException {
-		return new HeadSetKVStream(tkey, bTree);
+		return new HeadSetKVStream(tkey, kvStore);
 	}
 	/**
 	* Return the keyset Iterator over all elements
@@ -275,7 +273,7 @@ final class BigSackSession {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	protected Iterator<?> keySet() throws IOException {
-		return new KeySetIterator(bTree);
+		return new KeySetIterator(kvStore);
 	}
 	/**
 	 * Get a keyset stream
@@ -283,7 +281,7 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Stream<?> keySetStream() throws IOException {
-		return new KeySetStream(bTree);
+		return new KeySetStream(kvStore);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -293,7 +291,7 @@ final class BigSackSession {
 	*/
 	@SuppressWarnings("rawtypes")
 	protected Iterator<?> tailSet(Comparable fkey) throws IOException {
-		return new TailSetIterator(fkey, bTree);
+		return new TailSetIterator(fkey, kvStore);
 	}
 	/**
 	 * Return a tail set stream
@@ -302,7 +300,7 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Stream<?> tailSetStream(Comparable fkey) throws IOException {
-		return new TailSetStream(fkey, bTree);
+		return new TailSetStream(fkey, kvStore);
 	}
 	/**
 	* Not a real subset, returns Iterator
@@ -312,7 +310,7 @@ final class BigSackSession {
 	*/
 	@SuppressWarnings("rawtypes")
 	protected Iterator<?> tailSetKV(Comparable fkey) throws IOException {
-		return new TailSetKVIterator(fkey, bTree);
+		return new TailSetKVIterator(fkey, kvStore);
 	}
 	/**
 	 * Return a tail set key/value stream
@@ -321,7 +319,7 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Stream<?> tailSetKVStream(Comparable fkey) throws IOException {
-		return new TailSetKVStream(fkey, bTree);
+		return new TailSetKVStream(fkey, kvStore);
 	}
 	/**
 	 * Contains a value object
@@ -331,14 +329,12 @@ final class BigSackSession {
 	 */
 	@SuppressWarnings("rawtypes")
 	protected boolean containsValue(Object o) throws IOException {
-		Object obj = bTree.seekObject(o);
+		Object obj = kvStore.seekObject(o);
 		if( obj != null ) {
-			bTree.getIO().deallocOutstanding();
 			if(DEBUG)
 				System.out.println("sought object:"+o+" found:"+obj);
 			return obj.equals(o);
 		}
-		bTree.getIO().deallocOutstanding();
 		return false;
 	}
 	
@@ -351,8 +347,7 @@ final class BigSackSession {
 	@SuppressWarnings("rawtypes")
 	protected boolean contains(Comparable o) throws IOException {
 		// return TreeSearchResult
-		TreeSearchResult tsr = bTree.seekKey(o);
-		bTree.getIO().deallocOutstanding();
+		KeySearchResult tsr = kvStore.seekKey(o);
 		return tsr.atKey;
 	}
 	
@@ -362,7 +357,7 @@ final class BigSackSession {
 	*/
 	@SuppressWarnings("rawtypes")
 	protected Object remove(Comparable o) throws IOException {
-		bTree.delete(o);
+		kvStore.delete(o);
 		return o; //fluent interface style
 	}
 	/**
@@ -371,65 +366,61 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected Object first() throws IOException {
-		bTree.rewind();
-		Object retVal = bTree.getCurrentObject();
-		bTree.getIO().deallocOutstanding();
-		bTree.clearStack();
+		KeyValue current = kvStore.rewind();
+		Object retVal = current.getmValue();
+		kvStore.clearStack();
 		return retVal;
 	}
 	/**
 	 * Get the first key
-	 * @return The Comparable first key in the BTree
+	 * @return The Comparable first key in the KVStore
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Comparable firstKey() throws IOException {
-		bTree.rewind();
-		Comparable retVal = bTree.getCurrentKey();
-		bTree.getIO().deallocOutstanding();
-		bTree.clearStack();
+		KeyValue current = kvStore.rewind();
+		Comparable retVal = current.getmKey();
+		kvStore.clearStack();
 		return retVal;
 	}
 	/**
-	 * Get the last object associated with greatest valued key in the BTree
+	 * Get the last object associated with greatest valued key in the KVStore
 	 * @return The Object of the greatest key
 	 * @throws IOException
 	 */
 	protected Object last() throws IOException {
-		bTree.toEnd();
-		Object retVal = bTree.getCurrentObject();
-		bTree.getIO().deallocOutstanding();
-		bTree.clearStack();
+		KeyValue current = kvStore.toEnd();
+		Object retVal = current.getmValue();
+		kvStore.clearStack();
 		return retVal;
 	}
 	/**
-	 * Get the last key in the BTree
-	 * @return The last, greatest valued key in the BTree.
+	 * Get the last key in the KVStore
+	 * @return The last, greatest valued key in the KVStore.
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Comparable lastKey() throws IOException {
-		bTree.toEnd();
-		Comparable retVal = bTree.getCurrentKey();
-		bTree.getIO().deallocOutstanding();
-		bTree.clearStack();
+		KeyValue current = kvStore.toEnd();
+		Comparable retVal = current.getmKey();
+		kvStore.clearStack();
 		return retVal;
 	}
 	/**
 	 * Get the number of keys total.
-	 * @return The size of the BTree.
+	 * @return The size of the KVStore.
 	 * @throws IOException
 	 */
 	protected long size() throws IOException {
-		return bTree.count();
+		return kvStore.count();
 	}
 	/**
-	 * Is the BTree empty?
-	 * @return true if BTree is empty.
+	 * Is the KVStore empty?
+	 * @return true if it is empty.
 	 * @throws IOException
 	 */
 	protected boolean isEmpty() throws IOException {
-		return bTree.isEmpty();
+		return kvStore.isEmpty();
 	}
 
 	/**
@@ -437,7 +428,7 @@ final class BigSackSession {
 	* @param rollback true to roll back, false to commit
 	* @exception IOException For low level failure
 	*/
-	protected void Close(boolean rollback) throws IOException {
+	public void Close(boolean rollback) throws IOException {
 		rollupSession(rollback);
 	}
 	/**
@@ -445,45 +436,45 @@ final class BigSackSession {
 	 * @throws IOException
 	 */
 	protected void Open() throws IOException {
-		bTree.getIO().getIOManager().Fopen();
+		kvStore.getIO().getIOManager().Fopen();
 	}
 	
 	/**
 	* @exception IOException for low level failure
 	*/
-	protected void Rollback() throws IOException {
-		Close(true);
+	public void Rollback() throws IOException {
+		kvStore.getIO().deallocOutstandingRollback();
 	}
 	
 	/**
 	* Commit the blocks.
 	* @exception IOException For low level failure
 	*/
-	protected void Commit() throws IOException {
-		Close(false);
+	public void Commit() throws IOException {
+		kvStore.getIO().deallocOutstandingCommit();
 	}
 	/**
 	 * Checkpoint the current transaction
 	 * @throws IOException 
 	 * @throws IllegalAccessException 
 	 */
-	protected void Checkpoint() throws IllegalAccessException, IOException {
-			bTree.getIO().checkpointBufferFlush();
+	public void Checkpoint() throws IllegalAccessException, IOException {
+			kvStore.getIO().checkpointBufferFlush();
 	}
 	/**
 	* Generic session roll up.  Data is committed based on rollback param.
 	* We deallocate the outstanding block
 	* We iterate the tablespaces for each db removing obsolete log files.
-	* Remove the NODESPLITWORKER threads from BTreeMain, then remove this session from the SessionManager
+	* Remove the WORKER threads from KeyValueMain, then remove this session from the SessionManager
 	* @param rollback true to roll back, false to commit
 	* @exception IOException For low level failure
 	*/
-	private void rollupSession(boolean rollback) throws IOException {
+	public void rollupSession(boolean rollback) throws IOException {
 		if (rollback) {
-			bTree.getIO().deallocOutstandingRollback();
+			kvStore.getIO().deallocOutstandingRollback();
 		} else {
 			// calls commitbufferflush
-			bTree.getIO().deallocOutstandingCommit();
+			kvStore.getIO().deallocOutstandingCommit();
 		}
 		SessionManager.releaseSession(this);
 	}
@@ -497,7 +488,7 @@ final class BigSackSession {
 		Close(true);
 	}
 
-	protected BTreeMain getBTree() { return bTree; }
+	protected KeyValueMainInterface getKVStore() { return kvStore; }
 	
 	/**
 	 * Scans through tablespaces and analyzes space utilization
@@ -515,13 +506,13 @@ final class BigSackSession {
 			int tnumberBlks = 1;
 			float ttotutil = 0;
 			int zeroBlocks = 0;
-			long fsiz = bTree.getIO().getIOManager().Fsize(itab)-DBPhysicalConstants.DBLOCKSIZ;
+			long fsiz = kvStore.getIO().getIOManager().Fsize(itab)-DBPhysicalConstants.DBLOCKSIZ;
 			minBlock =0;
 			//long maxBlock = GlobalDBIO.makeVblock(itab, fsiz);
 			
 			System.out.println("<<BigSack Analysis|Tablespace number "+itab+" File size bytes: " + fsiz+">>");
 			while (minBlock < fsiz) {
-				bTree.getIO().getIOManager().FseekAndReadFully(GlobalDBIO.makeVblock(itab, minBlock), db);
+				kvStore.getIO().getIOManager().FseekAndReadFully(GlobalDBIO.makeVblock(itab, minBlock), db);
 				if( db.getBytesused() == 0 || db.getBytesinuse() == 0 ) {		
 					++zeroBlocks;
 				} else {

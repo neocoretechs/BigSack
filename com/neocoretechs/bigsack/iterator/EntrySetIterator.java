@@ -3,7 +3,10 @@ import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
 * All rights reserved.
@@ -36,21 +39,20 @@ public class EntrySetIterator extends AbstractIterator {
 	Object retElem, nextElem;
 	@SuppressWarnings("rawtypes")
 	Comparable retKey, nextKey;
-	public EntrySetIterator(BTreeMain bTree) throws IOException {
-		super(bTree);
-		synchronized (bTree) {
-			bTree.rewind();
-			bTree.setCurrent();
-			nextElem = bTree.getCurrentObject();
-			nextKey = bTree.getCurrentKey();
-			bTree.getIO().deallocOutstanding();
+	public EntrySetIterator(KeyValueMainInterface kvMain) throws IOException {
+		super(kvMain);
+		synchronized (kvMain) {
+			current = kvMain.rewind();
+			nextElem = current.getmValue();
+			nextKey = current.getmKey();
+			kvMain.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
 		return (nextKey != null);
 	}
 	public Object next() {
-		synchronized (bTree) {
+		synchronized (kvMain) {
 			try {
 				// move nextelem to retelem, search nextelem, get nextelem
 				if (nextKey == null)
@@ -58,17 +60,20 @@ public class EntrySetIterator extends AbstractIterator {
 				// save for return
 				retKey = nextKey;
 				retElem = nextElem;
-				if ( !bTree.search(nextKey).atKey)
+				KeySearchResult ksr = kvMain.search(nextKey);
+				if ( !ksr.atKey)
 					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid. Last good key:"+nextKey);
-				if (bTree.gotoNextKey() == 0) {
-					nextKey = bTree.getCurrentKey();
-					nextElem = bTree.getCurrentObject();
+				TraversalStackElement tse = new TraversalStackElement(ksr);		
+				if((tse = kvMain.gotoNextKey(tse)) != null) {
+					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+					nextKey = current.getmKey();
+					nextElem = current.getmValue();
 				} else {
 					nextElem = null;
 					nextKey = null;
-					bTree.clearStack();
+					kvMain.clearStack();
 				}
-				bTree.getIO().deallocOutstanding();
+				kvMain.getIO().deallocOutstanding();
 				return new Entry(retKey, retElem);
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

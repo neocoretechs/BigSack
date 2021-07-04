@@ -2,8 +2,8 @@ package com.neocoretechs.bigsack.stream;
 
 import java.io.IOException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.iterator.HeadSetIterator;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 
 public class HeadSetStream extends SackStream {
 
@@ -11,8 +11,8 @@ public class HeadSetStream extends SackStream {
 		super(esi);
 	}
 
-	public HeadSetStream(Comparable tkey, BTreeMain bTree) throws IOException {
-		this(new HeadSetIterator(tkey, bTree));
+	public HeadSetStream(Comparable tkey, KeyValueMainInterface kvMain) throws IOException {
+		this(new HeadSetIterator(tkey, kvMain));
 	}
 
 

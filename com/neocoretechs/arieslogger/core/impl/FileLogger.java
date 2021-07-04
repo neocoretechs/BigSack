@@ -23,15 +23,18 @@ package com.neocoretechs.arieslogger.core.impl;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.core.Logger;
-import com.neocoretechs.arieslogger.core.impl.LogToFile;
 import com.neocoretechs.arieslogger.core.StreamLogScan;
 import com.neocoretechs.arieslogger.logrecords.Compensation;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.UndoableBlock;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 
 import java.io.IOException;
+import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -130,13 +133,13 @@ public final class FileLogger implements Logger {
 		records are logged one at a time.
 
 		@param xact the transaction logging the change
-		@param operation the log operation
+		@param operation the log operation {@link UndoableBlock}
 		@return the instance in the log that can be used to identify the log
 		record
 
 		@exception IOException  Standard error policy
 	*/
-	public synchronized LogInstance logAndDo(ObjectDBIO xact, Loggable operation) throws IOException 
+	public synchronized LogInstance logAndDo(GlobalDBIO xact, Loggable operation) throws IOException 
 	{
 		LogInstance logInstance = null;
 		try {		
@@ -192,7 +195,7 @@ public final class FileLogger implements Logger {
 									optionalDataLength);
 			flush();
 			logInstance = new LogCounter(instance);
-			
+			//((UndoableBlock)operation)
 			operation.applyChange(xact, logInstance, logOutputBuffer);
 		
 			if (DEBUG || DEBUGLOGANDDO) {	    
@@ -226,7 +229,7 @@ public final class FileLogger implements Logger {
 
 		@exception IOException  Standard error policy
 	 */
-	public synchronized /*LogInstance*/ void logAndUndo(ObjectDBIO xact, 
+	public synchronized /*LogInstance*/ void logAndUndo(GlobalDBIO xact, 
 								 Compensation compensation,
 								 LogInstance undoInstance,
 								 LogRecord lr,
@@ -302,7 +305,7 @@ public final class FileLogger implements Logger {
 
 		@see Logger#undo
 	  */
-	public synchronized void undo(ObjectDBIO t, LogInstance undoStartAt, LogInstance undoStopAt) throws IOException {
+	public synchronized void undo(GlobalDBIO t, LogInstance undoStartAt, LogInstance undoStopAt) throws IOException {
 		assert(undoStartAt != null) : "FileLogger.undo startAt position cannot be null";
 		if(DEBUG || DEBUGUNDO)
         {
@@ -397,6 +400,64 @@ public final class FileLogger implements Logger {
         }
 	}
 
+	/**
+	* Commit the entire transaction. Scan the log and reset the inLog indicator in the persistent store.<p/>
+	* If the block still resides in the BufferPool, make sure its inlog flag is reset and its pushed
+	* back to deep store, otherwise bring it in from deep store, rest it and push the header back out.
+	* <P>MT - synchronized method
+	* @param t 	the IO controller
+	* @param pool 
+	* @exception IOException
+	*/
+	public synchronized void commit(GlobalDBIO t, MappedBlockBuffer pool) throws IOException {
+		if(DEBUG) {
+			System.out.println("Commit transaction ");
+		}
+		StreamLogScan scanLog;
+		Compensation  compensation = null;
+		try {
+			scanLog = (StreamLogScan)logToFile.openForwardScan(LogInstance.INVALID_LOG_INSTANCE, null);
+			HashMap<LogInstance, LogRecord> records;
+			Datablock dblk = new Datablock();
+			// scan records
+			while ((records =  scanLog.getNextRecord(0)) != null) {
+				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
+				while(irecs.hasNext()) {
+					Entry<LogInstance, LogRecord> recEntry = irecs.next();
+					LogRecord record = recEntry.getValue();
+					Loggable loggable = record.getLoggable();
+					UndoableBlock ub = (UndoableBlock)loggable;
+					BlockAccessIndex lbai = ub.getBlkV2();
+					if(pool.containsKey(GlobalDBIO.getBlock(lbai.getBlockNum()))) {
+						SoftReference<BlockAccessIndex> sbai = pool.get(GlobalDBIO.getBlock(lbai.getBlockNum()));
+						sbai.get().getBlk().setInlog(false);
+						t.FseekAndWriteHeader(sbai.get().getBlockNum(), sbai.get().getBlk());
+					} else {
+						long tblock = lbai.getBlockNum();
+						t.FseekAndReadHeader(tblock, dblk);
+						dblk.setInlog(false);
+						t.FseekAndWriteHeader(tblock, dblk);
+					}
+					if(DEBUG)
+						System.out.printf("%s.commit Reset inLog for block:%s%n",this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
+				} // record iterator
+			}
+		} catch (ClassNotFoundException cnfe) {
+			throw logToFile.markCorrupt( new IOException(cnfe));
+		} catch (IOException ioe)  {
+			throw logToFile.markCorrupt(ioe);
+		}
+		finally {
+			if (compensation != null)  {
+            // err out
+			compensation.releaseResource(t);
+			}
+		}
+
+		if(DEBUG) {
+			System.out.println("FileLogger.commit: Finish commit");
+		}
+	}
 
 	/**
 		Recovery Redo loop.
@@ -430,7 +491,7 @@ public final class FileLogger implements Logger {
 
 		@see LogToFile#recover
 	 */
-	protected synchronized long redo(ObjectDBIO blockio, 
+	protected synchronized long redo(GlobalDBIO blockio, 
 			StreamLogScan redoScan, 
 			long redoLWM, 
 			long ttabInstance) throws IOException, ClassNotFoundException {
@@ -598,7 +659,7 @@ public final class FileLogger implements Logger {
 	 * @throws ClassNotFoundException
 	 * @return true if success, false if record.getundoable returns null
 	 */
-	public synchronized boolean extractUndoable(ObjectDBIO t, 
+	public synchronized boolean extractUndoable(GlobalDBIO t, 
 			LogRecord record, 
 			LogInstance undoInstance) throws IOException, ClassNotFoundException {
 		Undoable lop = record.getUndoable();
@@ -626,7 +687,7 @@ public final class FileLogger implements Logger {
 	}
 
 	@Override
-	public LogInstance logAndUndo(ObjectDBIO xact, Compensation operation,
+	public LogInstance logAndUndo(GlobalDBIO xact, Compensation operation,
 			LogInstance undoInstance, Object in) throws IOException {
 		throw new IOException("Log write of CLR unimplemented, use alternate logAndUndo method");
 	}

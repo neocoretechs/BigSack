@@ -1,1 +1,0 @@
-java -cp \Progra~1\apache\apache-tomcat\lib\BigSack.jar;. com.neocoretechs.bigsack.io.cluster.WorkBoot

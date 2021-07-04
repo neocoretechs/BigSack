@@ -3,7 +3,10 @@ import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 1997,2003, NeoCoreTechs
 * All rights reserved.
@@ -36,20 +39,19 @@ public class HeadSetKVIterator extends AbstractIterator {
 	Comparable toKey, nextKey, retKey;
 	Object nextElem, retElem;
 	@SuppressWarnings("unchecked")
-	public HeadSetKVIterator(@SuppressWarnings("rawtypes") Comparable toKey, BTreeMain bTree) throws IOException {
-		super(bTree);
+	public HeadSetKVIterator(@SuppressWarnings("rawtypes") Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
+		super(kvMain);
 		this.toKey = toKey;
-		synchronized (bTree) {
-			bTree.rewind();
-			bTree.setCurrent();
-			nextKey = bTree.getCurrentKey();
-			nextElem = bTree.getCurrentObject();
+		synchronized (kvMain) {
+			current = kvMain.rewind();
+			nextKey = current.getmKey();
+			nextElem = current.getmValue();
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
 				nextElem = null; //exclusive
 				nextKey = null;
-				bTree.clearStack();
+				kvMain.clearStack();
 			}
-			bTree.getIO().deallocOutstanding();
+			kvMain.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
@@ -57,29 +59,32 @@ public class HeadSetKVIterator extends AbstractIterator {
 	}
 	@SuppressWarnings("unchecked")
 	public Object next() {
-		synchronized (bTree) {
+		synchronized (kvMain) {
 			try {
 				// move nextelem to retelem, search nextelem, get nextelem
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in HeadSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if ( !bTree.seekKey(nextKey).atKey )
+				KeySearchResult ksr = kvMain.seekKey(nextKey);
+				if ( !ksr.atKey )
 					throw new ConcurrentModificationException("Next HeadSetKVIterator element rendered invalid. Last good key:"+nextKey);
-				if (bTree.gotoNextKey() == 0) {
-					nextKey = bTree.getCurrentKey();
-					nextElem = bTree.getCurrentObject();
+				TraversalStackElement tse = new TraversalStackElement(ksr);	
+				if((tse = kvMain.gotoNextKey(tse)) != null) {
+					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+					nextKey = current.getmKey();
+					nextElem = current.getmValue();
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextElem = null; //exclusive
 						nextKey = null;
-						bTree.clearStack();
+						kvMain.clearStack();
 					}
 				} else {
 					nextElem = null;
 					nextKey = null;
-					bTree.clearStack();
+					kvMain.clearStack();
 				}
-				bTree.getIO().deallocOutstanding();
+				kvMain.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey, retElem);
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

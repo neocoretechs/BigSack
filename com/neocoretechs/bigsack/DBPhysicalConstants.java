@@ -32,22 +32,30 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 */
 public interface DBPhysicalConstants {
 	/**
-	 * The size of payload data in a block (page).  Determined by BlockSize in properties file
-	 * - the size of the header portion
-	 */
-	public static final short DATASIZE =
-		(short) (Props.toInt("BlockSize") - Datablock.DATABLOCKHEADERSIZE);
-	/**
-	 * The total block (page) size.  Determined by BlockSize in properties file
-	 */
-	public static final short DBLOCKSIZ = (short) Props.toInt("BlockSize");
-	/**
-	 * The number of blocks (pages) per tablespace.  Determined by Buckets in properties file
-	 */
-	public static final int DBUCKETS = Props.toInt("Buckets");
-	/**
-	 * Number of tablespaces per DB.  Cannot be easily altered.
+	 * Number of tablespaces per DB.  Cannot be altered.
 	 */
 	public static final int DTABLESPACES = 8; //Can't really mess with this
+	
+	/**
+	 * The total block (page) size.
+	 */
+	public static final short DBLOCKSIZ = (short)8192;
+	
+	/**
+	 * The size of payload data in a block (page). 
+	 * - the size of the header portion
+	 */
+	public static final short DATASIZE = (short) (DBLOCKSIZ - Datablock.DATABLOCKHEADERSIZE);
+	
+	/**
+	 * We can change the following constants dynamically, after DB creation, if necessary.
+	 * 
+	 * The number of blocks (pages) per tablespace. 
+	 */
+	public static int DBUCKETS = 1024;
+	/**
+	 * The backing store type "File", "MMap" etc, as supported in GlobalDBIO
+	 */
+	public static String BACKINGSTORE = "MMap";
 
 }

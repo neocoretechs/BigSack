@@ -9,6 +9,6 @@ import com.neocoretechs.bigsack.session.SessionManager;
 public class AnalyzeLogs {
 	public static void main(String[] args) throws Exception {
 		// init with no recovery
-		SessionManager.AnalyzeLogs(args[0]);
+		SessionManager.AnalyzeLogs(args[0], args[1]);
 	}
 }

@@ -28,7 +28,6 @@ import com.neocoretechs.arieslogger.core.Logger;
 import com.neocoretechs.arieslogger.core.StreamLogScan;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.ScanHandle;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.File; // Plain files are used for backups
@@ -332,7 +331,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
     
     // Name of the BigSack database to log
     private String dbName;
-	private ObjectDBIO blockIO;
+	private GlobalDBIO blockIO;
 	private int tablespace;
    
 	/**
@@ -340,7 +339,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * @param blockIO
 	 * @param tablespace
 	 */
-	public LogToFile(ObjectDBIO blockIO, int tablespace) {
+	public LogToFile(GlobalDBIO blockIO, int tablespace) {
 		this.blockIO = blockIO;
 		this.tablespace = tablespace;
 		this.dbName = (new File(blockIO.getDBName())).getName();
@@ -2007,6 +2006,7 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 	 * @deprecated
 	 * @throws IOException 
 	 */
+	@Deprecated
 	public void resetLogFiles() throws IOException {
 		if( DEBUG )
 			System.out.println("Reset log files with current corruption as:"+corrupt);

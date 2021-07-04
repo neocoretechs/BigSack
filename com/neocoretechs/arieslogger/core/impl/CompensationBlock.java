@@ -9,7 +9,7 @@ import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
 import com.neocoretechs.bigsack.io.UndoableBlock;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 /**
  * <P> The sequence of events in recovery redo of a Loggable operation is:
 		<NL>
@@ -41,7 +41,7 @@ public class CompensationBlock implements Compensation, Serializable {
 		We are going to get the V1 datablock from op and replace it
 	 */
 	@Override
-	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException {
+	public void applyChange(GlobalDBIO xact, LogInstance instance, Object in) throws IOException {
 		BlockAccessIndex blk = ((UndoableBlock)op).getBlkV1();
 		xact.FseekAndWrite(blk.getBlockNum(), blk.getBlk());
 		// unlatch
@@ -66,12 +66,12 @@ public class CompensationBlock implements Compensation, Serializable {
 	The recovery system then calls loggable.releaseResource.
 	*/
 	@Override
-	public boolean needsRedo(ObjectDBIO xact) throws IOException {
+	public boolean needsRedo(GlobalDBIO xact) throws IOException {
 		return true;
 	}
 
 	@Override
-	public void releaseResource(ObjectDBIO xact) {
+	public void releaseResource(GlobalDBIO xact) {
 
 	}
 

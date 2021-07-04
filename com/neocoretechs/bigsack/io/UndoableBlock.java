@@ -8,18 +8,17 @@ import com.neocoretechs.arieslogger.core.impl.CompensationBlock;
 import com.neocoretechs.arieslogger.logrecords.Compensation;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
 import com.neocoretechs.arieslogger.logrecords.Undoable;
-import com.neocoretechs.bigsack.Props;
+
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
 
 /**
  * 	Writes out a log record to the log stream, and call its applyChange method to
-		apply the change to the rawStore.
-		<BR>Any optional data the applyChange method needs is first written to the log
-		stream using operation.writeOptionalData, then whatever is written to
-		the log stream is passed back to the operation for the applyChange method.
- * @author jg
+ *	apply the change to the rawStore.<br/>
+ *	Any optional data the applyChange method needs is first written to the log
+ *	stream using operation.writeOptionalData, then whatever is written to
+ *	the log stream is passed back to the operation for the applyChange method.
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
  */
 public final class UndoableBlock implements Undoable, Serializable {
@@ -41,18 +40,17 @@ public final class UndoableBlock implements Undoable, Serializable {
 	}
 
 	/**
-	 * When writing out a log record to the log stream, logger will call its applyChange method to
-		apply the change to the rawStore.
-		Any optional data the applyChange method needs is first written to the log
-		stream using operation.writeOptionalData, then whatever is written to
-		the log stream is passed back to the operation for the applyChange method.
-	 */
+	* When writing out a log record to the log stream, logger will call its applyChange method to
+	*	apply the change to the rawStore.
+	*	Any optional data the applyChange method needs is first written to the log
+	*	stream using operation.writeOptionalData, then whatever is written to
+	*	the log stream is passed back to the operation for the applyChange method.
+	*/
 	@Override
-	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException {
+	public void applyChange(GlobalDBIO xact, LogInstance instance, Object in) throws IOException {
 		if( DEBUG  ) {
 			System.out.println("UndoableBlock.applyChange: instance:"+instance+" raw store"+blkV2.getBlockNum()+","+blkV2.getBlk());
 		}
-		blkV2.getBlk().setPageLSN(instance.getValueAsLong());
 		//xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
 		int tblsp = GlobalDBIO.getTablespace(blkV2.getBlockNum());
 		long blkn = GlobalDBIO.getBlock(blkV2.getBlockNum());
@@ -84,12 +82,12 @@ public final class UndoableBlock implements Undoable, Serializable {
 		<LI> The recovery system then calls loggable.releaseResource.
 	 */
 	@Override
-	public boolean needsRedo(ObjectDBIO xact) throws IOException {
+	public boolean needsRedo(GlobalDBIO xact) throws IOException {
 		return true;
 	}
 
 	@Override
-	public void releaseResource(ObjectDBIO xact) {
+	public void releaseResource(GlobalDBIO xact) {
 
 	}
 
@@ -99,7 +97,7 @@ public final class UndoableBlock implements Undoable, Serializable {
 	}
 
 	@Override
-	public Compensation generateUndo(ObjectDBIO xact) throws IOException {
+	public Compensation generateUndo(GlobalDBIO xact) throws IOException {
 		return new CompensationBlock();
 	}
 

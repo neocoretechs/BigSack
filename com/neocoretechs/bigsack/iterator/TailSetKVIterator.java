@@ -3,7 +3,10 @@ import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
 
-import com.neocoretechs.bigsack.btree.BTreeMain;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -34,16 +37,15 @@ public class TailSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, nextKey, retKey;
 	Object retElem, nextElem;
-	public TailSetKVIterator(@SuppressWarnings("rawtypes") Comparable fromKey, BTreeMain bTree)
+	public TailSetKVIterator(@SuppressWarnings("rawtypes") Comparable fromKey, KeyValueMainInterface bTree)
 		throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
-			bTree.rewind();
-			bTree.search(fromKey);
-			bTree.setCurrent();
-			nextKey = bTree.getCurrentKey();
-			nextElem = bTree.getCurrentObject();
+			current = bTree.rewind();
+			KeySearchResult ksr = bTree.search(fromKey);
+			nextKey = ksr.page.getKey(ksr.insertPoint);
+			nextElem = ksr.page.getData(ksr.insertPoint);
 			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
 				nextElem = null; //exclusive
 				nextKey = null;
@@ -56,24 +58,27 @@ public class TailSetKVIterator extends AbstractIterator {
 		return (nextKey != null);
 	}
 	public Object next() {
-		synchronized (bTree) {
+		synchronized (kvMain) {
 			try {
 				// move nextelem to retelem, search nextelem, get nextelem
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in TailSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if (!bTree.search(nextKey).atKey)
+				KeySearchResult ksr = kvMain.seekKey(nextKey);
+				if (!ksr.atKey)
 					throw new ConcurrentModificationException("Next TailSetKVIterator element rendered invalid. Last good key:"+nextKey);
-				if (bTree.gotoNextKey() == 0) {
-					nextKey = bTree.getCurrentKey();
-					nextElem = bTree.getCurrentObject();
+				TraversalStackElement tse = new TraversalStackElement(ksr);	
+				if((tse = kvMain.gotoNextKey(tse)) != null) {
+					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+					nextKey = current.getmKey();
+					nextElem = current.getmValue();
 				} else {
 					nextKey = null;
 					nextElem = null;
-					bTree.clearStack();
+					kvMain.clearStack();
 				}
-				bTree.getIO().deallocOutstanding();
+				kvMain.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

@@ -1,11 +1,24 @@
 package com.neocoretechs.bigsack.io.pooled;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
+
 import java.util.Date;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.btree.BTNode;
+import com.neocoretechs.bigsack.btree.BTreeKeyPage;
+import com.neocoretechs.bigsack.btree.BTreeRootKeyPage;
+import com.neocoretechs.bigsack.hashmap.HMapChildRootKeyPage;
+import com.neocoretechs.bigsack.hashmap.HMapKeyPage;
+import com.neocoretechs.bigsack.hashmap.HMapMain;
+import com.neocoretechs.bigsack.hashmap.HMapRootKeyPage;
+import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
+import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
+import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -30,39 +43,76 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 *
 */
 /**
-* Holds the page block buffer for one block.  Also contains current
-* read/write position for block.  Controls access and enforces
-* overwrite rules.  Used as entries in buffer pool that have the virtual block number blockNum as key.
-* We intentionally do not attach a tablespace because these entries can move around at will.
-* @author Groff
+* Class instances reside in the managed buffer pool via soft reference and undergo expiration and access control.<p/>
+* This class provides the link between deep store and the object model for the key/value instances.<p/>
+* Holds the page block buffer for one block. The primary payload is in an instance of {@link Datablock}.<p/> 
+* Maintains the index that indicates the read/write position for the block.<p/>  Controls access and enforces
+* overwrite rules.<p/>  Used as entries in buffer pool that have the virtual block number blockNum as key.
+* The virtual block number contains the tablespace in the 3 highest bits and the other 29 bits hold the file byte position.<p/>
+* This class contains a number of static factory methods to deliver wrappers of instances of this class 
+* for the various key/value store implementations.<p/>
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 @SuppressWarnings("rawtypes")
 public final class BlockAccessIndex implements Comparable, Serializable {
-	private static boolean DEBUG = false;
 	private static final long serialVersionUID = -7046561350843262757L;
+	private static boolean DEBUG = true;
+	//private boolean DEBUGPUTKEY;
+	//private boolean DEBUGPUTDATA;
 	private Datablock blk;
 	private transient int accesses = 0;
 	private long blockNum = -1L;
 	protected short byteindex = -1;
-	public static long expiryTimeDelta = 5000;
-	transient private long expiryTime; // 5000 ms cache expiration time
+	public static long expiryTimeDelta = 60000;
+	transient private long expiryTime; // ms cache expiration time
 	//private transient ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-
-	public BlockAccessIndex(boolean init) throws IOException {
-		expiryTime = System.currentTimeMillis() + expiryTimeDelta;
+	transient private GlobalDBIO sdbio;
+	/**
+	 * If init is true create a new {@link Datablock} and sets this to the new block.
+	 * @param sdbio
+	 * @param init
+	 * @throws IOException
+	 */
+	protected BlockAccessIndex(GlobalDBIO sdbio, boolean init) throws IOException {
+		this.setSdbio(sdbio);
+		startExpired();
 		if(init) init();
 	}
 	/** This constructor used for setting search templates */
-	public BlockAccessIndex() {
-		expiryTime = System.currentTimeMillis() + expiryTimeDelta;
+	protected BlockAccessIndex(GlobalDBIO sdbio) {
+		this.setSdbio(sdbio);
+		startExpired();
+	}
+	/**
+	 * Constructor for free block accumulation
+	 * @param sdbio
+	 * @param blockNum
+	 * @param blk
+	 */
+	protected BlockAccessIndex(GlobalDBIO sdbio, long blockNum, Datablock blk) {
+		this.setSdbio(sdbio);
+		this.blockNum = blockNum;
+		this.blk = blk;
+		startExpired();
 	}
     /**
      * Check cache expiration for SoftReference cache.<p/>
-     * If expiration time delta is reached AND accesses = 0 AND block is not incore AND not root block
+     * If expiration time delta is reached AND accesses = 0 AND AND not root block, block is expired.<p/>
+     * If the block is in core (updated) and not in undo log, create a log entry before we expire this block.<p/>
+     * If we write a log entry, inlog is set true and incore is set false.
      * @return true if expired and can be removed from cache
      */
     public boolean isExpired() {
-        return (System.currentTimeMillis() > expiryTime && accesses == 0 && !blk.isIncore() && blockNum != 0L);
+        if(System.currentTimeMillis() > expiryTime && !blk.isIncore() && accesses == 0 && blockNum != 0L) { // dont expire tablespace 0, block 0
+        	return true;
+        }
+        return false;
+    }
+    /**
+     * When we move from free block list to active block list, start the timer for block flush
+     */
+    public void startExpired() {
+    	expiryTime = System.currentTimeMillis() + expiryTimeDelta;
     }
 	/** This method can be used for ThreadLocal post-init after using default ctor 
 	 * @throws IOException if block superceded a block under write or latched 
@@ -77,7 +127,17 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		//}
 		setBlk(new Datablock(DBPhysicalConstants.DATASIZE));
 	}
-	
+	/**
+	 * Since our constructors are protected to limit creation of pages to buffer pool, 
+	 * this special factory method is used to aid the recovery manager.
+	 * @param globalIO
+	 * @return
+	 * @throws IOException 
+	 */
+	public static BlockAccessIndex createPageForRecovery(GlobalDBIO globalIO) throws IOException {
+		return new BlockAccessIndex(globalIO, true);
+	}
+
 	/**
 	 * Reset the block, set default block headers. Set byteindex to 0.
 	 * @param clearAccess True to clear the accesses latch
@@ -108,7 +168,6 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		//if( !lock.isWriteLocked() )
 		//		lock.writeLock().lock();
 		++accesses;
-		expiryTime = System.currentTimeMillis() + expiryTimeDelta;
 		//if( accesses > 1 ) {
 		//	System.out.println("BlockAccessIndex.addAccess access > 1 "+this);
 		//	new Throwable().printStackTrace();
@@ -126,6 +185,8 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		if (accesses > 0 ) {
 			--accesses;
 		}
+		if( accesses == 0)
+			expiryTime = System.currentTimeMillis() + expiryTimeDelta;
 		//if( accesses == 0 && lock.isWriteLocked()) {
 		//	if( DEBUG )
 		//		System.out.println("BlockAccessIndex.decrementAccesses:"+lock+" "+Thread.currentThread()+" holds this lock:"+lock.isWriteLockedByCurrentThread()+" locks:"+lock.getWriteHoldCount()+" queue:"+lock.getQueueLength());
@@ -141,7 +202,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	}
 	
 	public synchronized String toString() {
-		StringBuilder db = new StringBuilder("BlockAccessIndex:");
+		StringBuilder db = new StringBuilder("BlockAccessIndex page:");
 		db.append(GlobalDBIO.valueOf(blockNum));
 		db.append(" data ");
 		db.append(blk == null ?  "null block" : blk.toBriefString());
@@ -149,8 +210,6 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		db.append(accesses);
 		db.append(" byteindex:");
 		db.append(byteindex);
-		db.append(" inLog:");
-		db.append(blk == null ?  "null block" : blk.isInlog());
 		db.append(" Expires:");
 		db.append(new Date(expiryTime));
 		db.append(" is Expired:");
@@ -193,7 +252,6 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		 */
 		blockNum = bnum;
 		byteindex = 0;
-	
 		/*
 		globalIO.getIOManager().FseekAndRead(blockNum, blk);
 		
@@ -245,4 +303,41 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		this.byteindex = byteindex;
 		return byteindex;
 	}
+
+	
+	/**
+	 * Get the stream from the buffer pool for the blockNum in 'this'.
+	 * @return The DataInputStream to read from buffer pool block.
+	 */
+	public DataInputStream getDBStream() {
+		return GlobalDBIO.getBlockInputStream(this);
+	}
+	/**
+	 * Ensure this block is set to updated for storage upon flush or commit
+	 */
+	public void setUpdated() {
+		blk.setIncore(true);
+		// We are about to replace the current block, make sure it is not under write or latched by someone else
+		// or we would be trashing data. We already latched it so there should be only 1
+		if( accesses == 0 ) 
+			addAccess();	
+	}
+	
+	public boolean isUpdated() {
+		return blk.isIncore();
+	}
+	/**
+	 * @return the sdbio
+	 */
+	public GlobalDBIO getSdbio() {
+		return sdbio;
+	}
+	/**
+	 * @param sdbio the sdbio to set
+	 */
+	public void setSdbio(GlobalDBIO sdbio) {
+		this.sdbio = sdbio;
+	}
+
+	
 }

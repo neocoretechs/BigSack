@@ -23,7 +23,7 @@ package com.neocoretechs.arieslogger.core.impl;
 
 import com.neocoretechs.arieslogger.core.LogInstance;
 import com.neocoretechs.arieslogger.logrecords.Loggable;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 
 import java.io.Externalizable;
 import java.io.ObjectInput;
@@ -85,7 +85,7 @@ public class CheckpointOperation implements Loggable, Externalizable
 	 *  the roll-forward recovery from the last checkpoint redone during rollforward recovery, if
 	 *  we happen to crash during the roll-forward recovery process.
 	*/
-	public void applyChange(ObjectDBIO xact, LogInstance instance, Object in) throws IOException
+	public void applyChange(GlobalDBIO xact, LogInstance instance, Object in) throws IOException
 	{
 		//redo the checkpoint if we are in roll-forward recovery only
 		if(inRollForwardRecovery(xact))
@@ -108,7 +108,7 @@ public class CheckpointOperation implements Loggable, Externalizable
 	 * @param xact
 	 * @return
 	 */
-	private boolean inRollForwardRecovery(ObjectDBIO xact) {
+	private boolean inRollForwardRecovery(GlobalDBIO xact) {
 		return xact.getIOManager().getUlog(tablespace).getLogToFile().inRFR();
 	}
 
@@ -128,7 +128,7 @@ public class CheckpointOperation implements Loggable, Externalizable
 		Checkpoint does not need to be redone unless
 		we are doing rollforward recovery.
 	*/
-	public boolean needsRedo(ObjectDBIO xact)
+	public boolean needsRedo(GlobalDBIO xact)
 	{
 		return inRollForwardRecovery(xact);
 	}
@@ -137,7 +137,7 @@ public class CheckpointOperation implements Loggable, Externalizable
 	/**
 	  Checkpoint has not resource to release
 	*/
-	public void releaseResource(ObjectDBIO xact) {}
+	public void releaseResource(GlobalDBIO xact) {}
 
 	/**
 		Checkpoint is a raw store operation

@@ -41,16 +41,14 @@ import com.neocoretechs.bigsack.io.IoInterface;
 */
 public final class Datablock implements Externalizable {
 	private static boolean DEBUG = false;
-	public static final int DATABLOCKHEADERSIZE = 29;
+	public static final int DATABLOCKHEADERSIZE = 21;
 	private long prevblk = -1L; // offset to prev blk in chain
 	private long nextblk = -1L; // offset of next blk in chain
 	private short bytesused; // bytes used this blk-highwater mark
 	private short bytesinuse; // actual # of bytes in use
-	private byte isKeypage = 0; // is this a key page
-	private long pageLSN = -1L; // pageLSN number of this block
+	private byte inlog = 0; // written to log since incore?
 	byte data[]; // data section of blk
 	private boolean incore = false; // is it modified?
-	private boolean inlog = false; // written to log since incore?
 	private static final long serialVersionUID = 1L;
 	//
 	private int datasize;
@@ -79,8 +77,7 @@ public final class Datablock implements Externalizable {
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
-			fobj.Fwrite_byte(getKeypage());
-			fobj.Fwrite_long(getPageLSN());
+			fobj.Fwrite_byte(inlog);
 			fobj.Fwrite(data);
 	}
 
@@ -95,8 +92,7 @@ public final class Datablock implements Externalizable {
 			fobj.Fwrite_long(getNextblk());
 			fobj.Fwrite_short(getBytesused());
 			fobj.Fwrite_short(getBytesinuse());
-			fobj.Fwrite_byte(getKeypage());
-			fobj.Fwrite_long(getPageLSN());
+			fobj.Fwrite_byte(inlog);
 			if (getBytesused() == datasize)
 				fobj.Fwrite(data);
 			else
@@ -105,7 +101,22 @@ public final class Datablock implements Externalizable {
 	}
 
 	/**
-	 * Sets up default header
+	* Write the header portion to IoInterface implementor.
+	* Primarily for log related operations.
+	* @param fobj the IoInterface
+	* @exception IOException error writing field
+	*/
+	public synchronized void writeHeader(IoInterface fobj) throws IOException {
+			fobj.Fwrite_long(getPrevblk());
+			fobj.Fwrite_long(getNextblk());
+			fobj.Fwrite_short(getBytesused());
+			fobj.Fwrite_short(getBytesinuse());
+			fobj.Fwrite_byte(inlog);
+	}
+	
+	/**
+	 * Sets up default header. prevblk = -1L, nextblk = -1L, bytesused, bytesinuse = 0 <p/>
+	 * isKeypage = 0, incore = false, inlog = false
 	 */
 	public synchronized void resetBlock() {
 		if( DEBUG )
@@ -114,10 +125,8 @@ public final class Datablock implements Externalizable {
 		nextblk = -1L;
 		bytesused = 0;
 		bytesinuse = 0;
-		pageLSN = -1;
-		isKeypage = 0;
 		incore = false;
-		inlog = false;
+		inlog = 0;
 	}
 	
 	/**
@@ -153,13 +162,29 @@ public final class Datablock implements Externalizable {
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
 			setBytesinuse(fobj.Fread_short());
-			setKeypage(fobj.Fread_byte());
-			setPageLSN(fobj.Fread_long());
+			setInLog(fobj.Fread_byte());
 			if (fobj.Fread(data, datasize) != datasize) {
 				throw new IOException(
 						"Datablock read size invalid " + this.toString());
 			}
 		//}
+	}
+	
+	/**
+	* Read the header portion from IoInterface implementor
+	* @param fobj the IoInterface
+	* @exception IOException error reading field
+	*/
+	public synchronized void readHeader(IoInterface fobj) throws IOException {
+			setPrevblk(fobj.Fread_long());
+			setNextblk(fobj.Fread_long());
+			setBytesused(fobj.Fread_short());
+			setBytesinuse(fobj.Fread_short());
+			setInLog(fobj.Fread_byte());
+	}
+	
+	public void setInLog(byte fbyte) {
+		setInlog((fbyte == 0 ? false : true));	
 	}
 	/**
 	* read the header and used data portion from IoInterface implementor
@@ -172,8 +197,7 @@ public final class Datablock implements Externalizable {
 			setNextblk(fobj.Fread_long());
 			setBytesused(fobj.Fread_short());
 			setBytesinuse(fobj.Fread_short());
-			setKeypage(fobj.Fread_byte());
-			setPageLSN(fobj.Fread_long());
+			setInLog(fobj.Fread_byte());
 			if (getBytesused() > datasize) {
 				throw new IOException("block inconsistency " + this.toString());
 			}
@@ -204,8 +228,7 @@ public final class Datablock implements Externalizable {
 		out.writeLong(getNextblk());
 		out.writeShort(getBytesused());
 		out.writeShort(getBytesinuse());
-		out.writeByte(getKeypage());
-		out.writeLong(getPageLSN());
+		out.writeByte(inlog);
 		if (getBytesused() == datasize)
 			out.write(data);
 		else
@@ -223,8 +246,7 @@ public final class Datablock implements Externalizable {
 		setNextblk(in.readLong());
 		setBytesused(in.readShort());
 		setBytesinuse(in.readShort());
-		setKeypage(in.readByte());
-		setPageLSN(in.readLong());
+		setInLog(in.readByte());
 		in.read(data);
 		//if (in.read(data) != datasize) {
 		//	throw new IOException(
@@ -254,8 +276,7 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
-		d.setKeypage(isKeypage);
-		d.setPageLSN(pageLSN);
+		d.setInLog(inlog);
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
 		d.setIncore(true);
 		return d;
@@ -269,11 +290,9 @@ public final class Datablock implements Externalizable {
 		d.setNextblk(nextblk);
 		d.setBytesused(bytesused);
 		d.setBytesinuse(bytesinuse);
-		d.setKeypage(isKeypage);
-		d.setPageLSN(pageLSN);
 		System.arraycopy(data, 0, d.data, 0, getBytesused());
 		d.setIncore(incore);
-		d.setInlog(inlog);
+		d.setInLog(inlog);
 	}
 	
 	public synchronized String toString() {
@@ -285,20 +304,19 @@ public final class Datablock implements Externalizable {
 		//        }
 		//} o+=
 		//String o =
-		return	"DBLK: prev = "
-				+ prevblk
-				+ " next = "
-				+ nextblk
-				+ " bytesused = "
-				+ bytesused
-				+ " bytesinuse = "
-				+ bytesinuse
-				+ " pageLSN: "
-				+ pageLSN
-				+" keypage ="
-				+ isKeypage
-				+ " incore "
-				+ incore;
+		StringBuilder sb = new StringBuilder("DBLK: prev = ");
+		sb.append(GlobalDBIO.valueOf(getPrevblk()));
+		sb.append(" next = ");
+		sb.append(GlobalDBIO.valueOf(getNextblk()));
+		sb.append(" bytesused = ");
+		sb.append(bytesused);
+		sb.append(" bytesinuse = ");
+		sb.append(bytesinuse);
+		sb.append( " incore ");
+		sb.append( incore);
+		sb.append(" inlog ");
+		sb.append(inlog);
+		return sb.toString();		
 		//return o;
 	}
 	/**
@@ -330,22 +348,14 @@ public final class Datablock implements Externalizable {
 	 * @return
 	 */
 	public synchronized String toBriefString() {
-		return ( prevblk !=-1 || nextblk !=-1 || bytesused != 0 || bytesinuse != 0 || 
-				 pageLSN != -1 || incore) ?
-				"DBLK prev = "
-					+ GlobalDBIO.valueOf(getPrevblk())
-					+ " next = "
-					+ GlobalDBIO.valueOf(getNextblk())
-					+ " bytesused = "
-					+ bytesused
-					+ " bytesinuse = "
-					+ bytesinuse
-					+ " pageLSN: "
-					+ pageLSN
-					+" keypage ="
-					+ isKeypage
-					+ " incore "
-					+ incore
+		return ( prevblk !=-1 || nextblk !=-1 || bytesused != 0 || bytesinuse != 0 || incore || inlog != 0) ?
+				String.format("DBLK prev = %s next = %s bytesused =%d bytesinuse =%d incore =%b inlog =%b",
+					GlobalDBIO.valueOf(getPrevblk())
+					,GlobalDBIO.valueOf(getNextblk())
+					,bytesused
+					,bytesinuse
+					,incore
+					,(inlog != 0 ? true : false))
 			:  "[[ Block Empty ]]";
 	}
 	/**
@@ -404,53 +414,34 @@ public final class Datablock implements Externalizable {
 	public synchronized void setBytesused(short bytesused) {
 		this.bytesused = bytesused;
 	}
-	/**
-	 * Is this a key page?
-	 * @return true if this is a key page.
-	 */
-	public boolean isKeypage() { return (isKeypage == 0 ? false : true); }
-	/**
-	 * Set whether this is a key page.
-	 * @param b true if this is to be a key page.
-	 */
-	public void setKeypage(byte b) { isKeypage = b; }
-	/**
-	 * Return the stored byte indicating whether this is a key page.
-	 * @return byte is 0 if not a keypage.
-	 */
-	public byte getKeypage() { return isKeypage; }
-	/**
-	 * Get the log sequence number of this page.
-	 * @return The long value of the log sequence number this page.
-	 */
-	public synchronized long getPageLSN() {
-		return pageLSN;
-	}
-	/**
-	 * Set the log sequence number of this page.
-	 * @param version
-	 */
-	public synchronized void setPageLSN(long version) {
-		this.pageLSN = version;
-	}
+
 	/**
 	 * Is page in log?
 	 * @return true if page is in log.
 	 */
 	public synchronized boolean isInlog() {
-		return inlog;
+		return inlog != 0;
 	}
 	/**
 	 * Set whether page is in log.
 	 * @param inlog true if page is in log.
 	 */
 	public synchronized void setInlog(boolean inlog) {
-		this.inlog = inlog;
+		this.inlog = (byte) (inlog ? 1 : 0);
 	}
 	/**
 	 * Get the data payload of this page.
 	 * @return The byte array holding the data payload of this page.
 	 */
 	public synchronized byte[] getData() { return data; }
+	
+	/**
+	 * Is this block effectively empty? i.e. not linked to anything (prev and nextblk == -1L) and
+	 * contains no data bytesinuse = 0.
+	 * @return boolean value of result of empty block check, true if empty.
+	 */
+	public boolean isEmpty() {
+		return (getPrevblk() == -1L && getNextblk() == -1L && getBytesinuse() == 0);	
+	}
 
 }

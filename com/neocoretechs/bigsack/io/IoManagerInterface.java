@@ -1,18 +1,19 @@
 package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
+import java.util.ArrayList;
 
-import com.neocoretechs.bigsack.io.cluster.IOWorkerInterface;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
+import com.neocoretechs.bigsack.io.pooled.BufferPool;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.io.pooled.ObjectDBIO;
+import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 
 /**
  * This interface enforces the contract for IO managers that facilitate block level operations.
  * The page buffers are managed here. Parallel operation on page buffers driven from here
- * @author jg
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
  */
 public interface IoManagerInterface {
@@ -41,19 +42,6 @@ public interface IoManagerInterface {
 	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException;
 
 	/**
-	* Get a block access control instance from L2 cache
-	* @param tmpBai2 The template containing the block number, used to locate key
-	* @return The key found or whatever set returns otherwise if nothing a null is returned
-	* @throws IOException 
-	*/
-	public BlockAccessIndex getUsedBlock(long loc) throws IOException;
-	/**
-	 * Set the initial free blocks after buckets created or bucket initial state
-	 * Since our directory head gets created in block 0 tablespace 0, the next one is actually the start
-	 */
-	public void setNextFreeBlocks();
-
-	/**
 	 * Get first tablespace
 	 * @return the position of the first byte of first tablespace
 	 */
@@ -79,58 +67,102 @@ public interface IoManagerInterface {
 	 */
 	public void commitBufferFlush() throws IOException;
 	
-	public void checkpointBufferFlush() throws IOException;
+	public void checkpointBufferFlush() throws IOException, IllegalAccessException;
 
 	public void directBufferWrite() throws IOException;
 	
-	/**
-	 * Return the first available block that can be acquired for write
-	 * queue the request to the proper ioworker
-	 * @param tblsp The tablespace
-	 * @return The block available as a real, not virtual block
-	 * @exception IOException if IO problem
-	 */
-	public long getNextFreeBlock(int tblsp) throws IOException;
-	
 	public void getNextFreeBlocks() throws IOException;
-
-	public void FseekAndWrite(long toffset, Datablock tblk)
-			throws IOException;
-
-	public void FseekAndWriteFully(long toffset, Datablock tblk)
-			throws IOException;
+	/**
+	 * Seek the virtual offset and read the used bytes portion into the specified {@link Datablock}.
+	 * For a full read call FseekAndWriteFully. An Fforce flush is performed after all block write operations.
+	 * the incore flag is cleared after this operation.
+	 * @param toffset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public void FseekAndWrite(long toffset, Datablock tblk) throws IOException;
+	
+	/**
+	 * Seek the specified virtual block and perform a full write of the datablock, ignoring bytesused performing Fforce flush afterwards.
+	 * The incore flag is cleared after this operation.
+	 * @param toffset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public void FseekAndWriteFully(long toffset, Datablock tblk) throws IOException;
+	
+	/**
+	 * Seek the specified virtual block and and perform a write of the header portion of the block only.
+	 * An Fforce flush is performed but NO flags are altered.
+	 * @param offset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public void FseekAndWriteHeader(long offset, Datablock tblk) throws IOException;
 
 	/**
-	 * Queue a request to read int the passed block buffer 
+	 * Read into the passed {@link Datablock} buffer. The header portion and used bytes alone are read, for a full read use
+	 * FseekAndReadFully. The incore flag is cleared after this operation.
 	 * @param toffset The virtual block to read
 	 * @param tblk The Datablock buffer to read into
 	 * @throws IOException
 	 */
-	public void FseekAndRead(long toffset, Datablock tblk)
-			throws IOException;
+	public void FseekAndRead(long toffset, Datablock tblk) throws IOException;
 
 	/**
-	 * Queue a request to read int the passed block buffer 
+	 * Read into the passed {@link Datablock} block buffer. The header and entire block payload is read regardless of used bytes.
+	 * The incore flag is cleared after this operation.
 	 * @param toffset The virtual block to read
 	 * @param tblk The Datablock buffer to read into
 	 * @throws IOException
 	 */
-	public void FseekAndReadFully(long toffset, Datablock tblk)
-			throws IOException;
+	public void FseekAndReadFully(long toffset, Datablock tblk) throws IOException;
+	
+	/**
+	 * Seek the virtual block and perform a read of the header portion only. No flags are altered.
+	 * @param toffset
+	 * @param tblk
+	 * @throws IOException
+	 */
+	public void FseekAndReadHeader(long toffset, Datablock tblk) throws IOException;
 
 	/**
-	 * If create is true, create only primary tablespace
-	 * else try to open all existing
-	 * @param fname String file name
-	 * @param create true to create if not existing
+	 * @see com.neocoretechs.bigsack.io.MultithreadedIOManager#initialize()
 	 * @exception IOException if problems opening/creating
 	 * @return true if successful
-	 * @see IoInterface
 	 */
-	public boolean Fopen(String fname, int L3cache, boolean create) throws IOException;
+	boolean initialize() throws IOException;
 	
-	public boolean Fopen(String fname, String remote, int L3cache, boolean create) throws IOException;
+	public BlockAccessIndex getNextFreeBlock() throws IOException;
 
+	/**
+	 * Get next free block from given tablespace. The block is translated from real to virtual block.
+	 * @return The next free block from the tablespace, translated to a virtual block.
+	 * @throws IOExcepion
+	 * */
+	BlockAccessIndex getNextFreeBlock(int tblsp) throws IOException;
+
+	/**
+	 * Used to move a stolen block from freechain onto used list.
+	 * @param blk
+	 * @return 
+	 * @throws IOException 
+	 */
+	public BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException;
+	
+	/**
+	* Determine location of new node. {@link MultithreadedIOManager}
+	* Attempts to cluster entries in used blocks near insertion point relative to other entries.
+	* Choose a random tablespace, then find a key that has that tablespace, then cluster there.
+	* @param keys The array of page pointers of existing entries to check for block space
+	* @param index The index of the target in array, such that we dont check against that entry
+	* @param nkeys The total keys in use to check in array
+	* @param bytesneeded The number of bytes to write
+	* @return The Optr pointing to the new node position
+	* @exception IOException If we cannot get block for new node
+	*/
+	public Optr getNewInsertPosition(ArrayList<Optr> keys, int index, int nkeys, int length) throws IOException;
+	
 	public void Fopen() throws IOException;
 
 	public void Fclose() throws IOException;
@@ -140,40 +172,44 @@ public interface IoManagerInterface {
 	public long Fsize(int tablespace) throws IOException;
 
 	public boolean isNew();
-
-	public IOWorkerInterface getIOWorker(int tblsp);
-	
-	public BufferPool getBufferPool();
 	
 	public RecoveryLogManager getUlog(int tblsp);
 	
-	public ObjectDBIO getIO();
-
-	public Optr getNewInsertPosition(Optr[] locs, int index, int nkeys, int length) throws IOException;
-	
-	public MappedBlockBuffer getBlockBuffer(int tablespace);
+	public GlobalDBIO getIO();
 
 	public int objseek(Optr loc) throws IOException;
 
 	public int deleten(Optr loc, int size) throws IOException;
-
-	public BlockStream getBlockStream(int tblsp);
 
 	public void writen(int tblsp, byte[] o, int osize) throws IOException;
 
 	public int objseek(long iloc) throws IOException;
 
 	public void deallocOutstandingRollback() throws IOException;
+	
 	public void deallocOutstandingCommit() throws IOException;
+	
 	public void deallocOutstanding() throws IOException;
-	public void deallocOutstandingWriteLog(int tblsp) throws IOException;
-	public void deallocOutstandingWriteLog(int tblsp, BlockAccessIndex lbai) throws IOException;
-	public void deallocOutstanding(long pos) throws IOException;
-
+	/**
+	 * Perform an Fseek on the block and and write it. Use the write method of Datablock and
+	 * the IoWorker for the proper tablespace. Used in final applyChange 
+	 * operation of the logAndDo method of the {@link FileLogger} to push the modified block to deep storage.
+	 * Used in conjunction with {@link UndoableBlock}.
+	 * @param tablespace the tablespace
+	 * @param block the physical block
+	 * @param blk the data block
+	 * @throws IOException
+	 */
 	public void writeDirect(int tablespace, long block, Datablock blk) throws IOException;
 
 	public void readDirect(int tablespace, long block, Datablock blk) throws IOException;
 
-	public FreeBlockAllocator getFreeBlockAllocator();
+	public void extend(int ispace, long l) throws IOException;
+
+	public BlockStream getBlockStream(int tablespace);
+
+	public void reInitLogs() throws IOException;
+
+	
 
 }
