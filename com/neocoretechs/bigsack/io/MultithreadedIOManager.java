@@ -15,14 +15,13 @@ import com.neocoretechs.bigsack.io.pooled.IOWorker;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 
 /**
- * Handles the aggregation of the IO worker threads of which there is one for each tablespace.
- * Requests are queued to the IO worker assigned to the tablespace desired and can operate in parallel
- * with granularity at the tablespace/randomaccessfile level. This is asynchronous IO on random access files
+ * Handles the aggregation of the IO worker threads of which there is one for each tablespace.<p/>
+ * Calls to the IO worker assigned to the tablespace desired can operate in parallel
+ * with granularity at the tablespace/randomaccessfile level. Asynchronous IO is performed on random access files,
  * either memory mapped or filesystem.<p/>
- * Starts a MappedBlockBuffer and an IOWorker for each tablespace.
- * When we need to cast a global operation which requires all tablespaces to coordinate a response we use
- * Primarily we are calling into the BufferPool that aggregates the MappedBlockBuffer
- * the Blockstreams and the undo log for each tablespace.<p/>
+ * The {@link BufferPool} creates a {@link  MappedBlockBuffer} and an {@link IOWorker} for each tablespace, 
+ * fulfilling the {@link IoInterface} contract.<p/>
+ * The BufferPool aggregates the MappedBlockBuffer, the Blockstreams, and the undo log for each tablespace.<p/>
  * Operations that work on multiple tablespaces are set up inside Callable lambda expressions and the Futures are
  * aggregated.
  * @author Jonathan Groff  Copyright (C) NeoCoreTechs 2014,2015,2021
@@ -37,16 +36,27 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	private BufferPool bufferPool;
 	private int smallestTablespace = -1;
 	protected int L3cache = 0;
-	String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
-
+	public String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
+	/**
+	 * Create the Multi threaded IO manager that manages the IO worker threads and the {@link BufferPool} that maintains the cache of
+	 * page level data and the recovery log. 
+	 * @param globalIO The global IO module
+	 * @param L3cache The primary backing store for the databases, be it filesystem or memory mapped page files, etc.
+	 * @throws IOException If we encounter a problem initializing the log subsystem or other related files/stores.
+	 */
 	public MultithreadedIOManager(GlobalDBIO globalIO, int L3cache) throws IOException {
 		this.globalIO = globalIO;
 		this.L3cache = L3cache;
 		ioWorker = new IOWorker[DBPhysicalConstants.DTABLESPACES];
-		bufferPool = new BufferPool();
+		// Initialize the thread pool group NAMES to spin new threads in controllable batches
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			ioWorkerNames[i] = String.format("%s%s%d", "IOWORKER",globalIO.getDBName(),i);
+		}
+		ThreadPoolManager.init(ioWorkerNames, false);
+		bufferPool = new BufferPool(globalIO, ioWorkerNames);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			ioWorker[i] = new IOWorker(globalIO, i, L3cache);
-			bufferPool.createPool(globalIO, ioWorker[i], i);
+			bufferPool.createPool(ioWorker[i], i);
 		}
 	}
 	
@@ -64,11 +74,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * for each tablespace. The cursor window block and read and written from seep store and buffer pool.
 	 */
 	public synchronized boolean initialize() throws IOException {
-		// Initialize the thread pool group NAMES to spin new threads in controllable batches
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			ioWorkerNames[i] = String.format("%s%s%d", "IOWORKER",globalIO.getDBName(),i);
-		}
-		ThreadPoolManager.init(ioWorkerNames, false);
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			if( !isNew() ) {
 				// attempt recovery if needed
@@ -85,10 +90,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		return true;
 	}
 	
+	@Override
 	public void reInitLogs() throws IOException {
-		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			bufferPool.reInitLog(globalIO, i);
-		}
+	//	for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+	//		bufferPool.reInitLog(globalIO, i);
+	//	}
 	}
 	
 	@Override
@@ -274,10 +280,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException
 	 */
 	public synchronized void deallocOutstandingRollback() throws IOException {
-			for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				System.out.printf("%s Rolling back %d%n",this.getClass().getName(), i);
-				bufferPool.rollback(i); 
-			}
+			System.out.printf("%s Rolling back %n",this.getClass().getName());
+			bufferPool.rollback(); 
 	}
 	/**
 	 * dealloc outstanding blocks. if not null, do a dealloc and set null
@@ -285,16 +289,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	public void deallocOutstanding() throws IOException {
 			bufferPool.deallocOutstanding();
-	}
-	/**
-	 * Deallocate the outstanding BlockAccesIndex from the virtual block number. First
-	 * check the outstanding buffers per tablespace, then consult the block buffer failing that.
-	 * If we find nothing in the buffers, there is obviously nothing to unlatch.
-	 * @param pos The virtual block number to deallocate.
-	 * @throws IOException
-	 */
-	public void deallocOutstanding(long pos) throws IOException {
-		bufferPool.deallocOutstanding(pos);
 	}
 	
 	/**
@@ -408,7 +402,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void commitBufferFlush() throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.commitBufferFlush invoked.%n",this.getClass().getName());
-		bufferPool.commitBufferFlush(ioWorker);
+		bufferPool.commitBufferFlush();
 	}
 	
 	@Override

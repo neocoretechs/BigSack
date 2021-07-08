@@ -211,7 +211,7 @@ public class HMapNavigator {
 				return ksr;
 			} 
 			keyValuesPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), childPage[2].getPage(hashKeys[4]).getPageId());
-			return new KeySearchResult(5, true);
+			return new KeySearchResult(keyValuesPage, 5, true);
 		}
 	}
 

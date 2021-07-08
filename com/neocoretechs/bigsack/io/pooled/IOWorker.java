@@ -13,14 +13,11 @@ import com.neocoretechs.bigsack.io.IoInterface;
 import com.neocoretechs.bigsack.io.MmapIO;
 
 /**
- * This is the primordial IO worker. It exists in standalone mode as the primary threaded worker accessing
- * a particular tablespace from the requests placed in the ArrayBlockingQueue. It also exists in cluster mode
- * as the thread behind the TCPWorker which is derived from it. In cluster mode the WorkerRequestProcessor is an
- * additional thread that actually uses the IOWorker queue to queue requests back to the TCPWorker, an
- * intentional design compromise.<p/>
+ * This is the primordial IO worker. It exists in standalone mode as the primary worker accessing
+ * a particular tablespace fulfilling the {@link IoInterface} contract.<p/>
  * The ioUnit is an IoInterface that connects to the underlying raw store, outside of the page/block pool/buffer
  * and provides the low level 'fread','fwrite','fseek' etc functions.<p/>
- * NOTE: nextFreeBlock is tablespace relative, NOT virtual.
+ * NOTE: references to page blocks is tablespace relative, NOT virtual.
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
  */
@@ -29,17 +26,16 @@ public class IOWorker implements IoInterface {
 	private static final boolean DEBUGSEEK = false;
 	private static final boolean DEBUGFREE = false;
 	private IoInterface ioUnit;
-	public volatile boolean shouldRun = true;
 	private int tablespace; // 0-7
 	private GlobalDBIO sdbio;
 	private LinkedHashMap<Long, BlockAccessIndex> freeBlockList; // set from free block allocation
 	
 	/**
 	 * Create an IOWorker for the local store with the default of logs and tablespaces under
-	 * the single directory structure in parameter 1
-	 * @param name
-	 * @param tablespace
-	 * @param L3cache
+	 * the single directory structure.
+	 * @param sdbio The global IO module.
+	 * @param tablespace the tablespace we are ofcused on maintaining
+	 * @param L3cache The type of primary backing store to utilize for page-level database data, be it filesystem, memory map, etc.
 	 * @throws IOException
 	 */
 	public IOWorker(GlobalDBIO sdbio, int tablespace, int L3cache) throws IOException {

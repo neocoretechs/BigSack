@@ -1708,7 +1708,56 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		}
 		return new Scan(this, startAt, stopAt, Scan.FORWARD);
 	}
-
+	
+	/**
+	  Get a forwards scan
+	  @exception IOException Standard error policy
+	  */
+	public synchronized LogScan openForwardScan(LogInstance startAt,LogInstance stopAt) throws IOException
+	{
+		long startLong;	
+		if (startAt == null)
+				startLong = LogCounter.INVALID_LOG_INSTANCE;
+		else
+				startLong = ((LogCounter)startAt).getValueAsLong();
+		return openForwardScan(startLong, stopAt);
+	}
+	
+	/**
+	  Get a forward scan after checking for existence of the file we are attempting to scan.
+	  @exception IOException Standard error policy
+	  */
+	public synchronized LogScan openCheckedForwardScan(LogInstance startAt,LogInstance stopAt) throws IOException
+	{
+		long startLong;	
+		if (startAt == null)
+				startLong = LogCounter.INVALID_LOG_INSTANCE;
+		else
+				startLong = ((LogCounter)startAt).getValueAsLong();
+		return openCheckedForwardScan(startLong, stopAt);
+	}
+	/**
+	 * Get the forward scan after checking for existence of the intended file.
+	 * @param startAt
+	 * @param stopAt
+	 * @return
+	 * @throws IOException
+	 */
+	protected synchronized LogScan openCheckedForwardScan(long startAt, LogInstance stopAt) throws IOException
+	{
+		checkCorrupt();
+		if (startAt == LogCounter.INVALID_LOG_INSTANCE)
+		{
+			startAt = firstLogInstance();
+			if( DEBUG ) {
+				System.out.println("LogToFile.openCheckedForwardScan changing start to:"+LogCounter.toDebugString(startAt));
+			}
+		}
+		RandomAccessFile scanFile = Scan.checkScan(this, startAt);
+		if(scanFile == null)
+			return null;
+		return new Scan(scanFile, this, startAt, stopAt, Scan.FORWARD);
+	}
 	/*
 	 * Methods to help a log scan switch from one log file to the next 
 	 */
@@ -2372,19 +2421,6 @@ public final class LogToFile implements LogFactory, java.security.PrivilegedExce
 		return new FlushedScan(this,((LogCounter)startAt).getValueAsLong());
 	}
 
-	/**
-	  Get a forwards scan
-	  @exception IOException Standard  error policy
-	  */
-	public synchronized LogScan openForwardScan(LogInstance startAt,LogInstance stopAt) throws IOException
-	{
-		long startLong;	
-		if (startAt == null)
-				startLong = LogCounter.INVALID_LOG_INSTANCE;
-		else
-				startLong = ((LogCounter)startAt).getValueAsLong();
-		return openForwardScan(startLong, stopAt);
-	}
 
     /*
      * find if the checkpoint is in the last log file. 

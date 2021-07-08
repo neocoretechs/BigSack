@@ -124,7 +124,50 @@ public class Scan implements StreamLogScan {
 			System.out.println("Scan: "+logFactory.getDBName()+" dir:"+scanDirection+" start:"+ LogCounter.toDebugString(startAt)+" stop:"+stopAt+" current#:"+currentLogFileNumber+" currLen:"+currentLogFileLength);
 		}
 	}
-
+	/**
+	 * Check the existence of the file we are preparing to scan rather than generate an exception in the constructor.
+	 * We can then call the alternate constructor with the file.
+	 * @param logFactory
+	 * @param startAt
+	 * @return
+	 * @throws IOException
+	 */
+	public static RandomAccessFile checkScan(LogToFile logFactory, long startAt) throws IOException {
+		return logFactory.getLogFileAtPosition(startAt);
+	}
+	/**
+	 * Constructor assuming we already checked and obtained and verified the RandomAccessfile
+	 * @param scan
+	 * @param logFactory
+	 * @param startAt
+	 * @param stopAt
+	 * @param direction
+	 * @throws IOException
+	 */
+	public Scan(RandomAccessFile scan, LogToFile logFactory, long startAt, LogInstance stopAt, byte direction) throws IOException
+	{
+		if (DEBUG)
+			assert startAt == LogCounter.INVALID_LOG_INSTANCE : "cannot start scan on an invalid log instance";
+		this.logFactory = logFactory;
+		currentLogFileNumber = LogCounter.getLogFileNumber(startAt);
+		currentLogFileLength = -1;
+		currentInstance = LogCounter.INVALID_LOG_INSTANCE; // set at getNextRecord
+		if (stopAt != null)
+			this.stopAt = ((LogCounter) stopAt).getValueAsLong();
+		else
+			this.stopAt = LogCounter.INVALID_LOG_INSTANCE;
+		scanDirection = direction;
+		// NOTE: we already checked and obtained the file
+		this.scan = scan;
+		if (scan == null)
+				throw new IOException("scan null at " + LogCounter.toDebugString(startAt));
+		currentLogFileLength = scan.length();
+		scan.seek(LogCounter.getLogFilePosition(startAt));
+		if( DEBUG ) {
+			System.out.println("Scan: "+logFactory.getDBName()+" dir:"+scanDirection+" start:"+ LogCounter.toDebugString(startAt)+" stop:"+stopAt+" current#:"+currentLogFileNumber+" currLen:"+currentLogFileLength);
+		}
+	}
+	
 	/*
 	** Methods of StreamLogScan
 	*/

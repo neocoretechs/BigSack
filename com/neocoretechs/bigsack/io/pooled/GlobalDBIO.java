@@ -500,7 +500,7 @@ public class GlobalDBIO {
 		ioManager.deallocOutstandingCommit();
 		if(DEBUGLOGINIT)
 			System.out.printf("%s.deallocOutstandingCommit reInitLogs%n", this.getClass().getName());
-		ioManager.reInitLogs();
+		//ioManager.reInitLogs();
 	}
 	
 	/**

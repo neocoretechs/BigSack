@@ -135,7 +135,6 @@ public final class RecoveryLogManager  {
 	 * @throws IOException
 	 */
 	public synchronized void rollBack() throws IOException {
-		rollBackCache(); // synch main file buffs
 		if( firstTrans != null) {
 			System.out.printf("%s Rolling back %d%n",this.getClass().getName(), tablespace);
 			fl.undo(globalDBIO, firstTrans, null);
@@ -147,16 +146,6 @@ public final class RecoveryLogManager  {
 		}
 	}
 	
-	/**
-	* This operation reads restored blocks to cache if they exist
-	* therein
-	* @exception IOException If we can't replace blocks
-	*/
-	private synchronized void rollBackCache() throws IOException {
-		if(DEBUG )
-			System.out.println("RecoveryLogManager.rollbackCache invoked");
-		globalDBIO.getIOManager().Fforce(); // make sure we synch our main file buffers
-	}
 	
 	/**
 	 * Take a checkpoint. Force buffer flush, then write checkpoint. A checkpoint demarcates
@@ -167,9 +156,9 @@ public final class RecoveryLogManager  {
 	 * @throws IOException
 	 */
 	public synchronized void checkpoint() throws IllegalAccessException, IOException {
-		globalDBIO.forceBufferWrite();
 		ltf.checkpoint(true);
-		if( DEBUG ) System.out.println("RecoveryLogManager.checkpoint. Checkpoint taken for db "+globalDBIO.getDBName());
+		if( DEBUG ) 
+			System.out.printf("%s.checkpoint. Checkpoint taken for db %s %d%n",this.getClass().getName(),globalDBIO.getDBName(),tablespace);
 	}
 
 

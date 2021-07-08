@@ -3,7 +3,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Stack;
-import java.util.UUID;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.StructureCallBackListener;
@@ -410,10 +409,9 @@ public final class HMapMain implements KeyValueMainInterface {
     }
     
     /**
-  	* set up keysearchresult for further operations
-     * @param node
+  	 * set up keysearchresult for further operations
      * @param key
-     * @return
+     * @return KeySearhcResult of locate operation
      * @throws IOException
      */
     public synchronized KeySearchResult locate(Comparable key) throws IOException {
@@ -423,7 +421,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		hashkeys = hNav.getHashKeys();
 		lastInsertResult = hNav.search(root[hashkeys[0]]);
 		if(DEBUG)
-			System.out.printf("%s insert exit key=%s value=%s%n", this.getClass().getName(), key);
+			System.out.printf("%s exit key=%s lastInsertResult=%s%n", this.getClass().getName(), key, lastInsertResult);
 		return lastInsertResult;
     }
   
@@ -480,57 +478,6 @@ public final class HMapMain implements KeyValueMainInterface {
         }
     }
  
-	
-	/**
-	* Remove key/data object.
-	* Deletion from a B-tree is more complicated than insertion, because we can delete a key from any node, not 
-	* just a leaf, and when we delete a key from an internal node, we will have to rearrange the nodes children.
-	* As in insertion, we must make sure the deletion doesnt violate the B-tree properties. 
-	* Just as we had to ensure that a node didnt get too big due to insertion, we must ensure that a node 
-	* doesnt get too small during deletion (except that the root is allowed to have fewer than the minimum number t-1 of keys). 
-	* Just as a simple insertion algorithm might have to back up if a node on the path to where the key was to be inserted was full, 
-	* a simple approach to deletion might have to back up if a node (other than the root) along the path to where the key is to be 
-	* deleted has the minimum number of keys.
-	* The deletion procedure deletes the key k from the subtree rooted at x. 
-	* This procedure guarantees that whenever it calls itself recursively on a node x, the number of keys in x is at least the minimum degree T.
-	* Note that this condition requires one more key than the minimum required by the usual B-tree conditions, 
-	* so that sometimes a key may have to be moved into a child node before recursion descends to that child. 
-	* This strengthened condition allows us to delete a key from the tree in one downward pass without having to back up
-	* (with one exception, to be explained). You should interpret the following specification for deletion from a B-tree 
-	* with the understanding that if the root node x ever becomes an internal node having no keys 
-	* (this situation can occur when we delete x, and x only child x.c1 becomes the new root of the tree), 
-	* we decrease the height of the tree by one and preserve the property that the root of the tree contains at least one key. 
-	* (unless the tree is empty).
-	* Various cases of deleting keys from a B-tree:
-	* 1. If the key k is in node x and x is a leaf, delete the key k from x.
-	* 2. If the key k is in node x and x is an internal node, do the following:
-    * a) If the child y that precedes k in node x has at least t keys, then find the predecessor k0 of k in the sub-tree rooted at y. 
-    * Recursively delete k0, and replace k by k0 in x. (We can find k0 and delete it in a single downward pass.)
-	* b) If y has fewer than t keys, then, symmetrically, examine the child z that follows k in node x. If z has at least t keys, 
-	* then find the successor k0 of k in the subtree rooted at z. Recursively delete k0, and replace k by k0 in x. 
-	* (We can find k0 and delete it in a single downward pass.)
-    * c) Otherwise, if both y and z have only t-1 keys, merge k and all of z into y, so that x loses both k and the pointer to z, and y 
-    * now contains 2t-1 keys. Then free z and recursively delete k from y.
-	* 3. If the key k is not present in internal node x, determine the root x.c(i) of the appropriate subtree that must contain k, 
-	* if k is in the tree at all. If x.c(i) has only t-1 keys, execute step 3a or 3b as necessary to guarantee that we descend to a 
-	* node containing at least t keys. Then finish by recursing on the appropriate child of x.
-	* a) If x.c(i) has only t-1 keys but has an immediate sibling with at least t keys, give x.c(i) an extra key by moving a key 
-	* from x down into x.c(i), moving a key from x.c(i) immediate left or right sibling up into x, and moving the appropriate 
-	* child pointer from the sibling into x.c(i).
-    * b) If x.c(i) and both of x.c(i) immediate siblings have t-1 keys, merge x.c(i) with one sibling, which involves moving a key 
-    * from x down into the new merged node to become the median key for that node.
-	* Since most of the keys in a B-tree are in the leaves, deletion operations are most often used to delete keys from leaves. 
-	* The recursive delete procedure then acts in one downward pass through the tree, without having to back up. 
-	* When deleting a key in an internal node, however, the procedure makes a downward pass through the tree but may have to 
-	* return to the node from which the key was deleted to replace the key with its predecessor or successor.
-	* The KeyPageInterface contains most of the functionality and the following methods are unique to the deletion process:
-	* 1) remove
-    * 2) removeFromNonLeaf
-    * =
-		if( DEBUG || DEBUGDELETE ) System.out.println("BTreeMain.delete Just deleted "+newKey);
-		return 0;
-	}
-
 	/**
 	 * Rewind current position to beginning of tree. Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations.

@@ -84,15 +84,15 @@ public class LogAccessFile
 	private LogAccessFileChecksum logChecksum;
 	LogAccessFileBuffer currentBuffer; //current active buffer
 	private boolean flushInProgress = false;
-	
+	private File logFile;
 	private final RandomAccessFile  log;
 	int checksumLogRecordSize;
 
 	static int                      mon_numWritesToLog;
 	static int                      mon_numBytesToLog;
 		
-	public LogAccessFile(File logFile, RandomAccessFile log, int bufferSize) throws IOException 
-    {
+	public LogAccessFile(File logFile, RandomAccessFile log, int bufferSize) throws IOException {
+		this.logFile = logFile;
 		this.log        = log;	
 		currentBuffer = new LogAccessFileBuffer(bufferSize);
 		logChecksum = new LogAccessFileChecksum();
@@ -111,6 +111,9 @@ public class LogAccessFile
 	}
 	
 	public RandomAccessFile getRandomAccessFile() { return log; }
+	
+	public boolean exists() { return logFile.exists(); }
+	
     /**
      * Write a single log record to the stream.
      * Appends the log record to the bytebuffer and moves the checksum in

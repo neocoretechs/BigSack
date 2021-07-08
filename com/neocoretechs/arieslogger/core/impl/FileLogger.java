@@ -416,7 +416,13 @@ public final class FileLogger implements Logger {
 		StreamLogScan scanLog;
 		Compensation  compensation = null;
 		try {
-			scanLog = (StreamLogScan)logToFile.openForwardScan(LogInstance.INVALID_LOG_INSTANCE, null);
+			scanLog = (StreamLogScan)logToFile.openCheckedForwardScan(LogInstance.INVALID_LOG_INSTANCE, null);
+			if(scanLog == null) {
+				if(DEBUG) {
+					System.out.println("FileLogger.commit: Skipping commit");
+				}
+				return;
+			}
 			HashMap<LogInstance, LogRecord> records;
 			Datablock dblk = new Datablock();
 			// scan records
