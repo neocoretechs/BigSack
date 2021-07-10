@@ -92,10 +92,7 @@ The disk structure for a 'database' is specified as follows from the example pat
 <li>/home/db/tablespace0/TestDB.6 - Contains the tablespace files for tablespace 6 for databases</li>
 <li>/home/db/tablespace0/TestDB.7 - Contains the tablespace files for tablespace 7 for databases</li>
 </li></ul>
-<p/>
-In a cluster configuration the tablespaces are resident on remote or local nodes connected by TCP sockets.
-The tablespace structure is the same on nodes under Cluster configuration.
-<p/>
+
 For further information see java.util.HashMap, java.util.TreeMap and java.util.TreeSet for specific details of the API.
 See the documentation for the ARIES protocol standard for further information on that subsystem.
 <p/>
