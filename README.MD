@@ -5,13 +5,13 @@ BigSack can store Java objects so that they can be efficiently indexed, preserve
 'Big' refers to the fact that the amount of data the system can maintain far exceeds resident and even virtual memory.
 So in addition to BigSack having the means to store a large number of objects, it adds the properties of recoverability,
 isolation, durability, atomicity, and concurrency. So imagine the Java HashMap,
-TreeMap and TreeSet with transaction semantics and a storage subsystem with data recovery and the ability to scale to terrabytes.<br/>
+TreeMap and TreeSet with transaction semantics and a storage subsystem with data recovery and the ability to scale to terabytes.<br/>
 
 <h3>Technical Details:</h3>
 BigSack is a Java persistence mechanism that provides HashMap, TreeSet and TreeMap key/value store functionality 
 with a small footprint and terrabyte object storage capability. Just about any Java object, meaning Serializable objects implementing the 
 java.lang.Comparable interface, can be stored, backed by a hashed page structure or BTree and multiple levels of pooled tuneable cache. The Comparable interface 
-is part of the standard Java Collections Framework and is implemented in the majority of built-in Java classes like String already.<p/>
+is part of the standard Java Collections Framework and is implemented in the majority of built-in Java classes such as String.<p/>
 
 There are methods in the class com.neocoretechs.bigsack.BigSackAdapter to organize the maps and sets on the basis of type. In this way a rudimentary schema can be maintained. A non-transactional BufferedHashSet, BufferedTreeSet or BufferedTreeMap can be obtained by the following methods:
 
