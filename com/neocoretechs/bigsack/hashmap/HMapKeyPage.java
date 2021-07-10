@@ -3,6 +3,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.function.Supplier;
+import java.util.stream.Stream.Builder;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoManagerInterface;
@@ -776,8 +778,47 @@ public final class HMapKeyPage implements KeyPageInterface {
 
 	@Override
 	public void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl) {
+		HMapKeyPage nPage = this;//((HMapKeyPage)nextPage);
+		while(nPage != null ) {
+			for(int i = 0; i < nPage.hTNode.getNumKeys(); i++) {
+				KeyValue<Comparable,Object> kv = nPage.hTNode.getKeyValueArray(i);
+				try {
+					if(iterImpl.item(kv.getmKey(), kv.getmValue()))
+						return;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+			nPage = (HMapKeyPage) nPage.nextPage;
+		}	
+	}
+
+
+	public int retrieveEntriesInOrder(Builder<KeyValue<Comparable, Object>> b, int count, int limit) {
+		HMapKeyPage nPage = this;//((HMapKeyPage)nextPage);
+		while(nPage != null ) {
+			for(int i = 0; i < nPage.hTNode.getNumKeys(); i++) {
+				KeyValue<Comparable,Object> kv = nPage.hTNode.getKeyValueArray(i);
+				try {
+					kv.getmKey();
+					kv.getmValue();
+					b.accept(kv);
+					++count;
+					if(limit != -1 && count >= limit)
+						return count;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+			nPage = (HMapKeyPage) nPage.nextPage;
+		}
+		return count;
+	}
+
+	@Override
+	public int retrieveEntriesInOrder(Supplier<KeyValue<Comparable, Object>> b, int count, int limit) {
 		// TODO Auto-generated method stub
-		
+		return 0;
 	}
 
 }

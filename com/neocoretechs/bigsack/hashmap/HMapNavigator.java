@@ -4,6 +4,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+import java.util.stream.Stream.Builder;
 
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -66,25 +69,15 @@ public class HMapNavigator {
 	 * @return
 	 * @throws IOException
 	 */
-	 public void retrieveEntriesInOrder(RootKeyPageInterface rootPage, KVIteratorIF<Comparable, Object> iterImpl) throws IOException {
+	 public static void retrievePagesInOrder(KeyValueMainInterface hMapMain, RootKeyPageInterface rootPage, PageIteratorIF<KeyPageInterface> iterImpl) throws IOException {
 		 // keypage pointed to by 3rd and last of 9 bit key, which contains node to retrieve collision space items that all share same hashcode
-		 PageIteratorIF<RootKeyPageInterface> childIterImpl3 = new PageIteratorIF<RootKeyPageInterface>() {
-				@Override
-				public void item(RootKeyPageInterface page) throws IOException {
-					for(int i = 0; i < page.getNumKeys(); i++) {
-						KeyPageInterface kpi = (KeyPageInterface) page.getPage(i);
-						kpi.retrieveEntriesInOrder(iterImpl); // retrieve collision space linked pages
-						//kvIterImpl.item(childPages[1]);
-					}
-				}
-		 };
-		 // retrieve page for third and last of the 3 9 bit spaces hashkey[4]
 		 PageIteratorIF<RootKeyPageInterface> childIterImpl2 = new PageIteratorIF<RootKeyPageInterface>() {
 				@Override
 				public void item(RootKeyPageInterface page) throws IOException {
-					for(int i = 0; i < page.getNumKeys(); i++) {
-						if(page.getPageId(i) != -1L)
-							childIterImpl3.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)));
+					HMapKeyPage nPage = (HMapKeyPage) page;
+					while(nPage != null ) {
+						iterImpl.item(nPage); // call back the passed in operator
+						nPage = (HMapKeyPage) nPage.nextPage;
 					}
 				}
 		 };
@@ -94,7 +87,7 @@ public class HMapNavigator {
 				public void item(RootKeyPageInterface page) throws IOException {
 					for(int i = 0; i < page.getNumKeys(); i++) {
 						if(page.getPageId(i) != -1L)
-							childIterImpl2.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)));
+							childIterImpl2.item(GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), page.getPageId(i)));
 					}
 				}
 		 };
@@ -116,6 +109,85 @@ public class HMapNavigator {
 		 }
 	 }
 	 
+	 /**
+	  * Stream oriented
+	  * @param hMapMain
+	  * @param rootPage
+	  * @param limit
+	  * @return
+	  * @throws IOException
+	  */
+	 public static Stream<KeyValue<Comparable,Object>> retrieveEntriesInOrder(KeyValueMainInterface hMapMain, RootKeyPageInterface rootPage, int limit) throws IOException {
+		 Supplier<KeyValue<Comparable,Object>> b = null;
+		 // keypage pointed to by 3rd and last of 9 bit key, which contains node to retrieve collision space items that all share same hashcode
+		 PageStreamIF<RootKeyPageInterface> childIterImpl3 = new PageStreamIF<RootKeyPageInterface>() {
+				@Override
+				public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
+					for(int i = 0; i < page.getNumKeys(); i++) {
+						KeyPageInterface kpi = (KeyPageInterface) page.getPage(i);
+						int num = kpi.retrieveEntriesInOrder(b, count, limit); // retrieve collision space linked pages
+						count += num;
+						if( count >= limit )
+							break;
+					}
+					return count;
+				}
+		 };
+		 // retrieve page for third and last of the 3 9 bit spaces hashkey[4]
+		 PageStreamIF<RootKeyPageInterface> childIterImpl2 = new PageStreamIF<RootKeyPageInterface>() {
+				@Override
+				public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
+					for(int i = 0; i < page.getNumKeys(); i++) {
+						if(page.getPageId(i) != -1L) {
+							count += childIterImpl3.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)), count, limit);
+							if( limit != -1 || count >= limit )
+								break;
+						}
+					}
+					return count;
+				}
+		 };
+		 // retrieve page for second of the 3 9 bit spaces hashkey[3]
+		 PageStreamIF<RootKeyPageInterface> childIterImpl1 = new PageStreamIF<RootKeyPageInterface>() {
+				@Override
+				public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
+					for(int i = 0; i < page.getNumKeys(); i++) {
+						if(page.getPageId(i) != -1L) {
+							count += childIterImpl2.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)), count, limit);
+							if( limit != -1 || count >= limit )
+								break;
+						}
+					}
+					return count;
+				}
+		 };
+		 // retrieve page for each of first 9 bit key spaces hashkey[2]
+		 PageStreamIF<RootKeyPageInterface> childIterImpl0 = new PageStreamIF<RootKeyPageInterface>() {
+					@Override
+					public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
+						for(int i = 0; i < page.getNumKeys(); i++) {
+							if(page.getPageId(i) != -1L) {
+								count += childIterImpl1.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)), count, limit);
+								if( limit != -1 || count >= limit )
+									break;
+							}
+						}
+						return count;
+					}
+		 };
+		 // retrieve each page of the root indexes for this tablespace, hashkey[1], 2 bits
+		 int count = 0;
+	
+		 for(int i = 0; i < rootPage.getNumKeys(); i++) {
+				if(rootPage.getPageId(i) != -1L ) {				 
+					count += childIterImpl0.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), rootPage.getPageId(i)), count, limit);
+					if( limit != -1 || count >= limit )
+						break;
+				}
+		 }
+		 
+		 return Stream.generate(b);
+	 }
 	/**
 	 * Create a keypath using available keys or if none exist, create them and populate the key pages.
 	 * Once we have a HMapKeyPage we can use the superclass search method to search the collision space.<p/>

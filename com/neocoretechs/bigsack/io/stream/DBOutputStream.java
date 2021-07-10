@@ -38,7 +38,7 @@ public final class DBOutputStream extends OutputStream {
 	SoftReference<BlockAccessIndex> lbai;
 	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai =  new SoftReference<BlockAccessIndex>(tlbai);
-		tlbai.getBlk().setIncore(true);
+		//tlbai.getBlk().setIncore(true);
 		blockBuffer = tsdbio;
 	}
 	/**

@@ -44,11 +44,11 @@ public class BatteryHashMap1 {
 		payloadSize = Integer.parseInt(argv[1]);
 		BufferedHashSet session = BigSackAdapter.getBigSackHashSet(bigtestx.class);//new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
-		//battery1(session, argv);
+		battery1(session, argv);
 		//BigSackAdapter.commitTransaction(bigtestx.class);
 		//session = BigSackAdapter.getBigSackHashSet(bigtestx.class);
 		battery1A(session, argv);
-		//battery1B(session, argv);
+		battery1B(session, argv);
 		
 		//battery3A(session, argv);
 		//battery3B(session, argv);
@@ -109,6 +109,54 @@ public class BatteryHashMap1 {
 		}
 		System.out.println("BATTERY1A SUCCESS "+i+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
+	
+	public static void battery1B(BufferedHashSet session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		long size = session.size();
+		System.out.println("Size "+size);
+		System.out.println("BATTERY1B SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	
+	public static void battery1E(BufferedHashSet session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		i = min;
+		boolean addflag;
+		for(; i < max; i++) {
+			bigtestx b = new bigtestx();
+			b.init(i, payloadSize);
+			if(session.contains(b)) {
+				session.remove(b);
+				System.out.printf("Removed %d%n", i);
+			} else {
+				System.out.printf("DIDNT FIND %d!%n", i);
+			}
+		}
+		BigSackAdapter.commitTransaction(bigtestx.class);
+		/*
+		session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);
+		for(i = min; i < max; i++) {
+			bigtestx b = new bigtestx();
+			b.init(i);
+			addflag = session.add(b);
+		}
+		BigSackAdapter.rollbackSet(bigtestx.class);
+		*/
+		session = BigSackAdapter.getBigSackHashSet(bigtestx.class);
+		boolean success = true;
+		// make sure these are not there..
+		i = min;
+		for(; i < max; i++) {
+			bigtestx b = new bigtestx();
+			b.init(i, payloadSize);
+			if( session.contains(b) ) {
+				System.out.println("BATTERY1E FAIL found rollback element "+i);
+				success = false;
+			}
+		}
+		System.out.println("BATTERY1E "+(success ? "SUCCESS" : "FAIL")+" in "+(System.currentTimeMillis()-tims)+" ms.");
+		if( !success) throw new Exception("BATTERY1E fail");
+	}
+	
 	/**
 	 * See if first/last key/val works this can have unintended results 
 	 * @param session
@@ -182,47 +230,6 @@ public class BatteryHashMap1 {
 	}
 
 
-	
-	public static void battery1E(BufferedHashSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		i = min;
-		boolean addflag;
-		for(; i < max; i++) {
-			bigtestx b = new bigtestx();
-			b.init(i, payloadSize);
-			if(session.contains(b)) {
-				session.remove(b);
-				System.out.printf("Removed %d%n", i);
-			} else {
-				System.out.printf("DIDNT FIND %d!%n", i);
-			}
-		}
-		BigSackAdapter.commitTransaction(bigtestx.class);
-		/*
-		session = BigSackAdapter.getBigSackSetTransaction(bigtestx.class);
-		for(i = min; i < max; i++) {
-			bigtestx b = new bigtestx();
-			b.init(i);
-			addflag = session.add(b);
-		}
-		BigSackAdapter.rollbackSet(bigtestx.class);
-		*/
-		session = BigSackAdapter.getBigSackHashSet(bigtestx.class);
-		boolean success = true;
-		// make sure these are not there..
-		i = min;
-		for(; i < max; i++) {
-			bigtestx b = new bigtestx();
-			b.init(i, payloadSize);
-			if( session.contains(b) ) {
-				System.out.println("BATTERY1E FAIL found rollback element "+i);
-				success = false;
-			}
-		}
-		System.out.println("BATTERY1E "+(success ? "SUCCESS" : "FAIL")+" in "+(System.currentTimeMillis()-tims)+" ms.");
-		if( !success) throw new Exception("BATTERY1E fail");
-	}
-	
 	public static void batteryHashMap1(BufferedHashSet session, String[] argv) throws Exception {
 		bigtestx key = new bigtestx();
 		key.init(123567, payloadSize);

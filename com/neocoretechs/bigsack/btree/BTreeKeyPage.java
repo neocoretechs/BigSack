@@ -3,6 +3,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.function.Supplier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.Optr;
@@ -718,6 +719,11 @@ public class BTreeKeyPage implements KeyPageInterface {
 	public void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl) {
 		// TODO Auto-generated method stub
 		
+	}
+	@Override
+	public int retrieveEntriesInOrder(Supplier<KeyValue<Comparable, Object>> b, int count, int limit) {
+		// TODO Auto-generated method stub
+		return 0;
 	}
 	
 

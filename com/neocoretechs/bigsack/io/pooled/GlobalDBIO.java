@@ -499,8 +499,7 @@ public class GlobalDBIO {
 	public synchronized void deallocOutstandingCommit() throws IOException {
 		ioManager.deallocOutstandingCommit();
 		if(DEBUGLOGINIT)
-			System.out.printf("%s.deallocOutstandingCommit reInitLogs%n", this.getClass().getName());
-		//ioManager.reInitLogs();
+			System.out.printf("%s.deallocOutstandingCommit%n", this.getClass().getName());
 	}
 	
 	/**

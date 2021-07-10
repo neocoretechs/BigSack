@@ -3,6 +3,8 @@ package com.neocoretechs.bigsack.keyvaluepages;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.function.Supplier;
+import java.util.stream.Stream.Builder;
 
 import com.neocoretechs.bigsack.btree.BTNode;
 import com.neocoretechs.bigsack.io.Optr;
@@ -132,6 +134,8 @@ public interface KeyPageInterface extends RootKeyPageInterface {
 	*/
 
 	void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl);
+
+	int retrieveEntriesInOrder(Supplier<KeyValue<Comparable, Object>> b, int count, int limit);
 
 
 }

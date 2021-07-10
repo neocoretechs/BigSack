@@ -9,6 +9,7 @@ import com.neocoretechs.bigsack.btree.StructureCallBackListener;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.stream.PageIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -76,6 +77,8 @@ public final class HMapMain implements KeyValueMainInterface {
 	private GlobalDBIO sdbio;
 	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
 	private KeySearchResult lastInsertResult = null;
+	private Object result = null; // result of object seek,etc.
+	private long count = 0L; // result of count
 	/**
 	 * Create the array of {@link HMap} instances for primary root pages
 	 * @param globalDBIO
@@ -171,6 +174,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		}
 	}
 	
+	@Override
 	/**
 	 * Returns number of table scanned keys, sets numKeys field
 	 * TODO: Alternate more efficient implementation that counts keys on pages
@@ -178,48 +182,30 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @throws IOException
 	 */
 	public synchronized long count() throws IOException {
-		//System.out.println(found);
 		long tim = System.currentTimeMillis();
-		KVIteratorIF<Comparable, Object> iterImpl = new KVIteratorIF<Comparable,Object>() {
+		PageIteratorIF<KeyPageInterface> iterImpl = new PageIteratorIF<KeyPageInterface>() {
 			@Override
-			public boolean item(Comparable key, Object value) {
-				++numKeys;
-				return true;
+			public void item(KeyPageInterface page) throws IOException {
+				HMapKeyPage nPage = (HMapKeyPage) page;
+				while(nPage != null ) {
+					count += nPage.getNumKeys();
+					nPage = (HMapKeyPage) nPage.nextPage;
+				}
 			}
 		};
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			retrieveEntriesInOrder( (HTNode<Comparable, Object>)((HMapKeyPage)root[i].getPage(i)).hTNode,iterImpl);
+			for(int j = 0; j < root[i].getNumKeys(); j++) {
+				if(root[i].getPageId(j) != -1L)
+					HMapNavigator.retrievePagesInOrder(this, root[i].getPage(j), iterImpl);
+			}
 		}
 		if( DEBUG || DEBUGCOUNT )
-			System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
-		// deallocate outstanding blocks in all tablespaces
-		sdbio.deallocOutstanding();
-		return numKeys;
+			System.out.println("Count for "+sdbio.getDBName()+" returned "+count+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
+		return count;
 	}
 	
-	  private KeyValue<Comparable, Object> retrieveEntriesInOrder(HTNode<Comparable, Object> kvNode, KVIteratorIF<Comparable, Object> iterImpl) throws IOException {
-	        if ((kvNode == null) ||
-	            (kvNode.getmCurrentKeyNum() == 0)) {
-	            return null;
-	        }
-	        boolean bStatus;
-	        KeyValue<Comparable, Object> keyVal;
-	        int currentKeyNum = kvNode.getmCurrentKeyNum();
-	        for (int i = 0; i < currentKeyNum; ++i) {
-	            //retrieveEntriesInOrder((HTNode<K, V>) HTNode.getChildNodeAtIndex(treeNode, i), iterImpl);
-	            keyVal = kvNode.getKeyValueArray(i);
-	            if(keyVal == null)
-	            	return null;
-	            bStatus = iterImpl.item(keyVal.getmKey(), keyVal.getmValue());
-	            if (bStatus) {
-	                return keyVal;
-	            }
-	        }
-	        return null;
-	    }
-
-	    //
-
+	  
+	@Override
 	/**
 	 * Determines if tree is empty by examining the root for the presence of any keys
 	 * @return
@@ -232,6 +218,8 @@ public final class HMapMain implements KeyValueMainInterface {
 		}
 		return true;
 	}
+	
+	@Override
 	/**
 	* currentPage and currentIndex set by this seeker of a target object value.
 	* The only physically possible way is an iteration through the entire collection until found or end.
@@ -241,33 +229,34 @@ public final class HMapMain implements KeyValueMainInterface {
 	*/
 	@SuppressWarnings("rawtypes")
 	public synchronized Object seekObject(Object targetObject) throws IOException {	
-		//TreeSearchResult tsr = search(targetKey);
-		//if (tsr.atKey) {
-		//	setCurrent(tsr);
-		//	return getCurrentObject();
-		//} else {
-		//	return null;
-		//}
-		//rewind();
-		//if( currentPage != null ) {
-			//setCurrent();
-			// are we looking for first element?
-			//if(currentObject.equals(targetObject))
-				//return currentObject;
-			//while (gotoNextKey() == 0) {
-				//System.out.println(currentObject);
-				//if(currentObject.equals(targetObject))
-					//return currentObject;
-			//}
-		//}
+		long tim = System.currentTimeMillis();
+		KVIteratorIF<Comparable, Object> iterImpl = new KVIteratorIF<Comparable,Object>() {
+			@Override
+			public boolean item(Comparable key, Object value) {
+				if(value.equals(targetObject)) {
+					result = key;
+					return true; // 'index' in page is set
+				}
+				return false;
+			}
+		};
+		PageIteratorIF<KeyPageInterface> iterImplp = new PageIteratorIF<KeyPageInterface>() {
+				@Override
+				public void item(KeyPageInterface page) throws IOException {
+					page.retrieveEntriesInOrder(iterImpl);
+				}
+		};
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			search((Comparable) targetObject);
+			HMapNavigator.retrievePagesInOrder(this, root[i].getPage(i), iterImplp);
+			if(result != null)
+				return result;
 		}
-		// deallocate outstanding blocks in all tablespaces
-		sdbio.deallocOutstanding();
-		//clearStack();
+		if( DEBUG || DEBUGCOUNT )
+			System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		return null;
 	}
+	
+	@Override
 	/**
 	* Seek the key, if we dont find it, leave the tree at it position closest greater than element.
 	* If we do find it return true in atKey of result and leave at found key.
@@ -408,8 +397,10 @@ public final class HMapMain implements KeyValueMainInterface {
     	ksr.page.putPage();
     }
     
+    @Override
     /**
-  	 * set up keysearchresult for further operations
+     * Main search method.<p/>
+  	 * Set up keysearchresult for further operations.<p/>
      * @param key
      * @return KeySearhcResult of locate operation
      * @throws IOException
@@ -424,27 +415,6 @@ public final class HMapMain implements KeyValueMainInterface {
 			System.out.printf("%s exit key=%s lastInsertResult=%s%n", this.getClass().getName(), key, lastInsertResult);
 		return lastInsertResult;
     }
-  
-    /**
-     * Search the collision space as opposed to key space.
-     * We come here when we have run out for keyspace and are forced to search collision space.
-     * Locate the key on the index of passed page and search its children for the target.
-     * @param key Key to search for
-     * @param rootNode The root page containing child
-     * @param i index on root page to start search
-     * @return KeySearchResult of search indicating page, position of key, and success or failure (true or false in result).
-     * @throws IOException 
-     */
-    private KeySearchResult locateChild(Comparable key, KeyPageInterface rootNode, int i) throws IOException {
-		KeyPageInterface kpi = (KeyPageInterface) rootNode.getPage(i);
-	 	if(kpi == null)
-    		return new KeySearchResult(kpi, i, false);
-	 	for(int j = 0; i < kpi.getNumKeys(); i++) {
-	 		if(kpi.getKey(j).compareTo(key) == 0)
-	 			return new KeySearchResult(kpi, j, true);
-	 	}
-	 	return new KeySearchResult(kpi, kpi.getNumKeys(), false);
-	}
 
 	/**
      * Move the data from source and source index to target and targetIndex for the two pages.
@@ -478,6 +448,7 @@ public final class HMapMain implements KeyValueMainInterface {
         }
     }
  
+    @Override
 	/**
 	 * Rewind current position to beginning of tree. Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations.
@@ -487,6 +458,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		return null;
 	}
 
+    @Override
 	/**
 	 * Set current position to end of tree.Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations. 
@@ -494,10 +466,10 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	public synchronized KeyValue toEnd() throws IOException {
-		rewind();
 		return null;
 	}
 
+    @Override
 	/**
 	* Seek to location of next key. Set current key and current object.
 	* Attempt to advance the child index at the current node. If it advances beyond numKeys, a pop
@@ -537,46 +509,8 @@ public final class HMapMain implements KeyValueMainInterface {
 		}
 		return null;
 	}
-	/**
-	 * Pop the stack until we reach a valid spot in traversal.
-	 * The currentPage, currentChild are used, setCurrent() is called on exit;
-	 * @param next Pop 'previous', or 'next' key. true for 'next'
-	 * @return EOF If we reach root and cannot traverse right
-	 * @throws IOException
-	 */
-	private synchronized int popUntilValid(boolean next) throws IOException {
-		// If we are here we are at the end of the key range
-		// cant move left, are we at root? If so, we must end
-	
-		// we have reached the end of keys
-		// we must pop
-		// pop to parent and fall through when we hit root or are not out of keys
-		// go up 1 and right to the next key, if no right continue to pop until we have a right key
-		// if we hit the root, protocol right. in any case we have to reassert
-		// if there is a subtree follow it, else return the key
-		while( pop() ) {
-			if(DEBUG || DEBUGSEARCH) {
-				System.out.println("popUntilValid POP index:");
-			}
-			// we know its not a leaf, we popped to it
-			// If we pop, and we are at the end of key range, and our key is not valid, pop
-			if( next ) {
-		
-			} else {
 
-			}
-			return 0;
-		}
-		// should be at position where we return key from which we previously descended
-		// pop sets current indexes
-		//setCurrent();
-		//return 0;
-		//
-		// popped to the top and have to stop
-		return EOF;
-	}
-	
-	
+	@Override
 	/**
 	 * Utilize reposition to locate key. Set currentPage, currentIndex, currentKey, and currentChild.
 	 * deallocOutstanding is called before exit.
@@ -592,74 +526,9 @@ public final class HMapMain implements KeyValueMainInterface {
     		System.out.printf("%s.search returning with currentPage:%s%n",this.getClass().getName(),tsr);
     	}
         return tsr;
-}
-
-	/**
-	* Seeks to leftmost key in current subtree. Takes the currentChild and currentIndex from currentPage and uses the
-	* child at currentChild to descend the subtree and gravitate left.
-	*/
-	private synchronized boolean seekLastKey() throws IOException {
-		boolean foundPage = false;
-		if( DEBUG || DEBUGSEARCH ) {
-    		System.out.printf("%s.seekLastKey returning%n",this.getClass().getName());
-		}
-		return foundPage;
 	}
-
-	/** 
-	 * Internal routine to push stack. Pushes a TraversalStackElement
-	 * set keyPageStack[stackDepth] to currentPage
-	 * set indexStack[stackDepth] to currentIndex
-	 * Sets stackDepth up by 1
-	 * @param  
-	 * @return true if stackDepth not at MAXSTACK, false otherwise
-	 */
-	private synchronized void push() {
-		//if (stackDepth == MAXSTACK)
-		//	throw new RuntimeException("Maximum retrieval stack depth exceeded at "+stackDepth);
-		//keyPageStack[stackDepth] = currentPage;
-		//childStack[stackDepth] = currentChild;
-		//indexStack[stackDepth++] = currentIndex;
-		//stack.push(new TraversalStackElement(currentPage, currentIndex, currentChild));
-		if( DEBUG ) {
-			printStack();
-		}
-	}
-
-	/** 
-	 * Internal routine to pop stack. 
-	 * sets stackDepth - 1, 
-	 * currentPage to keyPageStack[stackDepth] and 
-	 * currentIndex to indexStack[stackDepth]
-	 * @return false if stackDepth reaches 0, true otherwise
-	 * 
-	 */
-	private synchronized boolean pop() {
-		//if (stackDepth == 0)
-		//if( stack.isEmpty() )
-		//	return (false);
-		//stackDepth--;
-		//currentPage = keyPageStack[stackDepth];
-		//currentIndex = indexStack[stackDepth];
-		//currentChild = childStack[stackDepth];
-		//TraversalStackElement tse = stack.pop();
-		//currentPage = (HMapKeyPage) tse.keyPage;
-		//currentIndex = tse.index;
-		//currentChild = tse.child;
-		if( DEBUG ) {
-			System.out.printf("%s.Pop:%n",this.getClass().getName());
-			printStack();
-		}
-		return (true);
-	}
-
-	private synchronized void printStack() {
-		//System.out.println("Stack Depth:"+stack.size());
-		//for(int i = 0; i < stack.size(); i++) {
-		//	TraversalStackElement tse = stack.get(i);
-		//	System.out.println("index:"+i+" "+GlobalDBIO.valueOf(tse.keyPage.pageId)+" "+tse.index+" "+tse.child);
-		//}
-	}
+	
+	@Override
 	/**
 	* Internal routine to clear references on stack. Just does stack.clear
 	*/
@@ -670,27 +539,32 @@ public final class HMapMain implements KeyValueMainInterface {
 		//stack.clear();
 	}
 
-	
+	@Override
+	/**
+	 * {@link KeyValueMainInterface}
+	 */
 	public synchronized GlobalDBIO getIO() {
 		return sdbio;
 	}
-
+	
+	@Override
 	public synchronized void setIO(GlobalDBIO sdbio) {
 		this.sdbio = sdbio;
 	}
-
+	
+	@Override
 	public synchronized RootKeyPageInterface[] getRoot() {
 		return root;
 	}
 	
-    // Inorder walk over the tree.
+    // Walk over the collision page.
     synchronized void printHMap(KeyPageInterface node) throws IOException {
             if (node != null) {
-                    	System.out.print("Leaf node:");
-                            for (int i = 0; i < node.getNumKeys(); i++) {
-                                    System.out.print("INDEX:"+i+" node:"+node.getKey(i) + ", ");
-                            }
-                            System.out.println("\n");                     
+                    System.out.print("Terminal node:");
+                    for (int i = 0; i < node.getNumKeys(); i++) {
+                        System.out.print("INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                    }
+                    System.out.println("\n");                     
             }
     }
        
@@ -699,17 +573,14 @@ public final class HMapMain implements KeyValueMainInterface {
             ArrayList<Comparable> array = new ArrayList<Comparable>();
             if (node != null) {
             	for(int i = 0; i < node.getNumKeys(); i++) {
-                            array.add(node.getKey(i));
+            		array.add(node.getKey(i));
             	}
             }
             return array;
     }
 
    @Override
-   public void traverseStructure(StructureCallBackListener listener, KeyPageInterface node, long parent, int level)
-		throws IOException {
-	// TODO Auto-generated method stub
-	
+   public void traverseStructure(StructureCallBackListener listener, KeyPageInterface node, long parent, int level) throws IOException {
    }
 
 
