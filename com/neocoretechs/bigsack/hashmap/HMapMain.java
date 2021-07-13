@@ -3,10 +3,14 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Stack;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.btree.StructureCallBackListener;
 import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.stream.PageIteratorIF;
@@ -75,10 +79,12 @@ public final class HMapMain implements KeyValueMainInterface {
 	long numKeys = 0;
 
 	private GlobalDBIO sdbio;
+	private String[] hMapWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
 	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
 	private KeySearchResult lastInsertResult = null;
 	private Object result = null; // result of object seek,etc.
 	private long count = 0L; // result of count
+	private Object mutex = new Object();
 	/**
 	 * Create the array of {@link HMap} instances for primary root pages
 	 * @param globalDBIO
@@ -88,6 +94,11 @@ public final class HMapMain implements KeyValueMainInterface {
 		if(DEBUG)
 			System.out.printf("%s ctor%n",this.getClass().getName());
 		this.sdbio = globalDBIO;
+		// Initialize the thread pool group NAMES to spin new threads in controllable batches
+		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+			hMapWorkerNames[i] = String.format("%s%s%d", "HMAPWORKER",globalDBIO.getDBName(),i);
+		}
+		ThreadPoolManager.init(hMapWorkerNames, false);
 		// Append the worker name to thread pool identifiers, if there, dont overwrite existing thread group
 		// Consistency check test, also needed to get number of keys
 		// Performs full tree/table scan, tallys record count
@@ -174,6 +185,15 @@ public final class HMapMain implements KeyValueMainInterface {
 		}
 	}
 	
+	public Callable<Object> callCount(PageIteratorIF<KeyPageInterface> iterImpl, int i) { 
+		return () -> {
+			for(int j = 0; j < root[i].getNumKeys(); j++) {
+				if(root[i].getPageId(j) != -1L)
+					HMapNavigator.retrievePagesInOrder(this, root[i].getPage(j), iterImpl);
+			}
+			return true;
+		};
+	}
 	@Override
 	/**
 	 * Returns number of table scanned keys, sets numKeys field
@@ -188,17 +208,33 @@ public final class HMapMain implements KeyValueMainInterface {
 			public void item(KeyPageInterface page) throws IOException {
 				HMapKeyPage nPage = (HMapKeyPage) page;
 				while(nPage != null ) {
-					count += nPage.getNumKeys();
+					synchronized(mutex) {
+						count += nPage.getNumKeys();
+					}
 					nPage = (HMapKeyPage) nPage.nextPage;
 				}
 			}
 		};
-		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			for(int j = 0; j < root[i].getNumKeys(); j++) {
-				if(root[i].getPageId(j) != -1L)
-					HMapNavigator.retrievePagesInOrder(this, root[i].getPage(j), iterImpl);
+		Future<?>[] futureArray = new Future<?>[DBPhysicalConstants.DTABLESPACES];
+		// queue to each tablespace
+		try {
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				futureArray[i] = ThreadPoolManager.getInstance().spin(callCount(iterImpl, i),hMapWorkerNames[i]);
 			}
+			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+				futureArray[i].get();
+				if(DEBUG)
+					System.out.printf("%s next count for tablespace %d%n", this.getClass().getName(),i);
+			}
+		} catch (InterruptedException | ExecutionException e) {
+			throw new IOException(e);
 		}
+		//for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+		//	for(int j = 0; j < root[i].getNumKeys(); j++) {
+		//		if(root[i].getPageId(j) != -1L)
+		//			HMapNavigator.retrievePagesInOrder(this, root[i].getPage(j), iterImpl);
+		//	}
+		//}
 		if( DEBUG || DEBUGCOUNT )
 			System.out.println("Count for "+sdbio.getDBName()+" returned "+count+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		return count;
@@ -543,7 +579,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	/**
 	 * {@link KeyValueMainInterface}
 	 */
-	public synchronized GlobalDBIO getIO() {
+	public GlobalDBIO getIO() {
 		return sdbio;
 	}
 	
