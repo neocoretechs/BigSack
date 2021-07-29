@@ -61,6 +61,7 @@ final class BigSackSession implements TransactionInterface {
 	private int uid;
 	private int gid;
 	private KeyValueMainInterface kvStore;
+	private GlobalDBIO globalIO;
 	/**
 	* Create a new session
 	* @param kvMain The {@link KeyValueMainInterface} Main object than handles the key pages indexing the objects in the deep store.
@@ -68,8 +69,9 @@ final class BigSackSession implements TransactionInterface {
 	* @param tgis The group
 	* @exception IOException If global IO problem
 	*/
-	protected BigSackSession(KeyValueMainInterface kvMain, int uid, int gid)  {
-		this.kvStore = kvMain;
+	protected BigSackSession(GlobalDBIO globalIO, int uid, int gid)  {
+		this.globalIO = globalIO;
+		this.kvStore = this.globalIO.getKeyValueMain();
 		this.uid = uid;
 		this.gid = gid;
 		if( DEBUG )

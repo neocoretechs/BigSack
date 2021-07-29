@@ -157,11 +157,10 @@ public final class SessionManager {
 			// did'nt find it, create anew, throws IllegalAccessException if no go.
 			// Global IO and main Key/Value index
 			GlobalDBIO objIO = new GlobalDBIO(dbname, keystoreType, backingstoreType, getGlobalTransId(), poolBlocks);
-			KeyValueMainInterface keyValueMain =  objIO.getKeyValueMain();
-			hps = new BigSackSession(keyValueMain, uid, gid);
+			hps = new BigSackSession(objIO, uid, gid);
 			SessionTable.put(dbname, hps);
 			if( DEBUG )
-				System.out.printf("New session for db:%s session:%s kvmain:%s GlobalIo:%s%n",dbname,hps,keyValueMain,objIO);
+				System.out.printf("New session for db:%s session:%s kvmain:%s GlobalIo:%s%n",dbname,hps,objIO.getKeyValueMain(),objIO);
 		} else {
 			// if closed, then open, else if open this does nothing
 			hps.Open();
@@ -199,8 +198,7 @@ public final class SessionManager {
 			GlobalDBIO objIO = new GlobalDBIO(dbname, keystoreType, backingstoreType, getGlobalTransId(), poolBlocks);
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery bringing up BTree");
-			KeyValueMainInterface bTree =  objIO.getKeyValueMain();
-			hps = new BigSackSession(bTree, uid, gid);
+			hps = new BigSackSession(objIO, uid, gid);
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery logging session");
 			SessionTable.put(dbname, hps);

@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -29,7 +30,7 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
  *
  */
 public class MultithreadedIOManager implements IoManagerInterface {
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 	private static final boolean DEBUGINSERT = false;
 	private static final boolean DEBUGWRITE = false; // view blocks written to log and store
 	public GlobalDBIO globalIO;
@@ -112,7 +113,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public Optr getNewInsertPosition(ArrayList<Long> locs, int bytesNeeded) throws IOException {
 		if( DEBUGINSERT )
 			System.out.printf("%s.getNewInsertPosition(%s, %d, %d, %d)%n",this.getClass().getName(), locs, bytesNeeded);
-		return MappedBlockBuffer.getNewInsertPosition(this.globalIO, locs, bytesNeeded);
+		return globalIO.getNewInsertPosition(locs, bytesNeeded);
 	}
 
 	
@@ -131,7 +132,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		// queue to each tablespace
 		try {
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callGetNextFreeBlock(bufferPool.getBlockBuffer(i).getFreeBlockList()),ioWorkerNames[i]);
+				futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callGetNextFreeBlock(),ioWorkerNames[i]);
 			}
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				futureArray[i].get();
@@ -244,6 +245,17 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.printf("%s getNextFree smallest Tablespace %d%n", this.getClass().getName(), eliglbleTablespace);
 		long nextFree = ioWorker[eliglbleTablespace].getNextFreeBlock();
 		BlockAccessIndex bai = bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().remove(nextFree);
+		if(bai == null) {
+			StringBuilder s = new StringBuilder();
+			s.append("size=");
+			s.append(bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().size());
+			s.append("|");
+			for(Long b : bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().keySet()) {
+				s.append(b);
+				s.append("|");
+			}
+			throw new IOException("Failed to remove valid block from free list:"+GlobalDBIO.valueOf(nextFree)+" "+s.toString());
+		}
 		if(DEBUG)
 			System.out.printf("%s getNextFree smallest Tablespace %d returned %s for next free block %d%n", this.getClass().getName(), eliglbleTablespace, bai, nextFree);
 		return bai;

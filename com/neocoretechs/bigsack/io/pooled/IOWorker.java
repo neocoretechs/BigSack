@@ -24,7 +24,7 @@ import com.neocoretechs.bigsack.io.MmapIO;
 public class IOWorker implements IoInterface { 
 	private static final boolean DEBUG = false;
 	private static final boolean DEBUGSEEK = false;
-	private static final boolean DEBUGFREE = false;
+	private static final boolean DEBUGFREE = true;
 	private IoInterface ioUnit;
 	private int tablespace; // 0-7
 	private GlobalDBIO sdbio;
@@ -60,9 +60,13 @@ public class IOWorker implements IoInterface {
 		return sdbio;
 	}
 	
-	public Callable<Object> callGetNextFreeBlock(LinkedHashMap<Long, BlockAccessIndex> freeBlockList) { 
+	public void setFreeBlockList(LinkedHashMap<Long, BlockAccessIndex> freeBlockList) {
+		this.freeBlockList = freeBlockList;
+	}
+	
+	public Callable<Object> callGetNextFreeBlock() { 
 		return () -> {
-			getNextFreeBlocks(freeBlockList);
+			getNextFreeBlocks();
 			return true;
 		};
 	}
@@ -72,10 +76,9 @@ public class IOWorker implements IoInterface {
 	* nextFreeBlock is guaranteed to be valid unless disk space is exhausted, which presumably would throw an exception.
 	* @exception IOException if seek or size fails
 	*/
-	private void getNextFreeBlocks(LinkedHashMap<Long, BlockAccessIndex> freeBlockList) throws IOException {
+	private void getNextFreeBlocks() throws IOException {
 		if(DEBUGFREE)
 			System.out.printf("%s.getNextFreeBlocks freelist=%d%n", this.getClass().getName(), freeBlockList.size());
-			this.freeBlockList = freeBlockList;
 			// tablespace 0 end of rearward scan is block 2 otherwise 0, tablespace 0 has root node
 			long endBlock = 0L;
 			long endBl = ioUnit.Fsize();
@@ -91,9 +94,9 @@ public class IOWorker implements IoInterface {
 					d.resetBlock();
 					BlockAccessIndex bai = new BlockAccessIndex(sdbio, GlobalDBIO.makeVblock(tablespace, startOfNextFreeBlock), d);
 					//ioUnit.FseekAndWrite(startOfNextFreeBlock, d); // ensure its reset with writethrough
-					freeBlockList.put(nextFreeBlock, bai);
+					freeBlockList.put(bai.getBlockNum(), bai);
 					if(DEBUGFREE)
-						System.out.printf("%s.getNextFreeBlocks nextFreeBlock=%d freelist=%d%n", this.getClass().getName(),nextFreeBlock,freeBlockList.size());
+						System.out.printf("%s.getNextFreeBlocks nextFreeBlock=%d blockNum=%s freelist=%d%n", this.getClass().getName(),nextFreeBlock,GlobalDBIO.valueOf(bai.getBlockNum()),freeBlockList.size());
 				} else {
 					break;
 				}
@@ -125,7 +128,7 @@ public class IOWorker implements IoInterface {
 	 */
 	public synchronized long getNextFreeBlock() throws IOException {
 		if(freeBlockList.isEmpty())
-			getNextFreeBlocks(freeBlockList);
+			getNextFreeBlocks();
 		long min = freeBlockList.entrySet().stream().min(Map.Entry.comparingByKey()).get().getKey();
 		return min;
 	}

@@ -13,6 +13,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
@@ -67,6 +69,7 @@ public class GlobalDBIO {
 	private static final boolean DEBUG = false;
 	private static final boolean DEBUGDESERIALIZE = false; // called upon every deserialization
 	private static final boolean DEBUGLOGINIT = false; // view blocks written to log and store
+	private static final boolean NEWNODEPOSITIONDEBUG = false;;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 	private String[][] nodePorts = null; // remote worker nodes and their ports, if present
@@ -664,6 +667,45 @@ public class GlobalDBIO {
 		if( DEBUG ) 
 			System.out.printf("getHMapPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
 		return btk;
+	}
+	
+	/**
+	* Determine location of new node.
+	* Attempts to cluster entries in used blocks near insertion point relative to other entries.
+	* Choose a random tablespace, then find a key that has that tablespace, then cluster there.
+	* @param locs The array of page pointers of existing entries to check for block space
+	* @param index The index of the target in array, such that we dont check against that entry
+	* @param nkeys The total keys in use to check in array
+	* @param bytesneeded The number of bytes to write
+	* @return The Optr pointing to the new node position
+	* @exception IOException If we cannot get block for new node
+	*/
+	public synchronized Optr getNewInsertPosition(ArrayList<Long> locs, int bytesNeeded) throws IOException {
+		long blockNum = -1L;
+		BlockAccessIndex ablk = null;
+		short bytesUsed = 0; 
+		for(int i = 0; i < locs.size(); i++) {
+			ablk = findOrAddBlock(locs.get(i));
+			short bytesAvailable = (short) (DBPhysicalConstants.DATASIZE - ablk.getBlk().getBytesused());
+			if( bytesAvailable >= bytesNeeded || bytesAvailable == DBPhysicalConstants.DATASIZE) {
+				// eligible
+				blockNum = ablk.getBlockNum();
+				bytesUsed = ablk.getBlk().getBytesused();
+				break;
+			}
+			ablk.decrementAccesses();
+		}
+		boolean stolen = false;
+		// come up empty?
+		if (blockNum == -1L) {
+			ablk = stealblk();
+			blockNum = ablk.getBlockNum();
+			bytesUsed = ablk.getBlk().getBytesused();
+			stolen = true;
+		}
+		if( NEWNODEPOSITIONDEBUG )
+			System.out.println("MappedBlockBuffer.getNewNodePosition "+GlobalDBIO.valueOf(blockNum)+" Used bytes:"+bytesUsed+" stolen:"+stolen+" locs:"+Arrays.toString(locs.toArray()));
+		return new Optr(blockNum, bytesUsed);
 	}
 
 	/**

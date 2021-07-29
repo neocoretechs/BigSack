@@ -33,7 +33,6 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
 public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<BlockAccessIndex>> {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
-	private static final boolean NEWNODEPOSITIONDEBUG = false;
 	private GlobalDBIO globalIO;
 	private IoInterface ioWorker;
 	private int tablespace;
@@ -55,6 +54,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		this.globalIO = ((IOWorker)ioWorker).getGlobalDBIO();
 		this.ioWorker = ioWorker;
 		this.tablespace = tablespace;
+		((IOWorker)ioWorker).setFreeBlockList(freeBlockList);
 		Thread cleanerThread = new Thread(() -> {
 	            while (!Thread.currentThread().isInterrupted()) {
 	                try {
@@ -134,7 +134,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		ablk.get().getBlk().setNextblk(GlobalDBIO.getBlock(newblock));
 		ablk.get().getBlk().setIncore(true);
 		ablk.get().getBlk().setInlog(false);
-		SoftReference<BlockAccessIndex> newBai = addBlockAccess(newblock);
+		SoftReference<BlockAccessIndex> newBai = addBlockAccessNoRead(newblock);
 		newBai.get().resetBlock(true);
 		// Set previous to relative block of last good
 		newBai.get().getBlk().setPrevblk(GlobalDBIO.getBlock(previousBlk.get().getBlockNum()));
@@ -158,28 +158,27 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	}
 
 	/**
-	 * Search for the numbered block in the free block list, remove it, extracting the {@link BlockAccessIndex}
-	 * start the expiration timer for the block, check the freelist for empty and if so, createBuckets, then return the block.<p/>
-	 * If we dont find it on the free list, attempt to bring it in from deep store and put it on the active list.
+	 * Search for the numbered block {@link BlockAccessIndex}
+	 * start the expiration timer for the block, then return the block.<p/>
+	 * Attempt to bring it in from deep store if read is true, regardless, put it on the active list if it wasnt there already.
 	 * @param lbn the block number to retrieve
-	 * @return the BlockAccessIndex removed from freechain or brought in from deep store
+	 * @param read to read the block or just create the entry
+	 * @return the BlockAccessIndex in list or brought in from deep store
 	 * @throws IOException
 	 */
-	synchronized BlockAccessIndex getNextFreeBlock(Long lbn) throws IOException {
-		BlockAccessIndex bai = freeBlockList.remove(lbn);
-		if(bai == null) {
-			SoftReference<BlockAccessIndex> sbai = get(lbn);
-			if( sbai == null ) {
-				bai = new BlockAccessIndex(globalIO, true);
-				bai.setBlockNumber(GlobalDBIO.makeVblock(tablespace, lbn));
-			} else {
-				bai = sbai.get();
-			}
+	synchronized BlockAccessIndex getBlock(Long lbn, boolean read) throws IOException {
+		BlockAccessIndex bai;
+		SoftReference<BlockAccessIndex> sbai = get(lbn);
+		if( sbai == null ) {
+			bai = new BlockAccessIndex(globalIO, true);
+			bai.setBlockNumber(GlobalDBIO.makeVblock(tablespace, lbn));
+			if(read)
+				ioWorker.FseekAndRead(lbn, bai.getBlk());
+			put(new SoftReference<BlockAccessIndex>(bai));
+		} else {
+			bai = sbai.get();
 		}
 		bai.startExpired();
-		if(freeBlockList.isEmpty()) {
-			globalIO.createBuckets(tablespace, freeBlockList, false);
-		}
 		return bai;
 	}
 	
@@ -215,46 +214,6 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		} while (runcount > 0);
 		return true;
 	
-	}
-	/**
-	* Determine location of new node.
-	* Attempts to cluster entries in used blocks near insertion point relative to other entries.
-	* Choose a random tablespace, then find a key that has that tablespace, then cluster there.
-	* @param locs The array of page pointers of existing entries to check for block space
-	* @param index The index of the target in array, such that we dont check against that entry
-	* @param nkeys The total keys in use to check in array
-	* @param bytesneeded The number of bytes to write
-	* @return The Optr pointing to the new node position
-	* @exception IOException If we cannot get block for new node
-	*/
-	public static Optr getNewInsertPosition(GlobalDBIO sdbio, ArrayList<Long> locs, int bytesNeeded ) throws IOException {
-		synchronized(sdbio) {
-		long blockNum = -1L;
-		BlockAccessIndex ablk = null;
-		short bytesUsed = 0; 
-		for(int i = 0; i < locs.size(); i++) {
-			ablk = sdbio.findOrAddBlock(locs.get(i));
-			short bytesAvailable = (short) (DBPhysicalConstants.DATASIZE - ablk.getBlk().getBytesused());
-			if( bytesAvailable >= bytesNeeded || bytesAvailable == DBPhysicalConstants.DATASIZE) {
-				// eligible
-				blockNum = ablk.getBlockNum();
-				bytesUsed = ablk.getBlk().getBytesused();
-				break;
-			}
-			ablk.decrementAccesses();
-		}
-		boolean stolen = false;
-		// come up empty?
-		if (blockNum == -1L) {
-			ablk = sdbio.stealblk();
-			blockNum = ablk.getBlockNum();
-			bytesUsed = ablk.getBlk().getBytesused();
-			stolen = true;
-		}
-		if( NEWNODEPOSITIONDEBUG )
-			System.out.println("MappedBlockBuffer.getNewNodePosition "+GlobalDBIO.valueOf(blockNum)+" Used bytes:"+bytesUsed+" stolen:"+stolen+" locs:"+Arrays.toString(locs.toArray()));
-		return new Optr(blockNum, bytesUsed);
-		}
 	}
 
 	/**
@@ -318,9 +277,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		if( DEBUG ) {
 			System.out.println("MappedBlockBuffer.addBlockAccess "+Lbn+" "+this);
 		}
-		SoftReference<BlockAccessIndex> bai = new SoftReference<BlockAccessIndex>(getNextFreeBlock(Lbn));		
-		ioWorker.FseekAndRead(Lbn, bai.get().getBlk());
-		put(Lbn, bai);
+		SoftReference<BlockAccessIndex> bai = new SoftReference<BlockAccessIndex>(getBlock(Lbn, true));
 		if( bai.get().getAccesses() == 0 )
 			bai.get().addAccess();
 		bai.get().setByteindex((short) 0);
@@ -357,7 +314,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+GlobalDBIO.valueOf(Lbn)+" "+this);
 		}
 		// make sure we have open slots
-		SoftReference<BlockAccessIndex> bai = new SoftReference<BlockAccessIndex>(getNextFreeBlock(Lbn));
+		SoftReference<BlockAccessIndex> bai = new SoftReference<BlockAccessIndex>(getBlock(Lbn, false));
 		// up the access latch, set byteindex to 0
 		if( bai.get().getAccesses() == 0 )
 			bai.get().addAccess();
