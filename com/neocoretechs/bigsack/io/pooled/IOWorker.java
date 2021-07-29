@@ -79,7 +79,6 @@ public class IOWorker implements IoInterface {
 			// tablespace 0 end of rearward scan is block 2 otherwise 0, tablespace 0 has root node
 			long endBlock = 0L;
 			long endBl = ioUnit.Fsize();
-			long oldEnd = endBl; // in case we have to extend the freechain
 			long nextFreeBlock = -1L;
 			while (endBl > endBlock) {
 				long startOfNextFreeBlock = endBl - (long) DBPhysicalConstants.DBLOCKSIZ;

@@ -32,7 +32,7 @@ import com.neocoretechs.bigsack.io.ThreadPoolManager;
  * @author Jonathan Groff (C) NeoCoreTechs 2021
  */
 public class BufferPool {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private GlobalDBIO globalDBIO;
 	private MappedBlockBuffer[] blockBuffer; // block number to Datablock
 	private RecoveryLogManager[] undoLog;
@@ -115,7 +115,7 @@ public class BufferPool {
 	 * @param ioWorker The {@link IOWorker} for the tablespace to initialize
 	 * @throws IOException 
 	 */
-	public void initialize(IoInterface ioWorker) throws IOException {
+	public synchronized void initialize(IoInterface ioWorker) throws IOException {
 		long endBl = ioWorker.Fsize() - (long) DBPhysicalConstants.DBLOCKSIZ;
 		Datablock d = new Datablock();
 		d.resetBlock();
@@ -163,7 +163,7 @@ public class BufferPool {
 		};
 	}
 	
-	public void rollback() {
+	public synchronized void rollback() {
 		if( DEBUG )
 			System.out.printf("%s.rollback()%n",this.getClass().getName());
 		Future<?>[] futureArray = new Future<?>[DBPhysicalConstants.DTABLESPACES];
@@ -276,7 +276,7 @@ public class BufferPool {
 		return blockBuffer[tblsp].addBlockAccessNoRead(GlobalDBIO.getBlock(Lbn)).get();
 	}
 	
-	public BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
+	public synchronized BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(blk.getBlockNum());
 		return blockBuffer[tblsp].addBlockAccess(blk).get();
 	}

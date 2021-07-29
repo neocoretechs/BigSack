@@ -227,24 +227,21 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public static Optr getNewInsertPosition(GlobalDBIO sdbio, ArrayList<Optr> locs, int index, int nkeys, int bytesNeeded ) throws IOException {
+	public static Optr getNewInsertPosition(GlobalDBIO sdbio, ArrayList<Long> locs, int bytesNeeded ) throws IOException {
 		synchronized(sdbio) {
 		long blockNum = -1L;
 		BlockAccessIndex ablk = null;
 		short bytesUsed = 0; 
-		for(int i = 0; i < nkeys; i++) {
-			if(i == index) continue;
-			if(locs.get(i) != null && !locs.get(i).equals(Optr.emptyPointer) ) {
-				ablk = sdbio.findOrAddBlock(locs.get(i).getBlock());
-				short bytesAvailable = (short) (DBPhysicalConstants.DATASIZE - ablk.getBlk().getBytesused());
-				if( bytesAvailable >= bytesNeeded || bytesAvailable == DBPhysicalConstants.DATASIZE) {
-					// eligible
-					blockNum = ablk.getBlockNum();
-					bytesUsed = ablk.getBlk().getBytesused();
-					break;
-				}
-				ablk.decrementAccesses();
+		for(int i = 0; i < locs.size(); i++) {
+			ablk = sdbio.findOrAddBlock(locs.get(i));
+			short bytesAvailable = (short) (DBPhysicalConstants.DATASIZE - ablk.getBlk().getBytesused());
+			if( bytesAvailable >= bytesNeeded || bytesAvailable == DBPhysicalConstants.DATASIZE) {
+				// eligible
+				blockNum = ablk.getBlockNum();
+				bytesUsed = ablk.getBlk().getBytesused();
+				break;
 			}
+			ablk.decrementAccesses();
 		}
 		boolean stolen = false;
 		// come up empty?
@@ -254,9 +251,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 			bytesUsed = ablk.getBlk().getBytesused();
 			stolen = true;
 		}
-
 		if( NEWNODEPOSITIONDEBUG )
-			System.out.println("MappedBlockBuffer.getNewNodePosition "+GlobalDBIO.valueOf(blockNum)+" Used bytes:"+bytesUsed+" stolen:"+stolen+" called by keys(target="+index+" in use="+nkeys+") locs:"+Arrays.toString(locs.toArray()));
+			System.out.println("MappedBlockBuffer.getNewNodePosition "+GlobalDBIO.valueOf(blockNum)+" Used bytes:"+bytesUsed+" stolen:"+stolen+" locs:"+Arrays.toString(locs.toArray()));
 		return new Optr(blockNum, bytesUsed);
 		}
 	}

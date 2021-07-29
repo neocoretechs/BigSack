@@ -17,7 +17,7 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
 
 public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	public final static int MAXKEYSCHILD = 512; // 9 bits (0-511) times 8 bytes long page pointer
 	protected BlockAccessIndex lbai = null; // The page is tied to a block
 	protected KeyValueMainInterface hMapMain;
@@ -34,12 +34,12 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 		}
 	}
 	@Override
-	public long getPageId() {
+	public synchronized long getPageId() {
 		return lbai.getBlockNum();
 	}
 	
 	@Override
-	public void putPage() throws IOException {
+	public synchronized void putPage() throws IOException {
 		DataOutputStream dos = GlobalDBIO.getBlockOutputStream(lbai);
 		dos.writeLong(numKeys);
 		for(int i = 0; i < numKeys; i++) {
@@ -51,7 +51,7 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 	}
 	
 	@Override
-	public void readFromDBStream(DataInputStream dis) throws IOException {
+	public synchronized void readFromDBStream(DataInputStream dis) throws IOException {
 		if(dis.available() < 8)
 			return;
 		numKeys = dis.readLong();
@@ -63,7 +63,7 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 	}
 
 	@Override
-	public void setPageIdArray(int index, long block, boolean update) throws IOException {
+	public synchronized void setPageIdArray(int index, long block, boolean update) throws IOException {
 		if(index >= numKeys) {
 			numKeys = index+1;
 		}
@@ -72,7 +72,7 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 	}
 
 	@Override
-	public long getPageId(int index) {
+	public synchronized long getPageId(int index) {
 		if(index >= numKeys)
 			return -1L;
 		return childKeys[index];
@@ -80,46 +80,46 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 
 
 	@Override
-	public RootKeyPageInterface getPage(int index) throws IOException {
+	public synchronized RootKeyPageInterface getPage(int index) throws IOException {
 		if(childKeys[index] != -1L)
 			return GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), childKeys[index]);
 		return null;
 	}
 
 	@Override
-	public boolean isUpdated() {
+	public synchronized boolean isUpdated() {
 		return lbai.isUpdated();
 	}
 
 	@Override
-	public void setUpdated(boolean updated) {
+	public synchronized void setUpdated(boolean updated) {
 		// updated not optional for this mode, but may be in others
 		lbai.setUpdated();
 	}
 
 	@Override
-	public Datablock getDatablock() {
+	public synchronized Datablock getDatablock() {
 		return lbai.getBlk();
 	}
 
 	@Override
-	public BlockAccessIndex getBlockAccessIndex() {
+	public synchronized BlockAccessIndex getBlockAccessIndex() {
 		return lbai;
 	}
 
 	@Override
-	public int getNumKeys() {
+	public synchronized int getNumKeys() {
 		return (int) numKeys;
 	}
 
 	@Override
-	public void setNumKeys(int numKeys) {
+	public synchronized void setNumKeys(int numKeys) {
 		this.numKeys = numKeys;
 		setUpdated(true);
 	}
 
 	@Override
-	public void setRootNode(BlockAccessIndex bai) throws IOException {
+	public synchronized void setRootNode(BlockAccessIndex bai) throws IOException {
 		lbai = bai;
 	}
 	 

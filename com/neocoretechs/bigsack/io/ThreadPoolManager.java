@@ -19,12 +19,11 @@ import java.util.concurrent.ThreadFactory;
  * ThreadPoolManager.shutdown([group]) shuts down named group
  * The default group is determined by constant DEFAULT_THREAD_POOL and is used when no arguments are provided in overloaded methods
  * additional groups may be named using init() and an array containing group names
- * Copyright 2014 NeoCoreTechs
- * @author jg
+ * @author Jonathan Groff Copyright 2014 NeoCoreTechs
  *
  */
 public class ThreadPoolManager {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static String DEFAULT_THREAD_POOL = "SACKIO";
 	private int threadNum = 0;
     private static Map<String, ExecutorService> executor = new HashMap<String, ExecutorService>();// = Executors.newCachedThreadPool(dtf);

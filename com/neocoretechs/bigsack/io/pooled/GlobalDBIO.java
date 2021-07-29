@@ -64,9 +64,9 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 */
 
 public class GlobalDBIO {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final boolean DEBUGDESERIALIZE = false; // called upon every deserialization
-	private static final boolean DEBUGLOGINIT = true; // view blocks written to log and store
+	private static final boolean DEBUGLOGINIT = false; // view blocks written to log and store
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
 	private int L3cache = 0; // Level 3 cache type, mmap, file, etc
 	private String[][] nodePorts = null; // remote worker nodes and their ports, if present
@@ -769,115 +769,114 @@ public class GlobalDBIO {
 		byte[] b = GlobalDBIO.getObjectAsBytes(target);
 		sdbio.delete_object(pos, b.length);
 	}
-		/**
-		* delete_object and potentially reclaim space
-		* @param loc Location of object
-		* @param osize object size
-		* @exception IOException if the block cannot be sought or written
-		*/
-		public synchronized void delete_object(Optr loc, int osize) throws IOException {
-			//System.out.println("GlobalDBIO.delete_object "+loc+" "+osize);
-			ioManager.objseek(loc);
-			ioManager.deleten(loc, osize);
-		}
+	/**
+	* delete_object and potentially reclaim space
+	* @param loc Location of object
+	* @param osize object size
+	* @exception IOException if the block cannot be sought or written
+	*/
+	public synchronized void delete_object(Optr loc, int osize) throws IOException {
+		//System.out.println("GlobalDBIO.delete_object "+loc+" "+osize);
+		ioManager.objseek(loc);
+		ioManager.deleten(loc, osize);
+	}
 		
-		/**
-		 * Add an object, which in this case is a load of bytes.
-		 * @param loc Location to add this
-		 * @param o The byte payload to add to pool
-		 * @param osize  The size of the payload to add from array
-		 * @exception IOException If the adding did not happen
-		 */
-		public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
-			int tblsp = ioManager.objseek(loc);
-			//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
-			ioManager.writen(tblsp, o, osize);
-			//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
-			//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
-			//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
-			
+	/**
+	 * Add an object, which in this case is a load of bytes.
+	* @param loc Location to add this
+	* @param o The byte payload to add to pool
+	* @param osize  The size of the payload to add from array
+	* @exception IOException If the adding did not happen
+	*/
+	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
+		int tblsp = ioManager.objseek(loc);
+		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
+		ioManager.writen(tblsp, o, osize);
+		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
+		//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
+		//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
 			//ioManager.deallocOutstandingWriteLog(tblsp);
-		}
+	}
 
-		/**
-		* Read Object in pool: deserialize the byte array.
-		* @param iloc The location of the object to retrieve from backing store
-		* @return The Object extracted from the backing store
-		* @exception IOException if the op fails
-		*/
-		public synchronized Object deserializeObject(long iloc) throws IOException {
+	/**
+	* Read Object in pool: deserialize the byte array.
+	* @param iloc The location of the object to retrieve from backing store
+	* @return The Object extracted from the backing store
+	* @exception IOException if the op fails
+	*/
+	public synchronized Object deserializeObject(long iloc) throws IOException {
+		// read Object at ptr to byte array
+		if(DEBUG)
+			System.out.print(" Deserialize "
+					+GlobalDBIO.valueOf(iloc)+" current block "+GlobalDBIO.valueOf(iloc));
+		Object Od = null;
+		try {
+			ObjectInput s;
+			if (isCustomClassLoader())
+				s =	new CObjectInputStream(
+						GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc)),
+						getCustomClassLoader());
+			else
+				s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc)));
+			Od = s.readObject();
+			s.close();
+		} catch (IOException | ClassNotFoundException ioe) {
+			throw new IOException(
+				"deserializeObject from long: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility "
+					+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
+		} 
+		if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
+		return Od;
+	}
+	/**
+	* Read Object in pool: deserialize the byte array.
+	* @param sdbio the session database IO object from which we get our DBInput stream and perhaps custom class loader
+	* @param iloc The location of the object
+	* @return the Object from dir. entry ptr.
+	* @exception IOException if the op fails
+	*/
+	public synchronized Object deserializeObject(Optr iloc) throws IOException {
 			// read Object at ptr to byte array
-			if(DEBUG)
-				System.out.print(" Deserialize "
-						+GlobalDBIO.valueOf(iloc)+" current block "+GlobalDBIO.valueOf(iloc));
-			Object Od = null;
-			try {
-				ObjectInput s;
-				if (isCustomClassLoader())
-					s =	new CObjectInputStream(
-							GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc)),
-							getCustomClassLoader());
-				else
-					s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc)));
-				Od = s.readObject();
-				s.close();
-			} catch (IOException | ClassNotFoundException ioe) {
-				throw new IOException(
-					"deserializeObject from long: "
-						+ ioe.toString()
-						+ ": Class Unreadable, may have been modified beyond version compatibility "
-						+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
-			} 
-			if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
-			return Od;
+		Object Od;
+		if(DEBUGDESERIALIZE)
+			System.out.print(" Deserialize "+iloc);
+		try {
+			ObjectInput s;
+			ioManager.objseek(iloc);
+			if (isCustomClassLoader())
+				s =	new CObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()), getCustomClassLoader());
+			else
+				s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()));
+			Od = s.readObject();
+			s.close();
+		} catch (IOException | ClassNotFoundException ioe) {
+			throw new IOException(
+				"deserializeObject from pointer: "
+					+ ioe.toString()
+					+ ": Class Unreadable, may have been modified beyond version compatibility "
+					+ iloc+" in "+getDBName());
 		}
-		/**
-		* Read Object in pool: deserialize the byte array.
-		* @param sdbio the session database IO object from which we get our DBInput stream and perhaps custom class loader
-		* @param iloc The location of the object
-		* @return the Object from dir. entry ptr.
-		* @exception IOException if the op fails
-		*/
-		public synchronized Object deserializeObject(Optr iloc) throws IOException {
-			// read Object at ptr to byte array
-			Object Od;
-			if(DEBUGDESERIALIZE)
-				System.out.print(" Deserialize "+iloc);
-			try {
-				ObjectInput s;
-				ioManager.objseek(iloc);
-				if (isCustomClassLoader())
-					s =	new CObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()), getCustomClassLoader());
-				else
-					s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()));
-				Od = s.readObject();
-				s.close();
-			} catch (IOException | ClassNotFoundException ioe) {
-				throw new IOException(
-					"deserializeObject from pointer: "
-						+ ioe.toString()
-						+ ": Class Unreadable, may have been modified beyond version compatibility "
-						+ iloc+" in "+getDBName());
-			}
-			if( DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
-			return Od;
-		}
+		if( DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
+		return Od;
+	}
 		
-		public synchronized boolean isCustomClassLoader() {
-			return isCustomClassLoader;
-		}
+	public synchronized boolean isCustomClassLoader() {
+		return isCustomClassLoader;
+	}
 
-		public synchronized void setCustomClassLoader(boolean isCustomClassLoader) {
-			this.isCustomClassLoader = isCustomClassLoader;
-		}
+	public synchronized void setCustomClassLoader(boolean isCustomClassLoader) {
+		this.isCustomClassLoader = isCustomClassLoader;
+	}
 
-		public synchronized ClassLoader getCustomClassLoader() {
-			return customClassLoader;
-		}
+	public synchronized ClassLoader getCustomClassLoader() {
+		return customClassLoader;
+	}
 
-		public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
-			this.customClassLoader = customClassLoader;
-		}
+	public synchronized void setCustomClassLoader(ClassLoader customClassLoader) {
+		this.customClassLoader = customClassLoader;
+	}
 		
 
 	public long getTransId() {

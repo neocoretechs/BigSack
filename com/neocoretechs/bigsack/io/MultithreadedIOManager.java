@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.io;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -34,7 +35,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public GlobalDBIO globalIO;
 	private IOWorker ioWorker[];
 	private BufferPool bufferPool;
-	private int smallestTablespace = -1;
 	protected int L3cache = 0;
 	public String[] ioWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
 	/**
@@ -86,7 +86,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		// Take block 0 from bufferpool
 		globalIO.getKeyValueMain().createRootNode();
 		// fill in the next free block indicators and set the smallest tablespace
-		findSmallestTablespace();
+		findEligibleTablespace();
 		return true;
 	}
 	
@@ -105,15 +105,14 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* We determine location of new node, store in new_node_pos.
 	* Attempts to cluster entries in used blocks near insertion point.
 	* @param locs The array of previous entries to check for block space
-	* @param index The index of the target in array, such that we dont check that
-	* @param nkeys The total keys in use to check in array
+	* @param bytesNeeded Space required for insert
 	* @return The Optr block plus offset in the block pointing to the new node position
 	* @exception IOException If we cannot get block for new item
 	*/
-	public Optr getNewInsertPosition(ArrayList<Optr> locs, int index, int nkeys, int bytesNeeded) throws IOException {
+	public Optr getNewInsertPosition(ArrayList<Long> locs, int bytesNeeded) throws IOException {
 		if( DEBUGINSERT )
-			System.out.printf("%s.getNewInsertPosition(%s, %d, %d, %d)%n",this.getClass().getName(), locs, index, nkeys, bytesNeeded);
-		return MappedBlockBuffer.getNewInsertPosition(this.globalIO, locs, index, nkeys, bytesNeeded);
+			System.out.printf("%s.getNewInsertPosition(%s, %d, %d, %d)%n",this.getClass().getName(), locs, bytesNeeded);
+		return MappedBlockBuffer.getNewInsertPosition(this.globalIO, locs, bytesNeeded);
 	}
 
 	
@@ -215,22 +214,22 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		return 0L;
 	}
 
-	public synchronized int getSmallestTablespace() {
-		return smallestTablespace;
-	}
+
 	/**
 	 * Find the largest freechain, and conversely the smallest tablespace, and leave it in filed smallestTablespace.
 	 */
 	@Override
-	public synchronized int findSmallestTablespace() throws IOException {
+	public int findEligibleTablespace() throws IOException {
+		int eliglbleTablespace = -1;
 		if( DEBUG )
-			System.out.printf("%s.findSmallestTablespace invoked.%n",this.getClass().getName());
-		smallestTablespace = 0;
-		for (int i = 1; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			if(bufferPool.getBlockBuffer(i).sizeFreeBlockList() >= bufferPool.getBlockBuffer(smallestTablespace).sizeFreeBlockList())
-				smallestTablespace = i;
-		}
-		return smallestTablespace;
+			System.out.printf("%s.findEligibleTablespace invoked.%n",this.getClass().getName());
+		Random r = new Random();
+		eliglbleTablespace = r.nextInt(DBPhysicalConstants.DTABLESPACES);
+		//for (int i = 1; i < DBPhysicalConstants.DTABLESPACES; i++) {
+		//	if(bufferPool.getBlockBuffer(i).sizeFreeBlockList() >= bufferPool.getBlockBuffer(eliglbleTablespace).sizeFreeBlockList())
+		//		eliglbleTablespace = i;
+		//}
+		return eliglbleTablespace;
 	}
 	
 	@Override
@@ -240,13 +239,13 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException 
 	 */
 	public synchronized BlockAccessIndex getNextFreeBlock() throws IOException {
-		findSmallestTablespace();
+		int eliglbleTablespace = findEligibleTablespace();
 		if(DEBUG)
-			System.out.printf("%s getNextFree smallest Tablespace %d%n", this.getClass().getName(), smallestTablespace);
-		long nextFree = ioWorker[smallestTablespace].getNextFreeBlock();
-		BlockAccessIndex bai = bufferPool.getBlockBuffer(smallestTablespace).getFreeBlockList().remove(nextFree);
+			System.out.printf("%s getNextFree smallest Tablespace %d%n", this.getClass().getName(), eliglbleTablespace);
+		long nextFree = ioWorker[eliglbleTablespace].getNextFreeBlock();
+		BlockAccessIndex bai = bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().remove(nextFree);
 		if(DEBUG)
-			System.out.printf("%s getNextFree smallest Tablespace %d returned %s for next free block %d%n", this.getClass().getName(), smallestTablespace, bai, nextFree);
+			System.out.printf("%s getNextFree smallest Tablespace %d returned %s for next free block %d%n", this.getClass().getName(), eliglbleTablespace, bai, nextFree);
 		return bai;
 	}
 	

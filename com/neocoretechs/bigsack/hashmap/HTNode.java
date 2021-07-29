@@ -262,6 +262,30 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
         return null;
     }
  
+	/**
+	 * Create a unique list of blocks that have already been populated with values from this node in order to possibly
+	 * cluster new entries more efficiently.
+	 * @return The list of unique blocks containing entries for this node.
+	 */
+	public ArrayList<Long> aggregatePayloadBlocks() {
+		ArrayList<Long> blocks = new ArrayList<Long>();
+		int i = 0;
+		for(; i < getNumKeys(); i++) {
+			if(getKeyValueArray(i) != null) { 
+				if(getKeyValueArray(i).getKeyOptr() != null && 
+					!blocks.contains(getKeyValueArray(i).getKeyOptr().getBlock()) &&
+					!getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
+						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
+				}
+				if(getKeyValueArray(i).getValueOptr() != null && 
+					!blocks.contains(getKeyValueArray(i).getValueOptr().getBlock()) &&
+					!getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
+						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
+				}
+			}
+		}
+		return blocks;
+	}
     /**
 	 * Serialize this page to deep store on a page boundary.
 	 * Key pages are always on page boundaries. The data is written
@@ -280,21 +304,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		if( DEBUG ) 
 			System.out.printf("%s.putPage:%s%n",this.getClass().getName(),this);
 		// hold accumulated insert pages
-		ArrayList<Optr> keys = new ArrayList<Optr>();
-		ArrayList<Optr> values = new ArrayList<Optr>();
-		int i = 0;
-		for(; i < getNumKeys(); i++) {
-			if(getKeyValueArray(i) != null && getKeyValueArray(i) != null ) {
-				if(!getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
-					keys.add(getKeyValueArray(i).getKeyOptr());
-				}
-			}
-			if(getKeyValueArray(i) != null && getKeyValueArray(i) != null ) {
-				if(!getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
-					values.add(getKeyValueArray(i).getValueOptr());
-				}
-			}
-		}
+		ArrayList<Long> currentPayloadBlocks = aggregatePayloadBlocks() ;
 		//.map(Map::values)                  // -> Stream<List<List<String>>>
 		//.flatMap(Collection::stream)       // -> Stream<List<String>>
 		//.flatMap(Collection::stream)       // -> Stream<String>
@@ -302,14 +312,14 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		// Persist each key that is updated to fill the keyIds in the current page
 		// Once this is complete we write the page contiguously
 		// Write the object serialized keys out to deep store, we want to do this out of band of writing key page
-		for(i = 0; i < HMapKeyPage.MAXKEYS; i++) {
+		for(int i = 0; i < HMapKeyPage.MAXKEYS; i++) {
 			if( getKeyValueArray(i) != null ) {
 				if(getKeyValueArray(i).getKeyUpdated() ) {
 					// put the key to a block via serialization and assign KeyIdArray the position of stored key
-					page.putKey(i, keys);	
+					page.putKey(i, currentPayloadBlocks);	
 				}
 				if(getKeyValueArray(i).getValueUpdated()) {
-					page.putData(i, values);
+					page.putData(i, currentPayloadBlocks);
 				}
 			}
 		}
@@ -322,7 +332,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		if( DEBUG )
 			System.out.println("KeyPageInterface.putPage BlockStream:"+page);
 		bs.writeLong(getNumKeys());
-		for(i = 0; i < getNumKeys(); i++) {
+		for(int i = 0; i < getNumKeys(); i++) {
 			if(getKeyValueArray(i) != null && getKeyValueArray(i).getKeyUpdated() ) { // if set, key was processed by putKey[i]
 				bs.writeLong(getKeyValueArray(i).getKeyOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getKeyOptr().getOffset());

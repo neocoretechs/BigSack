@@ -35,7 +35,7 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
  *
  */
 public class HMapRootKeyPage implements RootKeyPageInterface {
-	private boolean DEBUG = true;
+	private boolean DEBUG = false;
 	protected long numKeys; // number of keys currently utilized
 	public final static int MAXKEYSROOT = 4; // 2 bits (0-3) times 8 bytes long page pointer
 	protected BlockAccessIndex rootPage; // initial root page with 2 bit keys
@@ -79,7 +79,7 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 	 * @param bai The BlockAccessIndex to use to create the new root node
 	 * @throws IOException
 	 */
-	public void setRootNode(BlockAccessIndex bai) throws IOException {
+	public synchronized void setRootNode(BlockAccessIndex bai) throws IOException {
 		this.rootPage = bai;
 		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(this.rootPage);
 		bs.writeLong(0L); // size
@@ -92,20 +92,20 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 	 * Return total HashMap size
 	 * @return
 	 */
-	public long getSize() {
+	public synchronized long getSize() {
 		return numKeys;
 	}
 	/**
 	 * Set total HashMap size
 	 * @param size
 	 */
-	public void setSize(long size) {
+	public synchronized void setSize(long size) {
 		this.numKeys = size;
 	}
 	
 
 	@Override
-	public void putPage() throws IOException {
+	public synchronized void putPage() throws IOException {
 		DataOutputStream dos = GlobalDBIO.getBlockOutputStream(rootPage);
 		dos.writeLong(MAXKEYSROOT);
 		for(int i = 0; i < MAXKEYSROOT; i++) {
@@ -117,12 +117,12 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 	} 
 	
 	@Override
-	public long getPageId() {
+	public synchronized long getPageId() {
 		return rootPage.getBlockNum();
 	}
 
 	@Override
-	public void setPageIdArray(int index, long block, boolean update) throws IOException {
+	public synchronized void setPageIdArray(int index, long block, boolean update) throws IOException {
 		if(index >= numKeys) {
 			numKeys = index+1;
 		}
@@ -131,44 +131,44 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 	}
 
 	@Override
-	public long getPageId(int index) {
+	public synchronized long getPageId(int index) {
 		return rootKeys[index];
 	}
 
 
 	@Override
-	public RootKeyPageInterface getPage(int index) throws IOException {
+	public synchronized RootKeyPageInterface getPage(int index) throws IOException {
 		return GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(),rootKeys[index]);
 	}
 
 	@Override
-	public boolean isUpdated() {
+	public synchronized boolean isUpdated() {
 		return rootPage.isUpdated();
 	}
 
 	@Override
-	public void setUpdated(boolean updated) {
+	public synchronized void setUpdated(boolean updated) {
 		// updated not optional for this mode, but may be in others
 		rootPage.setUpdated();	
 	}
 
 	@Override
-	public Datablock getDatablock() {
+	public synchronized Datablock getDatablock() {
 		return rootPage.getBlk();
 	}
 
 	@Override
-	public BlockAccessIndex getBlockAccessIndex() {
+	public synchronized BlockAccessIndex getBlockAccessIndex() {
 		return rootPage;
 	}
 
 	@Override
-	public int getNumKeys() {
+	public synchronized int getNumKeys() {
 		return (int) numKeys;
 	}
 
 	@Override
-	public void setNumKeys(int numKeys) throws IOException {
+	public synchronized void setNumKeys(int numKeys) throws IOException {
 		this.numKeys = numKeys;
 		setUpdated(true);	
 	}

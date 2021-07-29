@@ -57,20 +57,21 @@ public interface KeyPageInterface extends RootKeyPageInterface {
 	 * The data is written to the BlockAccessIndex, the push to deep store takes place at commit time or
 	 * when the buffer fills and it becomes necessary to open a spot.
 	 * @param index
-	 * @param keys 
+	 * @param keys The list of unique blocks that already contain entries for more efficient clustering. We will try to place new entry in one.
 	 * @return
 	 * @throws IOException
 	 */
-	boolean putKey(int index, ArrayList<Optr> keys) throws IOException;
+	boolean putKey(int index, ArrayList<Long> keys) throws IOException;
 	
 	/**
 	 * At {@link KeyPageInterface} putPage time, we resolve the lazy elements to actual VBlock,offset
 	 * This method puts the values associated with a key/value pair, if using maps vs sets.
 	 * Deletion of previous data has to occur before we get here, as we only have a payload to write, not an old one to remove.
 	 * @param index Index of {@link KeyPageInterface} key and data value array
+	 * @param values The list of unique blocks that already contain entries for more efficient clustering. We will try to place new entry in one.
 	 * @throws IOException
 	 */
-	boolean putData(int index, ArrayList<Optr> values) throws IOException;
+	boolean putData(int index, ArrayList<Long> values) throws IOException;
 
 	/**
 	* Retrieve a key based on an index to this page.

@@ -37,7 +37,6 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
 public class HMapNavigator {
 	public static boolean DEBUG = true;
 	protected KeyPageInterface keyValuesPage = null;
-	protected BlockAccessIndex keyValuesLastPage = null; // last in the linked list
 	protected ChildRootKeyPageInterface[] childPage = new ChildRootKeyPageInterface[3]; //root key + 3 - 9 bit capacity pages for HKey index beyond initial 2 root bits and 3 tablespace bits
 	protected RootKeyPageInterface rootPage = null;
 	private KeyValueMainInterface hMapMain;
@@ -205,7 +204,7 @@ public class HMapNavigator {
 	 * @return The final HMapKeyPage representing the collision space of actual keys, if the path existed, its the bufferPage we passed in.
 	 * @throws IOException
 	 */
-	public HMapKeyPage createKeypath(RootKeyPageInterface rootPage) throws IOException {
+	public synchronized HMapKeyPage createKeypath(RootKeyPageInterface rootPage) throws IOException {
 		//if(DEBUG) {
 		//System.out.printf("%s.createKeypath(%s,%s,%s) rootKeys[hashkeys[1]]=%s%n",this.getClass().getName(),targetKey,Arrays.toString(hashkeys),bufferPage,GlobalDBIO.valueOf(rootKeys[hashkeys[1]]));
 		//System.out.printf("%s.createKeypath(%s,%s,%s) rootpage=%s%n",this.getClass().getName(),targetKey,Arrays.toString(hashkeys),bufferPage,this);
@@ -242,13 +241,6 @@ public class HMapNavigator {
 	
 
 	/**
-	 * Get last retrieved page in the collision space chain
-	 * @return
-	 */
-	public BlockAccessIndex getLastPage() {
-		return keyValuesLastPage;
-	}
-	/**
 	 * Primary goal is to set up pages in root and child to acquire pointers
 	 */
 	synchronized KeySearchResult search() throws IOException {
@@ -282,7 +274,7 @@ public class HMapNavigator {
 					System.out.printf("%s.search returning keysearchresult=%s%n", this.getClass().getName(),ksr);
 				return ksr;
 			} 
-			keyValuesPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), childPage[2].getPage(hashKeys[4]).getPageId());
+			keyValuesPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), childPage[2].getPageId(hashKeys[4]));
 			return new KeySearchResult(keyValuesPage, 5, true);
 		}
 	}

@@ -60,12 +60,12 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public final class HMapMain implements KeyValueMainInterface {
-	private static boolean DEBUG = true; // General debug, overrides other levels
+	private static boolean DEBUG = false; // General debug, overrides other levels
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of KeyPageInterface
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;
-	private static boolean DEBUGDELETE = true;
-	private static boolean DEBUGINSERT = true;
+	private static boolean DEBUGDELETE = false;
+	private static boolean DEBUGINSERT = false;
 	private static boolean TEST = true; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = true; // flag to determine whether value data is overwritten for a key or its ignored

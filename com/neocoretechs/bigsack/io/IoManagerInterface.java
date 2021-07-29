@@ -53,7 +53,7 @@ public interface IoManagerInterface {
 	 * @return tablespace
 	 * @exception IOException if seeking new tablespace or creating fails
 	 */
-	public int findSmallestTablespace() throws IOException;
+	public int findEligibleTablespace() throws IOException;
 	/**
 	 * Check the free block list for 0 elements. This is a demand response method guaranteed to give us a free block
 	 * if 0, begin a search for an element that has 0 accesses
@@ -154,14 +154,12 @@ public interface IoManagerInterface {
 	* Determine location of new node. {@link MultithreadedIOManager}
 	* Attempts to cluster entries in used blocks near insertion point relative to other entries.
 	* Choose a random tablespace, then find a key that has that tablespace, then cluster there.
-	* @param keys The array of page pointers of existing entries to check for block space
-	* @param index The index of the target in array, such that we dont check against that entry
-	* @param nkeys The total keys in use to check in array
+	* @param values The array of page pointers of existing entries to check for block space
 	* @param bytesneeded The number of bytes to write
 	* @return The Optr pointing to the new node position
 	* @exception IOException If we cannot get block for new node
 	*/
-	public Optr getNewInsertPosition(ArrayList<Optr> keys, int index, int nkeys, int length) throws IOException;
+	public Optr getNewInsertPosition(ArrayList<Long> values, int length) throws IOException;
 	
 	public void Fopen() throws IOException;
 

@@ -367,11 +367,11 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * The data is written to the BlockAccessIndex, the push to deep store takes place at commit time or
 	 * when the buffer fills and it becomes necessary to open a spot.
 	 * @param index
-	 * @param keys 
+	 * @param keys The list of unique blocks that already contain entries for more efficient clustering. We will try to place new entry in one.
 	 * @return
 	 * @throws IOException
 	 */
-	public synchronized boolean putKey(int index, ArrayList<Optr> keys) throws IOException {
+	public synchronized boolean putKey(int index, ArrayList<Long> keys) throws IOException {
 		if(getKeyValueArray(index).getmKey() == null) {
 			if(DEBUG || DEBUGPUTKEY) 
 				System.out.printf("%s.putKey index=%d, key=%s Optr=%s%n", this.getClass().getName(),
@@ -383,7 +383,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		// get first block to write contiguous records for keys
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmKey());
-		getKeyValueArray(index).setKeyOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(keys, index, getNumKeys(), pb.length));
+		getKeyValueArray(index).setKeyOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(keys, pb.length));
 		lbai.getSdbio().add_object(getKeyValueArray(index).getKeyOptr(), pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY) 
 				System.out.println("KeyPageInterface.putKey Added object:"+getKeyValueArray(index).getmKey()+" @"+getKeyValueArray(index)+" bytes:"+pb.length);
@@ -400,10 +400,11 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * This method puts the values associated with a key/value pair, if using maps vs sets.
 	 * Deletion of previous data has to occur before we get here, as we only have a payload to write, not an old one to remove.
 	 * @param index Index of KeyPageInterface key and data value array
+	 * @param values The list of unique blocks that already contain entries for more efficient clustering. We will try to place new entry in one.
 	 * @throws IOException
 	 */
 	@Override
-	public synchronized boolean putData(int index, ArrayList<Optr> values) throws IOException {
+	public synchronized boolean putData(int index, ArrayList<Long> values) throws IOException {
 
 		if( getKeyValueArray(index).getmValue() == null ) {
 			//|| bTreeKeyPage.getKeyValueArray()[index].getValueOptr().equals(Optr.emptyPointer)) {
@@ -415,7 +416,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		// pack the page into this tablespace and within blocks the same tablespace as key
 		// the new insert position will attempt to find a block with space relative to established positions
 		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmValue());
-		getKeyValueArray(index).setValueOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(values, index, getNumKeys(), pb.length));		
+		getKeyValueArray(index).setValueOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(values, pb.length));		
 		if( DEBUGPUTDATA )
 			System.out.println("KeyPageInterface.putData ADDING NON NULL value "+getKeyValueArray(index)+" for key index "+index+" at "+
 				getKeyValueArray(index).getValueOptr());

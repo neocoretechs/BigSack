@@ -56,7 +56,7 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
 @SuppressWarnings("rawtypes")
 public final class BlockAccessIndex implements Comparable, Serializable {
 	private static final long serialVersionUID = -7046561350843262757L;
-	private static boolean DEBUG = true;
+	private static boolean DEBUG = false;
 	//private boolean DEBUGPUTKEY;
 	//private boolean DEBUGPUTDATA;
 	private Datablock blk;

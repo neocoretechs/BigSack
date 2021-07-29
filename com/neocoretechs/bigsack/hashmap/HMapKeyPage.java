@@ -64,8 +64,8 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 public final class HMapKeyPage implements KeyPageInterface {
 	private static final boolean DEBUG = true;
 	private static final boolean DEBUGPUTKEY = true;
-	private static final boolean DEBUGREMOVE = true;
-	private static final boolean DEBUGSETNUMKEYS = false;
+	private static final boolean DEBUGREMOVE = false;
+	private static final boolean DEBUGSETNUMKEYS = true;
 	private static final boolean DEBUGGETDATA = false;
 	private static final boolean DEBUGPUTDATA = true;
 	static final long serialVersionUID = -2441425588886011772L;
@@ -146,7 +146,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		}
 	}
 	*/
-	public long getPageId() {
+	public synchronized long getPageId() {
 		return lbai.getBlockNum();
 	}
 	
@@ -156,7 +156,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * This action come via BTree create to set the node.
 	 * @param btnode
 	 */
-	public void setNode(NodeInterface htnode) {
+	public synchronized void setNode(NodeInterface htnode) {
 		this.hTNode = htnode;
 	}
 	
@@ -246,7 +246,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		return lbai.getBlockNum();
 	}
 	
-	public void setPageId(long blockNum) throws IOException {
+	public synchronized void setPageId(long blockNum) throws IOException {
 		lbai.setBlockNumber(blockNum);
 	}
 	
@@ -323,31 +323,32 @@ public final class HMapKeyPage implements KeyPageInterface {
 		setUpdated(true);
 	}
 	
-	public ArrayList<Optr> aggregateKeys() {
-		ArrayList<Optr> keys = new ArrayList<Optr>();
+	/**
+	 * Create a unique list of blocks that have already been populated with values from this node in order to possibly
+	 * cluster new entries more efficiently.
+	 * @return The list of unique blocks containing entries for this node.
+	 */
+	public ArrayList<Long> aggregatePayloadBlocks() {
+		ArrayList<Long> blocks = new ArrayList<Long>();
 		int i = 0;
 		for(; i < getNumKeys(); i++) {
-			if(getKeyValueArray(i) != null && getKeyValueArray(i) != null ) {
-				if(!getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
-					keys.add(getKeyValueArray(i).getKeyOptr());
+			if(getKeyValueArray(i) != null) { 
+				if(getKeyValueArray(i).getKeyOptr() != null && 
+					!blocks.contains(getKeyValueArray(i).getKeyOptr().getBlock()) &&
+					!getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
+						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
+				}
+				if(getKeyValueArray(i).getValueOptr() != null && 
+					!blocks.contains(getKeyValueArray(i).getValueOptr().getBlock()) &&
+					!getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
+						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
 				}
 			}
 		}
-		return keys;
+		return blocks;
 	}
 	
-	public ArrayList<Optr> aggregateValues() {
-		ArrayList<Optr> values = new ArrayList<Optr>();
-		int i = 0;
-		for(; i < getNumKeys(); i++) {
-			if(getKeyValueArray(i) != null && getKeyValueArray(i) != null ) {
-				if(!getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
-					values.add(getKeyValueArray(i).getValueOptr());
-				}
-			}
-		}
-		return values;
-	}
+
 	/**
 	 * Serialize this page to deep store on a page boundary.
 	 * Key pages are always on page boundaries. The data is written
@@ -369,8 +370,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		if( DEBUG ) 
 			System.out.printf("%s.putPage:%s%n",this.getClass().getName(),this);
 		// hold accumulated insert pages
-		ArrayList<Optr> keys = aggregateKeys();
-		ArrayList<Optr> values = aggregateValues();
+		ArrayList<Long> currentPayloadBlocks = aggregatePayloadBlocks();
 		//.map(Map::values)                  // -> Stream<List<List<String>>>
 		//.flatMap(Collection::stream)       // -> Stream<List<String>>
 		//.flatMap(Collection::stream)       // -> Stream<String>
@@ -382,10 +382,10 @@ public final class HMapKeyPage implements KeyPageInterface {
 			if( getKeyValueArray(i) != null ) {
 				if(getKeyValueArray(i).getKeyUpdated()) {
 					// put the key to a block via serialization and assign KeyIdArray the position of stored key
-					putKey(i, keys);
+					putKey(i, currentPayloadBlocks);
 				}
 				if(getKeyValueArray(i).getValueUpdated()) {
-					putData(i, values);
+					putData(i, currentPayloadBlocks);
 				}
 			}
 		}
@@ -408,7 +408,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 					System.out.printf("%s.putPage %d Optr key skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			}
 			// data array
-			if(getKeyValueArray(i) != null &&  getKeyValueArray(i).getValueUpdated() ) {
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).getValueUpdated()) {
 				bs.writeLong(getKeyValueArray(i).getValueOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getValueOptr().getOffset());
 				getKeyValueArray(i).setValueUpdated(false);
@@ -440,11 +440,11 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * The data is written to the BlockAccessIndex, the push to deep store takes place at commit time or
 	 * when the buffer fills and it becomes necessary to open a spot.
 	 * @param index
-	 * @param keys 
+	 * @param currentPayloadBlocks 
 	 * @return
 	 * @throws IOException
 	 */
-	public synchronized boolean putKey(int index, ArrayList<Optr> keys) throws IOException {
+	public synchronized boolean putKey(int index, ArrayList<Long> currentPayloadBlocks) throws IOException {
 		if(getKeyValueArray(index).getmKey() == null) {
 			if(DEBUG || DEBUGPUTKEY) 
 				System.out.printf("%s.putKey index=%d, key=%s Optr=%s%n", this.getClass().getName(),
@@ -456,7 +456,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		// get first block to write contiguous records for keys
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmKey());
-		getKeyValueArray(index).setKeyOptr(hMapMain.getIO().getIOManager().getNewInsertPosition(keys, index, getNumKeys(), pb.length));
+		getKeyValueArray(index).setKeyOptr(hMapMain.getIO().getIOManager().getNewInsertPosition(currentPayloadBlocks, pb.length));
 		hMapMain.getIO().add_object(getKeyValueArray(index).getKeyOptr(), pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY)
 			System.out.printf("%s.putKey ADDED Object for k/v:%s index:%d bytes:%d%n",this.getClass().getName(),getKeyValueArray(index),index,pb.length);
@@ -472,7 +472,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @param index Index of KeyPageInterface key and data value array
 	 * @throws IOException
 	 */
-	public synchronized boolean putData(int index, ArrayList<Optr> values) throws IOException {
+	public synchronized boolean putData(int index, ArrayList<Long> currentPayloadBlocks) throws IOException {
 
 		if( getKeyValueArray(index).getmValue() == null ) {
 			//|| bTreeKeyPage.getKeyValueArray()[index].getValueOptr().equals(Optr.emptyPointer)) {
@@ -484,7 +484,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		// pack the page into this tablespace and within blocks the same tablespace as key
 		// the new insert position will attempt to find a block with space relative to established positions
 		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmValue());
-		getKeyValueArray(index).setValueOptr(hMapMain.getIO().getIOManager().getNewInsertPosition(values, index, getNumKeys(), pb.length));		
+		getKeyValueArray(index).setValueOptr(hMapMain.getIO().getIOManager().getNewInsertPosition(currentPayloadBlocks, pb.length));		
 		if( DEBUGPUTDATA )
 			System.out.printf("%s.putData ADDING NON NULL value for k/v:%s index:%d%n",this.getClass().getName(),getKeyValueArray(index),index);
 		hMapMain.getIO().add_object(getKeyValueArray(index).getValueOptr(), pb, pb.length);
@@ -501,7 +501,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @param blocknum
 	 * @throws IOException
 	 */
-	protected void writeIndex(RootKeyPageInterface childPages, int index, long blocknum) throws IOException {
+	protected synchronized void writeIndex(RootKeyPageInterface childPages, int index, long blocknum) throws IOException {
 		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(childPages.getBlockAccessIndex(), (short)((index*8)+4));
 		bs.writeLong(blocknum);
 		childPages.getBlockAccessIndex().setUpdated();
@@ -515,7 +515,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @return the newly created HMapKeyPage
 	 * @throws IOException
 	 */
-	protected HMapKeyPage createAndSetNextHTNode(RootKeyPageInterface page) throws IOException {
+	protected synchronized HMapKeyPage createAndSetNextHTNode(RootKeyPageInterface page) throws IOException {
 		((HMapKeyPage)page).nextPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), -1L);
 		HTNode newhTNode = new HTNode(((HMapKeyPage)page).nextPage);
 		((HMapKeyPage)(((HMapKeyPage)page).nextPage)).hTNode = newhTNode;

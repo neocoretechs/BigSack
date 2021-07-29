@@ -16,7 +16,7 @@ import com.neocoretechs.bigsack.io.stream.DBOutputStream;
  *
  */
 public final class BlockStream implements BlockChangeEvent {
-	public static boolean DEBUG = true;
+	public static boolean DEBUG = false;
 	private BlockAccessIndex lbai = null;
 	// DataStream for DB I/O
 	private DataInputStream DBInput = null;
