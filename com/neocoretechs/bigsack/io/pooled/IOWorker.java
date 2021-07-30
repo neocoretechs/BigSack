@@ -121,19 +121,23 @@ public class IOWorker implements IoInterface {
         		(new File(dbname).getName());
         return db;
 	}
+	
 	/**
-	 * Get the next free block of minimum block number such that we return the free blocks in ascending order.
-	 * @return the minimum block key so that when we do the next backward scan we recover maximum free blocks.
+	 * Get the next free block of minimum block number such that we return the free blocks in ascending order.<p/>
+	 * Remove the block from freechain and insert it into active list, if the freechain is emptied call
+	 * {@link GlobalDBIO} createBuckets to extend the tablespace and insert the new free black into the free list.
+	 * @return the minimum block so that when we do the next backward scan we recover maximum free blocks.
 	 * @throws IOException
 	 */
-	public synchronized long getNextFreeBlock() throws IOException {
-		if(freeBlockList.isEmpty())
-			getNextFreeBlocks();
+	public synchronized BlockAccessIndex getNextFreeBlock() throws IOException {
 		long min = freeBlockList.entrySet().stream().min(Map.Entry.comparingByKey()).get().getKey();
-		return min;
+		BlockAccessIndex bai = freeBlockList.remove(min);
+		sdbio.ioManager.addBlockAccess(bai);
+		if(freeBlockList.isEmpty())
+			sdbio.createBuckets(tablespace, freeBlockList, false);
+		return bai;
 	}
 
-	
 	@Override
 	public synchronized boolean Fopen(String fname, boolean create) throws IOException {
 			if (!ioUnit.Fopen(fname + "." + String.valueOf(tablespace), create))

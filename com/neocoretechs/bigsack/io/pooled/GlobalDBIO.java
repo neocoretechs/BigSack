@@ -481,9 +481,6 @@ public class GlobalDBIO {
 		BlockAccessIndex blk = ioManager.getNextFreeBlock();
 		if(DEBUG)
 			System.out.printf("%s.stealblk got block %s%n", this.getClass().getName(),GlobalDBIO.valueOf(blk.getBlockNum()));
-		ioManager.addBlockAccess(blk);
-		//ioManager.getBlockStream(GlobalDBIO.getTablespace(blk.getBlockNum())).setBlockAccessIndex(blk);
-		// ioManager = ClusterIOManager, MultithreadedIOManager, etc implementing IoManagerInterface
 		return blk;
 	}
 	/**

@@ -152,11 +152,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndWrite(%s,%s)%n ",this.getClass().getName(),GlobalDBIO.valueOf(toffset),tblk);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
 		//try {
 			//Future<?> f = ThreadPoolManager.getInstance().spin(ioWorker[tblsp].callFseekAndWrite(offset, tblk),ioWorkerNames[tblsp]);
 			//f.get();
-			ioWorker[tblsp].FseekAndWrite(offset, tblk);
+			ioWorker[tblsp].FseekAndWrite(toffset, tblk);
 		//} catch (InterruptedException | ExecutionException e) {
 		//	throw new IOException(e);
 		//}
@@ -170,8 +169,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndWriteFully(%s,%s)%n ",this.getClass().getName(),GlobalDBIO.valueOf(toffset),tblk);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		ioWorker[tblsp].FseekAndWriteFully(offset, tblk);
+		ioWorker[tblsp].FseekAndWriteFully(toffset, tblk);
 	}
 	
 	/* (non-Javadoc)
@@ -184,8 +182,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
 		//	System.out.println("MultithreadedIOManager.FseekAndRead Tablespace_1_114688");
 		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		ioWorker[tblsp].FseekAndRead(offset, tblk);
+		ioWorker[tblsp].FseekAndRead(toffset, tblk);
 		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
 		//	System.out.println("MultithreadedIOManager.FseekAndRead EXIT Tablespace_1_114688 "+tblk+" dump:"+tblk.blockdump());
 		//assert(tblk.getBytesused() != 0 && tblk.getBytesinuse() != 0) : "MultithreadedIOManager.FseekAndRead returned unusable block from offset "+GlobalDBIO.valueOf(toffset)+" "+tblk.blockdump();
@@ -202,8 +199,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndReadFully(%s,%s)%n ",this.getClass().getName(),GlobalDBIO.valueOf(toffset),tblk);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
-		long offset = GlobalDBIO.getBlock(toffset);
-		ioWorker[tblsp].FseekAndReadFully(offset, tblk);
+		ioWorker[tblsp].FseekAndReadFully(toffset, tblk);
 	}
 
 	/**
@@ -243,8 +239,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		int eliglbleTablespace = findEligibleTablespace();
 		if(DEBUG)
 			System.out.printf("%s getNextFree smallest Tablespace %d%n", this.getClass().getName(), eliglbleTablespace);
-		long nextFree = ioWorker[eliglbleTablespace].getNextFreeBlock();
-		BlockAccessIndex bai = bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().remove(nextFree);
+		BlockAccessIndex bai = ioWorker[eliglbleTablespace].getNextFreeBlock();
 		if(bai == null) {
 			StringBuilder s = new StringBuilder();
 			s.append("size=");
@@ -254,10 +249,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 				s.append(b);
 				s.append("|");
 			}
-			throw new IOException("Failed to remove valid block from free list:"+GlobalDBIO.valueOf(nextFree)+" "+s.toString());
+			throw new IOException("Failed to remove valid block from free list:"+GlobalDBIO.valueOf(bai.getBlockNum())+" "+s.toString());
 		}
 		if(DEBUG)
-			System.out.printf("%s getNextFree smallest Tablespace %d returned %s for next free block %s%n", this.getClass().getName(), eliglbleTablespace, bai, GlobalDBIO.valueOf(nextFree));
+			System.out.printf("%s getNextFree smallest Tablespace %d for next free block %s%n", this.getClass().getName(), eliglbleTablespace, bai);
 		return bai;
 	}
 	
@@ -268,12 +263,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException 
 	 */
 	public synchronized BlockAccessIndex getNextFreeBlock(int tblsp) throws IOException {
+		BlockAccessIndex bai = ioWorker[tblsp].getNextFreeBlock();
 		if(DEBUG)
-			System.out.printf("%s getNextFree specific Tablespace %d%n", this.getClass().getName(), tblsp);
-		long nextFree = ioWorker[tblsp].getNextFreeBlock();
-		BlockAccessIndex bai = bufferPool.getBlockBuffer(tblsp).getFreeBlockList().remove(nextFree);
-		if(DEBUG)
-			System.out.printf("%s getNextFree specific Tablespace %d returned %s for next free block %s%n", this.getClass().getName(), tblsp, bai, GlobalDBIO.valueOf(nextFree));
+			System.out.printf("%s getNextFree specific Tablespace %d for next free block %s%n", this.getClass().getName(), tblsp, bai);
 		return bai;
 	}
 	/**
@@ -386,15 +378,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//}
 		bufferPool.forceBufferClear();
 	}
-	/**
-	 * Load up a block from the freelist with the assumption that it will be filled in later. Do not 
-	 * check for whether it should be logged,etc. As part of the 'acquireblock' process, this takes place. Latch it
-	 * as soon as possible though. Queue a request to the MappedBlockBuffer IoManager to do this. Await the countdownlatch to continue.
-	 */
-	@Override
-	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		return bufferPool.addBlockAccessNoRead(Lbn);
-	}
+
 	
 	@Override
 	public BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
@@ -521,11 +505,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		return bufferPool.getUlog(tblsp);
 	}
 	
-	
 	@Override
 	public void extend(int ispace, long newLen) throws IOException {
-		ioWorker[ispace].Fset_length(newLen);
-		
+		ioWorker[ispace].Fset_length(newLen);	
 	}
 
 	@Override
@@ -536,13 +518,13 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public void FseekAndWriteHeader(long offset, Datablock tblk) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(offset);
-		ioWorker[tblsp].FseekAndWriteHeader(GlobalDBIO.getBlock(offset), tblk);
+		ioWorker[tblsp].FseekAndWriteHeader(offset, tblk);
 	}
 
 	@Override
 	public void FseekAndReadHeader(long offset, Datablock tblk) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(offset);
-		ioWorker[tblsp].FseekAndReadHeader(GlobalDBIO.getBlock(offset), tblk);
+		ioWorker[tblsp].FseekAndReadHeader(offset, tblk);
 	}
 
 }

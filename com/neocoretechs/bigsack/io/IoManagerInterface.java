@@ -24,13 +24,6 @@ public interface IoManagerInterface {
 	*/
 	public void forceBufferClear();
 
-	/**
-	* Add a block to table of blocknums and block access index.
-	* Comes here for acquireBlock. No setting of block in BlockAccessIndex, no initial read
-	* @param Lbn block number to add
-	* @exception IOException if new dblock cannot be created
-	*/
-	public BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException;
 
 	/**
 	* findOrAddBlockAccess - find and return block in pool or bring

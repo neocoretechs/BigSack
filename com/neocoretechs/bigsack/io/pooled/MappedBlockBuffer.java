@@ -170,6 +170,11 @@ public class MappedBlockBuffer extends AbstractMap {
 		return usedBlockList.entrySet();
 	}
 	
+	@Override
+	public boolean containsKey(Object key) {
+		return usedBlockList.containsKey(key);
+	}
+	
 	public void addBlockChangeObserver(BlockChangeEvent bce) { mObservers.add(bce); }
 	
 	@Override
@@ -177,7 +182,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	 * Put the key and value to cache. Start the expiration counter beforehand.
 	 */
 	public Object put(Object key, Object value) {
-		if(tablespace != GlobalDBIO.getTablespace(((BlockAccessIndex)value).getBlockNum()) || (Long)key != GlobalDBIO.getBlock(((BlockAccessIndex)value).getBlockNum()))
+		if(tablespace != GlobalDBIO.getTablespace(((BlockAccessIndex)value).getBlockNum()) || (Long)key != ((BlockAccessIndex)value).getBlockNum())
 			throw new RuntimeException("Key:"+key+" does not match corresponding block:"+(BlockAccessIndex)value);
 		 // Here we put the key, value pair into the HashMap using a SoftValue object.
 		 processQueue(); // throw out garbage collected values first
@@ -188,7 +193,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	 * Put the extracted key and value to cache. notify block change event observers. Start the expiration counter beforehand.
 	 */
 	public Object put(BlockAccessIndex value) {
-		Long key = new Long(GlobalDBIO.getBlock(value.getBlockNum()));
+		Long key = new Long(value.getBlockNum());
 		processQueue(); // throw out garbage collected values first
 		value.startExpired();
 		return usedBlockList.put(key, new SoftValue(value, key, queue));
@@ -227,15 +232,11 @@ public class MappedBlockBuffer extends AbstractMap {
 		//int tbsp = getTablespace(lastGoodBlk.getBlockNum());
 		//int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
 		// this uses a round robin approach
-		long newblock = ((IOWorker)ioWorker).getNextFreeBlock();
-		BlockAccessIndex newBai = freeBlockList.remove(newblock);
-		addBlockAccess(newBai);
+		BlockAccessIndex newBai = ((IOWorker)ioWorker).getNextFreeBlock();
 		// update old block, set it to Vblock
-		ablk.getBlk().setNextblk(newblock);
+		ablk.getBlk().setNextblk(newBai.getBlockNum());
 		ablk.getBlk().setIncore(true);
 		ablk.getBlk().setInlog(false);
-		//BlockAccessIndex newBai = addBlockAccessNoRead(newblock);
-		newBai.resetBlock(true);
 		// Set previous to relative block of last good
 		newBai.getBlk().setPrevblk(previousBlk.getBlockNum());
 		newBai.getBlk().setIncore(true);
@@ -273,10 +274,13 @@ public class MappedBlockBuffer extends AbstractMap {
 			if(DEBUG)
 				System.out.printf("%s.getBlock for block %s found in freeBlockList%n", this.getClass().getName(),bai);
 			put(bai);
+			if(freeBlockList.isEmpty())
+				globalIO.createBuckets(tablespace, freeBlockList, false);
 			return bai;
 		}
 		SoftReference sbai = (SoftReference) get(lbn);
 		if( sbai == null ) {
+			++cacheMiss;
 			bai = new BlockAccessIndex(globalIO, true);
 			bai.setBlockNumber(lbn);
 			if(read)
@@ -285,6 +289,7 @@ public class MappedBlockBuffer extends AbstractMap {
 				System.out.printf("%s.getBlock for block %s not found in any list; created%n", this.getClass().getName(),bai);
 			put(bai);
 		} else {
+			++cacheHit;
 			bai = (BlockAccessIndex) sbai.get();
 			if(DEBUG)
 				System.out.printf("%s.getBlock for block %s found in used block cache%n", this.getClass().getName(),bai);
@@ -298,7 +303,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	}
 	
 	public synchronized void putFreeBlock(BlockAccessIndex bai) {
-		freeBlockList.put(GlobalDBIO.getBlock(bai.getBlockNum()), bai);
+		freeBlockList.put(bai.getBlockNum(), bai);
 	}
 	
 	public synchronized int sizeFreeBlockList() {
@@ -355,6 +360,7 @@ public class MappedBlockBuffer extends AbstractMap {
 				}
 		}
 	}
+	
 	/**
 	 * Commit all outstanding blocks in the buffer, bypassing the log subsystem. Should be used with forethought
 	 * @throws IOException
@@ -365,37 +371,16 @@ public class MappedBlockBuffer extends AbstractMap {
 		while (elbn.hasMoreElements()) {
 					SoftReference ebaii = (elbn.nextElement());
 					BlockAccessIndex bai = (BlockAccessIndex)ebaii.get();
-					if (bai.getAccesses() == 0 && bai.getBlk().isIncore() ) {
+					if(bai.getAccesses() == 0 && bai.getBlk().isIncore() ) {
 						if(DEBUG)
-							System.out.println("MappedBlockBuffer.directBufferWrite fully writing "+GlobalDBIO.getBlock(bai.getBlockNum())+" "+bai.getBlk());
-						ioWorker.FseekAndWriteFully(GlobalDBIO.getBlock(bai.getBlockNum()), bai.getBlk());
+							System.out.println("MappedBlockBuffer.directBufferWrite fully writing "+bai.getBlockNum()+" "+bai.getBlk());
+						ioWorker.FseekAndWriteFully(bai.getBlockNum(), bai.getBlk());
 						ioWorker.Fforce();
 						bai.getBlk().setIncore(false);
 					}
 		}
 	}
 	
-	/**
-	* Get block from free list, puts in used list of block access index, seek and read the contents of the block.
-	* Comes here when we can't find blocknum in table in findOrAddBlock.
-	* New instance of BlockAccessIndex causes allocation
-	* @param Lbn block number to add
-	* @exception IOException if new dblock cannot be created
-	*/
-	private BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
-		// make sure we have open slots
-		if( DEBUG ) {
-			System.out.println("MappedBlockBuffer.addBlockAccess "+Lbn+" "+this);
-		}
-		BlockAccessIndex bai = getBlock(Lbn, true);
-		if( bai.getAccesses() == 0 )
-			bai.addAccess();
-		bai.setByteindex((short) 0);
-		if( DEBUG ) {
-				System.out.println("MappedBlockBuffer.addBlockAccess "+Lbn+" returning after freeBL take "+bai+" "+this);
-		}
-		return bai;
-	}
 	/**
 	 * If we have to steal a block and bring it in from the freechain, put it to the used list here and up the access
 	 * @param bai
@@ -413,53 +398,26 @@ public class MappedBlockBuffer extends AbstractMap {
 		return bai;
 	}
 	/**
-	* Add a block to table of blocknums and block access index.
-	* Comes here for acquireBlock. No setting of block in BlockAccessIndex, no initial read
-	* @param Lbn block number to add
-	* @exception IOException if new dblock cannot be created
+	* Attempt to locate a block in one of the lists and deliver it to the application. Observers are notified with returned block.
+	* @param Lbn block number to locate
+	* @param read true to read contents of block from deep store when accessed
+	* @exception IOException if new block cannot be delivered.
 	*/
-	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
+	public synchronized BlockAccessIndex findOrAddBlock(Long Lbn, boolean read) throws IOException {
 		if( DEBUG ) {
 			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+GlobalDBIO.valueOf(Lbn)+" "+this);
 		}
 		// make sure we have open slots
-		BlockAccessIndex bai = getBlock(Lbn, false);
+		BlockAccessIndex bai = getBlock(Lbn, read); // getBlock does a put to usedBlockList, false says no read
 		// up the access latch, set byteindex to 0
 		if( bai.getAccesses() == 0 )
 			bai.addAccess();
 		bai.setByteindex((short) 0);
-		put(Lbn, bai);
 		if( DEBUG ) {
 			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+Lbn+" returning after freeBL take "+bai+" "+this);
 		}
-		return bai;
-	}
-	
-	/**
-	* Find or add the block to in-mem cache. If we dont get a cache hit we go to 
-	* deep store to bring it in.
-	* @param loc The block number of a presumed pool resident block
-	* @return the BlockAccessIndex with the block or null if its not in the cache
-	* @throws IOException 
-	*/
-	public synchronized BlockAccessIndex findOrAddBlock(Long loc) throws IOException {
-		if( DEBUG )
-			System.out.println("MappedBlockBuffer.findOrAddBlock Calling for BLOCK "+loc+" in tablespace "+tablespace);
-		SoftReference sbai = (SoftReference) get(loc);
-		BlockAccessIndex bai;
-		if( sbai == null ) {
-			++cacheMiss;
-			bai = addBlockAccess(loc);
-		} else {
-			++cacheHit;
-			bai = (BlockAccessIndex)sbai.get();
-			bai.setByteindex((short) 0);
-			if( bai.getAccesses() == 0 )
-				bai.addAccess();
-		}
 		notifyObservers(bai);
 		return bai;
-
 	}
 	
 	/**
@@ -480,11 +438,9 @@ public class MappedBlockBuffer extends AbstractMap {
 		}
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.getnextblk next block fetch:"+tblk);
-		BlockAccessIndex nextBlk = findOrAddBlock(tblk.getBlk().getNextblk());
+		BlockAccessIndex nextBlk = findOrAddBlock(tblk.getBlk().getNextblk(), true); // find and read
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.getnextblk next block fetch retrieved:"+(nextBlk == null ? "<null>" : nextBlk));
-		if( nextBlk != null )
-			notifyObservers(nextBlk);
 		return nextBlk;
 	}
 	

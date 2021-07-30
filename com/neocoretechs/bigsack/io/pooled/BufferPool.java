@@ -145,7 +145,7 @@ public class BufferPool {
 				return tblsp;
 			}
 		}
-		blockStream[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn));
+		blockStream[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn, true));
 		if( DEBUG )
 			System.out.println("BufferPool.findOrAddBlock RETURN tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn));
 		return tblsp;
@@ -263,17 +263,6 @@ public class BufferPool {
 			throw new IOException("BufferPool.deallocOutstandingWriteLog failed to dealloc intended target tablespace:"+tablespace);
 		}
 	}
-		
-	/**
-	 * Add a block, take it from freechain and set its block number, which latches it, then put it in main buffer.
-	 * @param Lbn The target block number, as Vblock, which might be a template for a future write.
-	 * @return
-	 * @throws IOException 
-	 */
-	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
-		int tblsp = GlobalDBIO.getTablespace(Lbn);
-		return blockBuffer[tblsp].addBlockAccessNoRead(Lbn);
-	}
 	
 	public synchronized BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(blk.getBlockNum());
@@ -289,7 +278,7 @@ public class BufferPool {
 		if( DEBUG )
 			System.out.printf("%s.findOrAddBlockAccess %s%n",this.getClass().getName(),GlobalDBIO.valueOf(bn));
 		int tblsp = GlobalDBIO.getTablespace(bn);
-		return blockBuffer[tblsp].findOrAddBlock(bn);
+		return blockBuffer[tblsp].findOrAddBlock(bn, true);
 	}
 	
 	public Callable<Object> callCommitBufferFlush(MappedBlockBuffer blockBuffer, RecoveryLogManager logManager) { 

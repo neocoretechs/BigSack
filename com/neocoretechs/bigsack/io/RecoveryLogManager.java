@@ -100,7 +100,7 @@ public final class RecoveryLogManager  {
 		tblk.resetBlock(true);
 		tblk.setBlockNumber(blk.getBlockNum());
 		assert( tablespace == GlobalDBIO.getTablespace(blk.getBlockNum()));
-		globalDBIO.getIOManager().readDirect(tablespace, GlobalDBIO.getBlock(blk.getBlockNum()), tblk.getBlk());
+		globalDBIO.getIOManager().readDirect(tablespace, blk.getBlockNum(), tblk.getBlk());
 		if( DEBUG ) {
 			System.out.printf("%s.writeLog read original page=%s%n",this.getClass().getName(),tblk);
 		}

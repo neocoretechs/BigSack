@@ -47,18 +47,12 @@ public final class UndoableBlock implements Undoable, Serializable {
 	*	the log stream is passed back to the operation for the applyChange method.
 	*/
 	@Override
-	public void applyChange(GlobalDBIO xact, LogInstance instance, Object in) throws IOException {
+	public void applyChange(GlobalDBIO globalIO, LogInstance instance, Object in) throws IOException {
 		if( DEBUG  ) {
 			System.out.println("UndoableBlock.applyChange: instance:"+instance+" raw store"+blkV2.getBlockNum()+","+blkV2.getBlk());
 		}
-		//xact.FseekAndWrite(blkV2.getBlockNum(), blkV2.getBlk()); // sets incore false
 		int tblsp = GlobalDBIO.getTablespace(blkV2.getBlockNum());
-		long blkn = GlobalDBIO.getBlock(blkV2.getBlockNum());
-		//synchronized(xact.getIOManager().getDirectIO(tblsp)) {
-		//	xact.getIOManager().getDirectIO(tblsp).Fseek(blkn);
-		//	blkV2.getBlk().write(xact.getIOManager().getDirectIO(tblsp));
-		//}
-		xact.getIOManager().writeDirect(tblsp, blkn, blkV2.getBlk());
+		globalIO.getIOManager().writeDirect(tblsp, blkV2.getBlockNum(), blkV2.getBlk());
 		// deallocate
 		blkV2.decrementAccesses();
 	}

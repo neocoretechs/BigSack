@@ -434,8 +434,8 @@ public final class FileLogger implements Logger {
 					Loggable loggable = record.getLoggable();
 					UndoableBlock ub = (UndoableBlock)loggable;
 					BlockAccessIndex lbai = ub.getBlkV2();
-					if(pool.containsKey(GlobalDBIO.getBlock(lbai.getBlockNum()))) {
-						BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)(pool.get(GlobalDBIO.getBlock(lbai.getBlockNum())))).get();
+					if(pool.containsKey(lbai.getBlockNum())) {
+						BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)(pool.get(lbai.getBlockNum()))).get();
 						bai.getBlk().setInlog(false);
 						t.FseekAndWriteHeader(bai.getBlockNum(), bai.getBlk());
 					} else {
