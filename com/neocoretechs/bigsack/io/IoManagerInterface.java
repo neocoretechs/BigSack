@@ -181,6 +181,9 @@ public interface IoManagerInterface {
 	public void deallocOutstandingCommit() throws IOException;
 	
 	public void deallocOutstanding() throws IOException;
+	
+	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex blk) throws IOException;
+	
 	/**
 	 * Perform an Fseek on the block and and write it. Use the write method of Datablock and
 	 * the IoWorker for the proper tablespace. Used in final applyChange 
@@ -201,6 +204,5 @@ public interface IoManagerInterface {
 
 	public void reInitLogs() throws IOException;
 
-	
 
 }

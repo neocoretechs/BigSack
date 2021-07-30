@@ -20,7 +20,7 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
  * @author Jontahan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
-	public static boolean DEBUG = true;
+	public static boolean DEBUG = false;
     private KeyValue<K, V> mKeys[] = new KeyValue[HMapKeyPage.MAXKEYS];
     protected long pageId = -1L;
     protected boolean updated = false;

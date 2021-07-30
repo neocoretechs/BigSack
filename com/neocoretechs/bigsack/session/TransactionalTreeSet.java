@@ -71,8 +71,9 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 	
 	@Override
 	public Object get(Comparable o) throws IOException {
-		
-		return session.get(o);
+		synchronized (session.getMutexObject()) {
+			return session.get(o);
+		}
 	}
 
 	@SuppressWarnings("rawtypes")
@@ -118,8 +119,7 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 		}
 	}
 	/**
-	* Return the last element, we have to bypass cache for this because
-	* of our random throwouts
+	* Return the last element
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
@@ -130,8 +130,7 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 		}
 	}
 	/**
-	* Return the first element, we have to bypass cache for this because
-	* of our random throwouts
+	* Return the first element
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
@@ -313,8 +312,5 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 	public Object getMutexObject() {
 		return session.getMutexObject();
 	}
-
-
-
 
 }

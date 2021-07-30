@@ -7,7 +7,7 @@ import java.util.stream.Stream;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 
-interface SetInterface {
+public interface SetInterface {
 
 	String getDBName();
 	String getDBPath();

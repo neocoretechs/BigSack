@@ -62,12 +62,12 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public final class HMapKeyPage implements KeyPageInterface {
-	private static final boolean DEBUG = true;
-	private static final boolean DEBUGPUTKEY = true;
+	private static final boolean DEBUG = false;
+	private static final boolean DEBUGPUTKEY = false;
 	private static final boolean DEBUGREMOVE = false;
-	private static final boolean DEBUGSETNUMKEYS = true;
+	private static final boolean DEBUGSETNUMKEYS = false;
 	private static final boolean DEBUGGETDATA = false;
-	private static final boolean DEBUGPUTDATA = true;
+	private static final boolean DEBUGPUTDATA = false;
 	static final long serialVersionUID = -2441425588886011772L;
 	public static final int HMAPKEYSIZE = 20; // total size per key/value 2 Optr for key/value
 	public static final int HMAPDATASIZE = 16; // extra data in key/value page, long number of keys, long next page page ID

@@ -177,6 +177,22 @@ public class BigSackAdapter {
 		return ret;
 	}
 	
+	public static TransactionalHashSet getBigSackTransactionalHashSet(Comparable clazz) throws IllegalAccessException, IOException {
+		return getBigSackTransactionalHashSet(clazz.getClass());
+	}
+	
+	public static TransactionalHashSet getBigSackTransactionalHashSet(Class clazz) throws IllegalAccessException, IOException {
+		String xClass = translateClass(clazz.getName());
+		TransactionalHashSet ret = (TransactionalHashSet) classToIso.get(xClass);
+		if(DEBUG)
+			System.out.println("BigSackAdapter.getBigSackTransactionalHashSet About to return designator: "+tableSpaceDir+xClass+" formed from "+clazz.getClass().getName());
+		if( ret == null ) {
+			ret =  new TransactionalHashSet(tableSpaceDir+xClass, DBPhysicalConstants.BACKINGSTORE, DBPhysicalConstants.DBUCKETS);
+			classToIso.put(xClass, ret);
+		}
+		return ret;
+	}
+	
 	public static void checkpointTransaction(Class clazz) throws IllegalAccessException, IOException {
 		String xClass = translateClass(clazz.getName());
 		TransactionInterface ret = (TransactionInterface) classToIso.get(xClass);

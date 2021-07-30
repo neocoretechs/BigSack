@@ -35,7 +35,7 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
  *
  */
 public class HMapNavigator {
-	public static boolean DEBUG = true;
+	public static boolean DEBUG = false;
 	protected KeyPageInterface keyValuesPage = null;
 	protected ChildRootKeyPageInterface[] childPage = new ChildRootKeyPageInterface[3]; //root key + 3 - 9 bit capacity pages for HKey index beyond initial 2 root bits and 3 tablespace bits
 	protected RootKeyPageInterface rootPage = null;

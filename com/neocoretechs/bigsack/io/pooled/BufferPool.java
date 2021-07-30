@@ -255,7 +255,7 @@ public class BufferPool {
 	 * @throws IOException
 	 */
 	public synchronized void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex lbai2) throws IOException {
-		if( lbai2.getAccesses() == 1 &&  lbai2.getBlk().isIncore() &&  !lbai2.getBlk().isInlog()) {
+		if( lbai2.getAccesses() == 1 && lbai2.getBlk().isIncore() && !lbai2.getBlk().isInlog()) {
 			// will set incore, inlog, and push to raw store via applyChange of Loggable
 			undoLog[tablespace].writeLog(lbai2);
 			lbai2.decrementAccesses();

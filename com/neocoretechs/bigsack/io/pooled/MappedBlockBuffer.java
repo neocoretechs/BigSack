@@ -136,12 +136,13 @@ public class MappedBlockBuffer extends AbstractMap {
 	    SoftValue sv;
 	    while ((sv = (SoftValue)queue.poll()) != null) {
 	      BlockAccessIndex bai = (BlockAccessIndex) sv.get();
-	      if(bai.getAccesses() > 0) {
-	    	  // re-enqueue
-	    	  System.out.println("SoftReference process queue, re-enqueue:"+sv.key);
-	    	  put(sv.key, bai);
-	      } else
-	    	  usedBlockList.remove(sv.key);
+	      System.out.println("SoftReference process queue, logging:"+sv.key);
+	      try {
+	    		globalIO.getIOManager().deallocOutstandingWriteLog(tablespace, bai);
+	      } catch (IOException e) {
+			throw new RuntimeException(e);
+	      }
+	      usedBlockList.remove(sv.key);
 	    }
 	}
 

@@ -24,7 +24,7 @@ import com.neocoretechs.bigsack.io.MmapIO;
 public class IOWorker implements IoInterface { 
 	private static final boolean DEBUG = false;
 	private static final boolean DEBUGSEEK = false;
-	private static final boolean DEBUGFREE = true;
+	private static final boolean DEBUGFREE = false;
 	private IoInterface ioUnit;
 	private int tablespace; // 0-7
 	private GlobalDBIO sdbio;

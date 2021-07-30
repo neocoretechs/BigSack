@@ -35,7 +35,7 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
  *
  */
 public class HMapRootKeyPage implements RootKeyPageInterface {
-	private boolean DEBUG = true;
+	private boolean DEBUG = false;
 	protected long numKeys; // number of keys currently utilized
 	public final static int MAXKEYSROOT = 4; // 2 bits (0-3) times 8 bytes long page pointer
 	protected BlockAccessIndex rootPage; // initial root page with 2 bit keys

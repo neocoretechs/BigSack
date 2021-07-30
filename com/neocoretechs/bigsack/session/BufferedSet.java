@@ -40,7 +40,7 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 * Java Map backed by pooled serialized objects.
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
-public abstract class BufferedSet implements OrderedKVSetInterface {
+public abstract class BufferedSet implements SetInterface {
 	protected BigSackSession session;
 
 	/**
@@ -419,49 +419,6 @@ public abstract class BufferedSet implements OrderedKVSetInterface {
 	public KeyValueMainInterface getKVStore() {
 		synchronized (session.getMutexObject()) {
 			return session.getKVStore();
-		}
-	}
-
-
-	@Override
-	public Iterator<?> subSet(Comparable fkey, Comparable tkey) throws IOException {
-		synchronized (session.getMutexObject()) {
-			return session.subSet(fkey, tkey);
-		}
-	}
-
-	@Override
-	public Stream<?> subSetStream(Comparable fkey, Comparable tkey) throws IOException {
-		synchronized (session.getMutexObject()) {
-			return session.subSetStream(fkey, tkey);
-		}
-	}
-
-	@Override
-	public Iterator<?> headSet(Comparable tkey) throws IOException {
-		synchronized (session.getMutexObject()) {
-			return session.headSet(tkey);
-		}
-	}
-
-	@Override
-	public Stream<?> headSetStream(Comparable tkey) throws IOException {
-		synchronized (session.getMutexObject()) {
-			return session.headSetStream(tkey);
-		}
-	}
-
-	@Override
-	public Iterator<?> tailSet(Comparable fkey) throws IOException {
-		synchronized (session.getMutexObject()) {
-			return session.tailSet(fkey);
-		}
-	}
-
-	@Override
-	public Stream<?> tailSetStream(Comparable fkey) throws IOException {
-		synchronized (session.getMutexObject()) {
-			return session.tailSetStream(fkey);
 		}
 	}
 

@@ -7,8 +7,10 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
+import com.neocoretechs.bigsack.session.SetInterface;
 import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.BufferedHashSet;
+import com.neocoretechs.bigsack.session.TransactionalHashSet;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
  * Java 8 hashmap stream and functional programming using BigSack test.<p/>
@@ -27,7 +29,7 @@ import com.neocoretechs.bigsack.session.TransactionalTreeSet;
  */
 public class BatteryHashMap1 {
 	static int min = 0; // controls minimum range for the test
-	static int max = 1000;//000; // sets maximum range for the tests
+	static int max = 100000;//000; // sets maximum range for the tests
 	//static int numDelete = 100; // for delete test
 	static int i = 0;
 	static Integer zo = null;
@@ -42,20 +44,17 @@ public class BatteryHashMap1 {
 		}
 		BigSackAdapter.setTableSpaceDir(argv[0]);
 		payloadSize = Integer.parseInt(argv[1]);
-		BufferedHashSet session = BigSackAdapter.getBigSackHashSet(bigtestx.class);//new TransactionalTreeSet(argv[0],l3CacheSize);
+		//BufferedHashSet session = BigSackAdapter.getBigSackHashSet(bigtestx.class);//new TransactionalTreeSet(argv[0],l3CacheSize);
+		TransactionalHashSet session = BigSackAdapter.getBigSackTransactionalHashSet(bigtestx.class);//new TransactionalTreeSet(argv[0],l3CacheSize);
 		 System.out.println("Begin Battery Fire!");
-		battery1(session, argv);
+		//battery1(session, argv);
 		//BigSackAdapter.commitTransaction(bigtestx.class);
 		//session = BigSackAdapter.getBigSackHashSet(bigtestx.class);
 		battery1A(session, argv);
 		battery1B(session, argv);
-		
-		//battery3A(session, argv);
-		//battery3B(session, argv);
-		
 		//battery1E(session, argv);
-
-		//BigSackAdapter.commitTransaction(bigtestx.class);
+		//battery2(session, argv);
+		BigSackAdapter.commitTransaction(bigtestx.class);
 		System.out.println("TEST BATTERY BATTERYHASHMAP1 COMPLETE.");
 		System.exit(0);
 		
@@ -67,7 +66,7 @@ public class BatteryHashMap1 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1(BufferedHashSet session, String[] argv) throws Exception {
+	public static void battery1(SetInterface session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = max-1; i >= min; i--) {
 			bigtestx b = new bigtestx();
@@ -83,7 +82,7 @@ public class BatteryHashMap1 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery1A(BufferedHashSet session, String[] argv) throws Exception {
+	public static void battery1A(SetInterface session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		i = 0;
 		for(; i < max; i++) {
@@ -95,6 +94,7 @@ public class BatteryHashMap1 {
 				System.out.println("BATTERY1A FAIL iterations:"+i);
 				throw new Exception("BATTERY1A FAIL iterations:"+i);
 			}
+			System.out.println("stage 1 "+i);
 		}
 		++i; // bump it past max
 		for(; i < max*2; i++) {
@@ -106,11 +106,12 @@ public class BatteryHashMap1 {
 				System.out.println("BATTERY1A FAIL iterations:"+i);
 				throw new Exception("BATTERY1A FAIL iterations:"+i);
 			}
+			System.out.println("stage 2 "+i);
 		}
 		System.out.println("BATTERY1A SUCCESS "+i+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	
-	public static void battery1B(BufferedHashSet session, String[] argv) throws Exception {
+	public static void battery1B(SetInterface session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		long size = session.size();
 		System.out.println("Size "+size);
@@ -169,66 +170,6 @@ public class BatteryHashMap1 {
 		bigtestx l = (bigtestx) session.last();
 		System.out.println("BATTERY2 SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
-	/**
-	 * Does a headset from first element, headset retrieve from head to strictly less
-	 * then target of the elements inserted before, hence head from first should be 0
-	 * @param session
-	 * @param argv
-	 * @throws Exception
-	 */
-	public static void battery2A(BufferedHashSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		i = 0;
-		session.headSetStream((Comparable) session.first()).forEach(o ->System.out.println("["+(i++)+"]"+o));
-		// if it gets any, its a fail
-		if( i != 0 ) {
-				System.out.println("BATTERY2A FAIL iterations:"+i+" reported size:"+session.size());
-				throw new Exception("BATTERY2A FAIL iterations:"+i+" reported size:"+session.size());
-		}
-		System.out.println("BATTERY2A SUCCESS "+i+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
-	}
-	/**
-	 * Does a tailset from first element, tailset retrieve from element greater or equal to end
-	 * collection iterator greater or equal to 'from' element so should return all
-	 * @param session
-	 * @param argv
-	 * @throws Exception
-	 */
-	public static void battery3A(BufferedHashSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		i = 0;
-		session.tailSetStream((Comparable) session.first()).forEach(o -> {			
-			System.out.println("["+(i)+"]"+o);
-			++i;
-		});
-		if( session.size() != i ) {
-				System.out.println("BATTERY3A FAIL iterations:"+(i)+" reported size:"+session.size());
-				throw new Exception("BATTERY3A FAIL iterations:"+(i)+" reported size:"+session.size());
-		}
-		System.out.println("BATTERY3A SUCCESS "+(i)+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
-	}
-	/**
-	 * Does a tailset from last element, tailset retrieve from element greater or equal to end
-	 * collection stream greater or equal to 'from' element so this should return 1 item, the 999 at end
-	 * @param session
-	 * @param argv
-	 * @throws Exception
-	 */
-	public static void battery3B(BufferedHashSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		i = 0;
-		session.tailSetStream((Comparable) session.last()).forEach(o -> {
-			System.out.println("["+(i)+"]"+o);
-			++i;
-			zo = (Integer) ((bigtestx) o).key;
-		});
-		if( 1 != i || zo != max-1) {
-				System.out.println("BATTERY3B FAIL iterations:"+(i)+" reported size:"+session.size());
-				throw new Exception("BATTERY3B FAIL iterations:"+(i)+" reported size:"+session.size());
-		}
-		System.out.println("BATTERY3B SUCCESS "+(i)+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
-	}
-
 
 	public static void batteryHashMap1(BufferedHashSet session, String[] argv) throws Exception {
 		bigtestx key = new bigtestx();
