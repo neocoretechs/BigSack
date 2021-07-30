@@ -135,7 +135,6 @@ public class BufferPool {
 	*/
 	private synchronized int findOrAddBlock(long tbn) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(tbn);
-		long tblk = GlobalDBIO.getBlock(tbn);
 		// If the current entry is the one we are looking for, set byteindex to 0 and return
 		// if not, call 'dealloc' and find our target
 		if(blockStream[tblsp].getBlockAccessIndex() != null ) {
@@ -146,7 +145,7 @@ public class BufferPool {
 				return tblsp;
 			}
 		}
-		blockStream[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tblk));
+		blockStream[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tbn));
 		if( DEBUG )
 			System.out.println("BufferPool.findOrAddBlock RETURN tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn));
 		return tblsp;
@@ -273,7 +272,7 @@ public class BufferPool {
 	 */
 	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(Lbn);
-		return blockBuffer[tblsp].addBlockAccessNoRead(GlobalDBIO.getBlock(Lbn));
+		return blockBuffer[tblsp].addBlockAccessNoRead(Lbn);
 	}
 	
 	public synchronized BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
@@ -290,7 +289,7 @@ public class BufferPool {
 		if( DEBUG )
 			System.out.printf("%s.findOrAddBlockAccess %s%n",this.getClass().getName(),GlobalDBIO.valueOf(bn));
 		int tblsp = GlobalDBIO.getTablespace(bn);
-		return blockBuffer[tblsp].findOrAddBlock(GlobalDBIO.getBlock(bn));
+		return blockBuffer[tblsp].findOrAddBlock(bn);
 	}
 	
 	public Callable<Object> callCommitBufferFlush(MappedBlockBuffer blockBuffer, RecoveryLogManager logManager) { 

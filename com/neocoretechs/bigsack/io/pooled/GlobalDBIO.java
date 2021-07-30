@@ -527,7 +527,7 @@ public class GlobalDBIO {
 			d.resetBlock();
 			ioManager.FseekAndWriteFully(vblock, d);
 			BlockAccessIndex bai = new BlockAccessIndex(this, vblock, d);
-			freeBlockList.put(xsize, bai);
+			freeBlockList.put(vblock, bai);
 			xsize += (long) DBPhysicalConstants.DBLOCKSIZ;
 		}
 	}

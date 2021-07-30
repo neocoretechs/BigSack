@@ -30,7 +30,7 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
  *
  */
 public class MultithreadedIOManager implements IoManagerInterface {
-	private static final boolean DEBUG = true;
+	private static final boolean DEBUG = false;
 	private static final boolean DEBUGINSERT = false;
 	private static final boolean DEBUGWRITE = false; // view blocks written to log and store
 	public GlobalDBIO globalIO;

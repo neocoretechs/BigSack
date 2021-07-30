@@ -60,7 +60,7 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public final class HMapMain implements KeyValueMainInterface {
-	private static boolean DEBUG = false; // General debug, overrides other levels
+	private static boolean DEBUG = true; // General debug, overrides other levels
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of KeyPageInterface
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;
@@ -125,7 +125,7 @@ public final class HMapMain implements KeyValueMainInterface {
 			StringBuilder sb = new StringBuilder();
 			for(int i = 0; i < this.root.length; i++)
 				sb.append(root[i].toString());
-			System.out.printf("%s Root KeyPageInterface: %s%n",this.getClass().getName(),sb.toString());
+			System.out.printf("%s.createRootNode Root KeyPageInterface: %s%n",this.getClass().getName(),sb.toString());
 		}
 		return root[0];
 	}
@@ -146,7 +146,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		htNode.setPageId(htk.getPageId());
 		root[tblsp].setRootNode(htk.getBlockAccessIndex());
 		if( DEBUG )
-			System.out.printf("%s Root KeyPageInterface: %s%n",this.getClass().getName(),root[tblsp].toString());
+			System.out.printf("%s.createRootNode htNode=%s Root KeyPageInterface: %s%n",this.getClass().getName(),htNode,root[tblsp].toString());
 		return root[tblsp];
 	}
 	

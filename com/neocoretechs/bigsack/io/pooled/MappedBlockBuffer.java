@@ -228,14 +228,16 @@ public class MappedBlockBuffer extends AbstractMap {
 		//int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
 		// this uses a round robin approach
 		long newblock = ((IOWorker)ioWorker).getNextFreeBlock();
-		// update old block, set it to relative, NOT Vblock
-		ablk.getBlk().setNextblk(GlobalDBIO.getBlock(newblock));
+		BlockAccessIndex newBai = freeBlockList.remove(newblock);
+		addBlockAccess(newBai);
+		// update old block, set it to Vblock
+		ablk.getBlk().setNextblk(newblock);
 		ablk.getBlk().setIncore(true);
 		ablk.getBlk().setInlog(false);
-		BlockAccessIndex newBai = addBlockAccessNoRead(newblock);
+		//BlockAccessIndex newBai = addBlockAccessNoRead(newblock);
 		newBai.resetBlock(true);
 		// Set previous to relative block of last good
-		newBai.getBlk().setPrevblk(GlobalDBIO.getBlock(previousBlk.getBlockNum()));
+		newBai.getBlk().setPrevblk(previousBlk.getBlockNum());
 		newBai.getBlk().setIncore(true);
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.acquireblk returning from:"+ablk+" to:"+newBai);
@@ -247,10 +249,10 @@ public class MappedBlockBuffer extends AbstractMap {
 	 * Reset each block in the map and put them to the free block map
 	 */
 	public synchronized void forceBufferClear() {
-		Enumeration<SoftReference<BlockAccessIndex>> it = usedBlockList.elements();
+		Enumeration<SoftReference> it = usedBlockList.elements();
 		while(it.hasMoreElements()) {
-			SoftReference<BlockAccessIndex> bai = (SoftReference<BlockAccessIndex>) it.nextElement();
-			bai.get().resetBlock(true); // reset and clear access latch
+			SoftReference bai = (SoftReference) it.nextElement();
+			((BlockAccessIndex)bai.get()).resetBlock(true); // reset and clear access latch
 		}
 		clear();
 	}
@@ -268,18 +270,24 @@ public class MappedBlockBuffer extends AbstractMap {
 		// If we requested a specific block, see if it exists on the free list first
 		BlockAccessIndex bai = freeBlockList.remove(lbn);
 		if(bai != null) {
+			if(DEBUG)
+				System.out.printf("%s.getBlock for block %s found in freeBlockList%n", this.getClass().getName(),bai);
 			put(bai);
 			return bai;
 		}
 		SoftReference sbai = (SoftReference) get(lbn);
 		if( sbai == null ) {
 			bai = new BlockAccessIndex(globalIO, true);
-			bai.setBlockNumber(GlobalDBIO.makeVblock(tablespace, lbn));
+			bai.setBlockNumber(lbn);
 			if(read)
 				ioWorker.FseekAndRead(lbn, bai.getBlk());
+			if(DEBUG)
+				System.out.printf("%s.getBlock for block %s not found in any list; created%n", this.getClass().getName(),bai);
 			put(bai);
 		} else {
 			bai = (BlockAccessIndex) sbai.get();
+			if(DEBUG)
+				System.out.printf("%s.getBlock for block %s found in used block cache%n", this.getClass().getName(),bai);
 		}
 		bai.startExpired();
 		return bai;
@@ -352,16 +360,17 @@ public class MappedBlockBuffer extends AbstractMap {
 	 * @throws IOException
 	 */
 	public synchronized void directBufferWrite() throws IOException {
-		Enumeration<SoftReference<BlockAccessIndex>> elbn = usedBlockList.elements();
+		Enumeration<SoftReference> elbn = usedBlockList.elements();
 		if(DEBUG) System.out.println("MappedBlockBuffer.direct buffer write");
 		while (elbn.hasMoreElements()) {
-					SoftReference<BlockAccessIndex> ebaii = (elbn.nextElement());
-					if (ebaii.get().getAccesses() == 0 && ebaii.get().getBlk().isIncore() ) {
+					SoftReference ebaii = (elbn.nextElement());
+					BlockAccessIndex bai = (BlockAccessIndex)ebaii.get();
+					if (bai.getAccesses() == 0 && bai.getBlk().isIncore() ) {
 						if(DEBUG)
-							System.out.println("MappedBlockBuffer.directBufferWrite fully writing "+GlobalDBIO.getBlock(ebaii.get().getBlockNum())+" "+ebaii.get().getBlk());
-						ioWorker.FseekAndWriteFully(GlobalDBIO.getBlock(ebaii.get().getBlockNum()), ebaii.get().getBlk());
+							System.out.println("MappedBlockBuffer.directBufferWrite fully writing "+GlobalDBIO.getBlock(bai.getBlockNum())+" "+bai.getBlk());
+						ioWorker.FseekAndWriteFully(GlobalDBIO.getBlock(bai.getBlockNum()), bai.getBlk());
 						ioWorker.Fforce();
-						ebaii.get().getBlk().setIncore(false);
+						bai.getBlk().setIncore(false);
 					}
 		}
 	}
@@ -425,7 +434,6 @@ public class MappedBlockBuffer extends AbstractMap {
 		}
 		return bai;
 	}
-	
 	
 	/**
 	* Find or add the block to in-mem cache. If we dont get a cache hit we go to 
