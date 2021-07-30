@@ -257,7 +257,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			throw new IOException("Failed to remove valid block from free list:"+GlobalDBIO.valueOf(nextFree)+" "+s.toString());
 		}
 		if(DEBUG)
-			System.out.printf("%s getNextFree smallest Tablespace %d returned %s for next free block %d%n", this.getClass().getName(), eliglbleTablespace, bai, nextFree);
+			System.out.printf("%s getNextFree smallest Tablespace %d returned %s for next free block %s%n", this.getClass().getName(), eliglbleTablespace, bai, GlobalDBIO.valueOf(nextFree));
 		return bai;
 	}
 	
@@ -273,7 +273,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		long nextFree = ioWorker[tblsp].getNextFreeBlock();
 		BlockAccessIndex bai = bufferPool.getBlockBuffer(tblsp).getFreeBlockList().remove(nextFree);
 		if(DEBUG)
-			System.out.printf("%s getNextFree specific Tablespace %d returned %s for next free block %d%n", this.getClass().getName(), tblsp, bai, nextFree);
+			System.out.printf("%s getNextFree specific Tablespace %d returned %s for next free block %s%n", this.getClass().getName(), tblsp, bai, GlobalDBIO.valueOf(nextFree));
 		return bai;
 	}
 	/**

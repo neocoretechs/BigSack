@@ -146,7 +146,7 @@ public class BufferPool {
 				return tblsp;
 			}
 		}
-		blockStream[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tblk).get());
+		blockStream[tblsp].setBlockAccessIndex(blockBuffer[tblsp].findOrAddBlock(tblk));
 		if( DEBUG )
 			System.out.println("BufferPool.findOrAddBlock RETURN tablespace "+tblsp+" pos:"+GlobalDBIO.valueOf(tbn));
 		return tblsp;
@@ -273,12 +273,12 @@ public class BufferPool {
 	 */
 	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(Lbn);
-		return blockBuffer[tblsp].addBlockAccessNoRead(GlobalDBIO.getBlock(Lbn)).get();
+		return blockBuffer[tblsp].addBlockAccessNoRead(GlobalDBIO.getBlock(Lbn));
 	}
 	
 	public synchronized BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(blk.getBlockNum());
-		return blockBuffer[tblsp].addBlockAccess(blk).get();
+		return blockBuffer[tblsp].addBlockAccess(blk);
 	}
 	/**
 	 * Formulate a request to the page buffer to bring target page into the pool and latch it.
@@ -290,7 +290,7 @@ public class BufferPool {
 		if( DEBUG )
 			System.out.printf("%s.findOrAddBlockAccess %s%n",this.getClass().getName(),GlobalDBIO.valueOf(bn));
 		int tblsp = GlobalDBIO.getTablespace(bn);
-		return blockBuffer[tblsp].findOrAddBlock(GlobalDBIO.getBlock(bn)).get();
+		return blockBuffer[tblsp].findOrAddBlock(GlobalDBIO.getBlock(bn));
 	}
 	
 	public Callable<Object> callCommitBufferFlush(MappedBlockBuffer blockBuffer, RecoveryLogManager logManager) { 
@@ -440,7 +440,7 @@ public class BufferPool {
 	 * @throws IOException
 	 */
 	public synchronized boolean seekFwd(int tblsp, long offset) throws IOException {
-		return blockBuffer[tblsp].seek_fwd(new SoftReference<BlockAccessIndex>(blockStream[tblsp].getBlockAccessIndex()), offset);
+		return blockBuffer[tblsp].seek_fwd(blockStream[tblsp].getBlockAccessIndex(), offset);
 	}
 	
 	/**
@@ -451,7 +451,7 @@ public class BufferPool {
 	 * @throws IOException
 	 */
 	public synchronized void writen(int tblsp, byte[] o, int osize) throws IOException {
-		blockBuffer[tblsp].writen(new SoftReference<BlockAccessIndex>(blockStream[tblsp].getBlockAccessIndex()), o, osize);
+		blockBuffer[tblsp].writen(blockStream[tblsp].getBlockAccessIndex(), o, osize);
 	}
 	
 	/**
@@ -463,7 +463,7 @@ public class BufferPool {
 	 */
 	public synchronized int deleten(Optr adr, int osize) throws IOException {
 		int tblsp = objseek(adr);
-		blockBuffer[tblsp].deleten(new SoftReference<BlockAccessIndex>(blockStream[tblsp].getBlockAccessIndex()), osize);
+		blockBuffer[tblsp].deleten(blockStream[tblsp].getBlockAccessIndex(), osize);
 		return tblsp;
 	}
 	

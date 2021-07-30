@@ -1,20 +1,20 @@
 package com.neocoretechs.bigsack.io.pooled;
 
 import java.io.IOException;
+import java.lang.ref.ReferenceQueue;
 import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.Optional;
 import java.util.Set;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.IoInterface;
-import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.RecoveryLogManager;
 
 /**
@@ -30,7 +30,7 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2015,2021
  *
  */
-public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<BlockAccessIndex>> {
+public class MappedBlockBuffer extends AbstractMap {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
 	private GlobalDBIO globalIO;
@@ -38,6 +38,14 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	private int tablespace;
 	private final Set<BlockChangeEvent> mObservers = Collections.newSetFromMap(new ConcurrentHashMap<BlockChangeEvent, Boolean>());
 	private LinkedHashMap<Long, BlockAccessIndex> freeBlockList = new LinkedHashMap<Long, BlockAccessIndex>(DBPhysicalConstants.DBUCKETS);
+	/** The internal HashMap that will hold the SoftReference. */
+	private final ConcurrentHashMap usedBlockList = new ConcurrentHashMap();
+	/** The number of "hard" references to hold internally. */
+	private final int HARD_SIZE = 100;
+	/** The FIFO list of hard references, order of last access. */
+	private final LinkedList hardCache = new LinkedList();
+	/** Reference queue for cleared SoftReference objects. */
+	private final ReferenceQueue queue = new ReferenceQueue();
 
 	private static int cacheHit = 0; // cache hit rate
 	private static int cacheMiss = 0;
@@ -50,7 +58,6 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	 * @throws IOException If we try to add an active block the the freechain
 	 */
 	public MappedBlockBuffer(IoInterface ioWorker, int tablespace) throws IOException {
-		super(((IOWorker)ioWorker).getGlobalDBIO().getMAXBLOCKS());
 		this.globalIO = ((IOWorker)ioWorker).getGlobalDBIO();
 		this.ioWorker = ioWorker;
 		this.tablespace = tablespace;
@@ -65,7 +72,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	                    	 //.collect(Collectors.toList());
 	                    //List<Long> expiredKeys = expiredList.stream().map(Map.Entry::getKey).collect(Collectors.toList());
 	                    //this.keySet().removeAll(expiredKeys);
-	                    entrySet().removeIf(entry -> Optional.ofNullable((SoftReference<BlockAccessIndex>)(entry.getValue())).map(SoftReference::get).map(BlockAccessIndex::isExpired).orElse(false));
+	                    //entrySet().removeIf(entry -> Optional.ofNullable((SoftReference<BlockAccessIndex>)(entry.getValue())).map(SoftReference::get).map(BlockAccessIndex::isExpired).orElse(false));
+	                    usedBlockList.entrySet().removeIf(entry -> !(Optional.ofNullable(((Entry<Long, SoftReference>) entry).getValue()).isPresent()));
 	                } catch (InterruptedException e) {
 	                    Thread.currentThread().interrupt();
 	                }
@@ -75,25 +83,115 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	        cleanerThread.start();
 	}
 	
+	@Override
+	public Object get(Object key) {
+		Object result = null;
+	    // We get the SoftReference represented by that key
+	    SoftReference soft_ref = (SoftReference) usedBlockList.get(key);
+	    if (soft_ref != null) {
+	      // From the SoftReference we get the value, which can be
+	      // null if it was not in the map, or it was removed in
+	      // the processQueue() method defined below
+	      result = soft_ref.get();
+	      if (result == null) {
+	        // If the value has been garbage collected, remove the
+	        // entry from the HashMap.
+	        usedBlockList.remove(key);
+	        soft_ref = null;
+	      } else {
+	        // We now add this object to the beginning of the hard
+	        // reference queue.  One reference can occur more than
+	        // once, because lookups of the FIFO queue are slow, so
+	        // we don't want to search through it each time to remove
+	        // duplicates.
+	        hardCache.addFirst(result);
+	        if (hardCache.size() > HARD_SIZE) {
+	          // Remove the last entry if list longer than HARD_SIZE
+	          hardCache.removeLast();
+	        }
+	      }
+	    }
+	    return soft_ref;
+	  }
+	
+	/** 
+	 * Define subclass of SoftReference which contains
+	 * not only the value but also the key to make it easier to find
+	 * the entry in the HashMap after it's been garbage collected.
+	*/
+	private static class SoftValue extends SoftReference {
+	    private final Object key; // always make data member final
+	    private SoftValue(Object k, Object key, ReferenceQueue q) {
+	      super(k, q);
+	      this.key = key;
+	    }
+	}
+
+	/**
+	* Process the ReferenceQueue and remove garbage
+	* collected SoftValue objects from the HashMap by looking them
+	* up using the SoftValue.key data member. 
+	*/
+	private void processQueue() {
+	    SoftValue sv;
+	    while ((sv = (SoftValue)queue.poll()) != null) {
+	      BlockAccessIndex bai = (BlockAccessIndex) sv.get();
+	      if(bai.getAccesses() > 0) {
+	    	  // re-enqueue
+	    	  System.out.println("SoftReference process queue, re-enqueue:"+sv.key);
+	    	  put(sv.key, bai);
+	      } else
+	    	  usedBlockList.remove(sv.key);
+	    }
+	}
+
+	@Override
+	public SoftReference remove(Object key) {
+	  processQueue(); // throw out garbage collected values first
+	  return (SoftReference) usedBlockList.remove(key);
+	}
+	  
+	@Override
+	public void clear() {
+	  hardCache.clear();
+	  processQueue(); // throw out garbage collected values
+	  usedBlockList.clear();
+	}
+	  
+	@Override
+	public int size() {
+		processQueue(); // throw out garbage collected values first
+		return usedBlockList.size();
+	}
+	  
+	@Override
+	public Set<Entry<Long, SoftReference>> entrySet() {
+		processQueue();
+		return usedBlockList.entrySet();
+	}
+	
 	public void addBlockChangeObserver(BlockChangeEvent bce) { mObservers.add(bce); }
 	
 	@Override
 	/**
 	 * Put the key and value to cache. Start the expiration counter beforehand.
 	 */
-	public SoftReference<BlockAccessIndex> put(Long key, SoftReference<BlockAccessIndex>value) {
-		if(tablespace != GlobalDBIO.getTablespace(value.get().getBlockNum()) || key != GlobalDBIO.getBlock(value.get().getBlockNum()))
-			throw new RuntimeException("Key:"+key+" does not match corresponding block:"+value.get());
-		value.get().startExpired();
-		return super.put(key,  value);
+	public Object put(Object key, Object value) {
+		if(tablespace != GlobalDBIO.getTablespace(((BlockAccessIndex)value).getBlockNum()) || (Long)key != GlobalDBIO.getBlock(((BlockAccessIndex)value).getBlockNum()))
+			throw new RuntimeException("Key:"+key+" does not match corresponding block:"+(BlockAccessIndex)value);
+		 // Here we put the key, value pair into the HashMap using a SoftValue object.
+		 processQueue(); // throw out garbage collected values first
+		 ((BlockAccessIndex)value).startExpired();
+		 return usedBlockList.put((Long) key, new SoftValue(value, key, queue));
 	}
 	/**
 	 * Put the extracted key and value to cache. notify block change event observers. Start the expiration counter beforehand.
 	 */
-	public SoftReference<BlockAccessIndex> put(SoftReference<BlockAccessIndex>value) {
-		Long key = new Long(GlobalDBIO.getBlock(value.get().getBlockNum()));
-		value.get().startExpired();
-		return super.put(key,  value);
+	public Object put(BlockAccessIndex value) {
+		Long key = new Long(GlobalDBIO.getBlock(value.getBlockNum()));
+		processQueue(); // throw out garbage collected values first
+		value.startExpired();
+		return usedBlockList.put(key, new SoftValue(value, key, queue));
 	}
 	/**
     * This method notifies currently registered observers about BlockChangeEvent change.
@@ -121,24 +219,24 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	 * @return The BlockAccessIndex
 	 * @exception IOException if db not open or can't get block
 	 */
-	public synchronized SoftReference<BlockAccessIndex> acquireNewBlk(SoftReference<BlockAccessIndex> previousBlk) throws IOException {
+	public synchronized BlockAccessIndex acquireNewBlk(BlockAccessIndex previousBlk) throws IOException {
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.acquireblk, last good is tablespace:"+tablespace+" block:"+previousBlk);
-		SoftReference<BlockAccessIndex> ablk = previousBlk;
+		BlockAccessIndex ablk = previousBlk;
 		// this way puts it all in one tablespace
 		//int tbsp = getTablespace(lastGoodBlk.getBlockNum());
 		//int tbsp = new Random().nextInt(DBPhysicalConstants.DTABLESPACES);
 		// this uses a round robin approach
 		long newblock = ((IOWorker)ioWorker).getNextFreeBlock();
 		// update old block, set it to relative, NOT Vblock
-		ablk.get().getBlk().setNextblk(GlobalDBIO.getBlock(newblock));
-		ablk.get().getBlk().setIncore(true);
-		ablk.get().getBlk().setInlog(false);
-		SoftReference<BlockAccessIndex> newBai = addBlockAccessNoRead(newblock);
-		newBai.get().resetBlock(true);
+		ablk.getBlk().setNextblk(GlobalDBIO.getBlock(newblock));
+		ablk.getBlk().setIncore(true);
+		ablk.getBlk().setInlog(false);
+		BlockAccessIndex newBai = addBlockAccessNoRead(newblock);
+		newBai.resetBlock(true);
 		// Set previous to relative block of last good
-		newBai.get().getBlk().setPrevblk(GlobalDBIO.getBlock(previousBlk.get().getBlockNum()));
-		newBai.get().getBlk().setIncore(true);
+		newBai.getBlk().setPrevblk(GlobalDBIO.getBlock(previousBlk.getBlockNum()));
+		newBai.getBlk().setIncore(true);
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.acquireblk returning from:"+ablk+" to:"+newBai);
 		return newBai;
@@ -149,7 +247,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	 * Reset each block in the map and put them to the free block map
 	 */
 	public synchronized void forceBufferClear() {
-		Enumeration<SoftReference<BlockAccessIndex>> it = elements();
+		Enumeration<SoftReference<BlockAccessIndex>> it = usedBlockList.elements();
 		while(it.hasMoreElements()) {
 			SoftReference<BlockAccessIndex> bai = (SoftReference<BlockAccessIndex>) it.nextElement();
 			bai.get().resetBlock(true); // reset and clear access latch
@@ -159,24 +257,29 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 
 	/**
 	 * Search for the numbered block {@link BlockAccessIndex}
-	 * start the expiration timer for the block, then return the block.<p/>
+	 * If it exists on the free list put it to the cache then return the block.<p/>
 	 * Attempt to bring it in from deep store if read is true, regardless, put it on the active list if it wasnt there already.
 	 * @param lbn the block number to retrieve
 	 * @param read to read the block or just create the entry
 	 * @return the BlockAccessIndex in list or brought in from deep store
 	 * @throws IOException
 	 */
-	synchronized BlockAccessIndex getBlock(Long lbn, boolean read) throws IOException {
-		BlockAccessIndex bai;
-		SoftReference<BlockAccessIndex> sbai = get(lbn);
+	private synchronized BlockAccessIndex getBlock(Long lbn, boolean read) throws IOException {
+		// If we requested a specific block, see if it exists on the free list first
+		BlockAccessIndex bai = freeBlockList.remove(lbn);
+		if(bai != null) {
+			put(bai);
+			return bai;
+		}
+		SoftReference sbai = (SoftReference) get(lbn);
 		if( sbai == null ) {
 			bai = new BlockAccessIndex(globalIO, true);
 			bai.setBlockNumber(GlobalDBIO.makeVblock(tablespace, lbn));
 			if(read)
 				ioWorker.FseekAndRead(lbn, bai.getBlk());
-			put(new SoftReference<BlockAccessIndex>(bai));
+			put(bai);
 		} else {
-			bai = sbai.get();
+			bai = (BlockAccessIndex) sbai.get();
 		}
 		bai.startExpired();
 		return bai;
@@ -198,17 +301,17 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @param offset offset from current
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized boolean seek_fwd(SoftReference<BlockAccessIndex> tbai, long offset) throws IOException {
+	public synchronized boolean seek_fwd(BlockAccessIndex tbai, long offset) throws IOException {
 		long runcount = offset;
-		SoftReference<BlockAccessIndex> lbai = tbai;
+		BlockAccessIndex lbai = tbai;
 		do {
-			if (runcount >= (lbai.get().getBlk().getBytesused() - lbai.get().getByteindex())) {
-				runcount -= (lbai.get().getBlk().getBytesused() - lbai.get().getByteindex());
+			if (runcount >= (lbai.getBlk().getBytesused() - lbai.getByteindex())) {
+				runcount -= (lbai.getBlk().getBytesused() - lbai.getByteindex());
 				lbai = getnextblk(lbai);
-				if(lbai.get().getBlk().getNextblk() == -1)
+				if(lbai.getBlk().getNextblk() == -1)
 					return false;
 			} else {
-				lbai.get().setByteindex((short) (lbai.get().getByteindex() + runcount));
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
 				runcount = 0;
 			}
 		} while (runcount > 0);
@@ -224,25 +327,23 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	 * @throws IOException
 	 */
 	public synchronized void commitBufferFlush(RecoveryLogManager rlm) throws IOException {
-		Enumeration<SoftReference<BlockAccessIndex>> elbn = this.elements();
-		while (elbn.hasMoreElements()) {
-				SoftReference<BlockAccessIndex> ebaii = (elbn.nextElement());
-				if( ebaii.get().getAccesses() > 1 )
-					throw new IOException("****COMMIT BUFFER access "+ebaii.get().getAccesses()+" for buffer "+ebaii.get());
-				if(ebaii.get().getBlk().isIncore() && ebaii.get().getBlk().isInlog())
-					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+ebaii.get());
+		for(Object ebaii : usedBlockList.values()) {
+				BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)ebaii).get();
+				if( bai.getAccesses() > 1 )
+					throw new IOException("****COMMIT BUFFER access "+bai.getAccesses()+" for buffer "+bai);
+				if(bai.getBlk().isIncore() && bai.getBlk().isInlog())
+					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+bai);
 				if(DEBUG)
-					System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),ebaii.get());
-				if (ebaii.get().getAccesses() < 2) {
-					if(ebaii.get().getBlk().isIncore() && !ebaii.get().getBlk().isInlog()) {
-						//writeLog(ebaii); 
+					System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),bai);
+				if (bai.getAccesses() < 2) {
+					if(bai.getBlk().isIncore() && !bai.getBlk().isInlog()) {
 						// will set incore, inlog, and push to raw store via applyChange of Loggable
 						if( DEBUG )
-							System.out.printf("%s.commitBufferFlush of block:%s%n",this.getClass().getName(),ebaii.get());
-						rlm.writeLog(ebaii.get());
+							System.out.printf("%s.commitBufferFlush of block:%s%n",this.getClass().getName(),bai);
+						rlm.writeLog(bai);
 					}
-					ebaii.get().decrementAccesses();
-					ebaii.get().setByteindex((short) 0);
+					bai.decrementAccesses();
+					bai.setByteindex((short) 0);
 				}
 		}
 	}
@@ -251,7 +352,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	 * @throws IOException
 	 */
 	public synchronized void directBufferWrite() throws IOException {
-		Enumeration<SoftReference<BlockAccessIndex>> elbn = this.elements();
+		Enumeration<SoftReference<BlockAccessIndex>> elbn = usedBlockList.elements();
 		if(DEBUG) System.out.println("MappedBlockBuffer.direct buffer write");
 		while (elbn.hasMoreElements()) {
 					SoftReference<BlockAccessIndex> ebaii = (elbn.nextElement());
@@ -272,17 +373,17 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @param Lbn block number to add
 	* @exception IOException if new dblock cannot be created
 	*/
-	private SoftReference<BlockAccessIndex> addBlockAccess(Long Lbn) throws IOException {
+	private BlockAccessIndex addBlockAccess(Long Lbn) throws IOException {
 		// make sure we have open slots
 		if( DEBUG ) {
 			System.out.println("MappedBlockBuffer.addBlockAccess "+Lbn+" "+this);
 		}
-		SoftReference<BlockAccessIndex> bai = new SoftReference<BlockAccessIndex>(getBlock(Lbn, true));
-		if( bai.get().getAccesses() == 0 )
-			bai.get().addAccess();
-		bai.get().setByteindex((short) 0);
+		BlockAccessIndex bai = getBlock(Lbn, true);
+		if( bai.getAccesses() == 0 )
+			bai.addAccess();
+		bai.setByteindex((short) 0);
 		if( DEBUG ) {
-				System.out.println("MappedBlockBuffer.addBlockAccess "+Lbn+" returning after freeBL take "+bai.get()+" "+this);
+				System.out.println("MappedBlockBuffer.addBlockAccess "+Lbn+" returning after freeBL take "+bai+" "+this);
 		}
 		return bai;
 	}
@@ -292,16 +393,15 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	 * @return
 	 * @throws IOException
 	 */
-	public SoftReference<BlockAccessIndex> addBlockAccess(BlockAccessIndex bai) throws IOException {
+	public BlockAccessIndex addBlockAccess(BlockAccessIndex bai) throws IOException {
 		if( DEBUG ) {
 			System.out.printf("%s.addBlockAccess %s%n",this.getClass().getName(), bai);
-		}
-		SoftReference<BlockAccessIndex> sbai = new SoftReference<BlockAccessIndex>(bai);		
-		put(sbai);
+		}	
+		put(bai);
 		if( bai.getAccesses() == 0 )
 			bai.addAccess();
 		bai.setByteindex((short) 0);
-		return sbai;
+		return bai;
 	}
 	/**
 	* Add a block to table of blocknums and block access index.
@@ -309,19 +409,19 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @param Lbn block number to add
 	* @exception IOException if new dblock cannot be created
 	*/
-	public synchronized SoftReference<BlockAccessIndex> addBlockAccessNoRead(Long Lbn) throws IOException {
+	public synchronized BlockAccessIndex addBlockAccessNoRead(Long Lbn) throws IOException {
 		if( DEBUG ) {
 			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+GlobalDBIO.valueOf(Lbn)+" "+this);
 		}
 		// make sure we have open slots
-		SoftReference<BlockAccessIndex> bai = new SoftReference<BlockAccessIndex>(getBlock(Lbn, false));
+		BlockAccessIndex bai = getBlock(Lbn, false);
 		// up the access latch, set byteindex to 0
-		if( bai.get().getAccesses() == 0 )
-			bai.get().addAccess();
-		bai.get().setByteindex((short) 0);
+		if( bai.getAccesses() == 0 )
+			bai.addAccess();
+		bai.setByteindex((short) 0);
 		put(Lbn, bai);
 		if( DEBUG ) {
-			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+Lbn+" returning after freeBL take "+bai.get()+" "+this);
+			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+Lbn+" returning after freeBL take "+bai+" "+this);
 		}
 		return bai;
 	}
@@ -334,20 +434,22 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return the BlockAccessIndex with the block or null if its not in the cache
 	* @throws IOException 
 	*/
-	public synchronized SoftReference<BlockAccessIndex> findOrAddBlock(long loc) throws IOException {
+	public synchronized BlockAccessIndex findOrAddBlock(Long loc) throws IOException {
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.findOrAddBlock Calling for BLOCK "+loc+" in tablespace "+tablespace);
-		SoftReference<BlockAccessIndex> bai = get(loc);
-		if( bai == null ) {
+		SoftReference sbai = (SoftReference) get(loc);
+		BlockAccessIndex bai;
+		if( sbai == null ) {
 			++cacheMiss;
 			bai = addBlockAccess(loc);
 		} else {
 			++cacheHit;
-			bai.get().setByteindex((short) 0);
-			if( bai.get().getAccesses() == 0 )
-				bai.get().addAccess();
+			bai = (BlockAccessIndex)sbai.get();
+			bai.setByteindex((short) 0);
+			if( bai.getAccesses() == 0 )
+				bai.addAccess();
 		}
-		notifyObservers(bai.get());
+		notifyObservers(bai);
 		return bai;
 
 	}
@@ -361,20 +463,20 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return The BlockAccessIndex of the next block in the chain, or null if there is no more
 	* @exception IOException If a low level read fail occurs
 	*/
-	public synchronized SoftReference<BlockAccessIndex> getnextblk(SoftReference<BlockAccessIndex> tblk) throws IOException {
-		tblk.get().decrementAccesses();
-		if (tblk.get().getBlk().getNextblk() == -1L) {
+	public synchronized BlockAccessIndex getnextblk(BlockAccessIndex tblk) throws IOException {
+		tblk.decrementAccesses();
+		if (tblk.getBlk().getNextblk() == -1L) {
 			//if( DEBUG )
 			//	System.out.println("MappedBlockBuffer.getnextblk returning with no next block "+lbai);
 			return null;
 		}
 		if( DEBUG )
-			System.out.println("MappedBlockBuffer.getnextblk next block fetch:"+tblk.get());
-		SoftReference<BlockAccessIndex> nextBlk = findOrAddBlock(tblk.get().getBlk().getNextblk());
+			System.out.println("MappedBlockBuffer.getnextblk next block fetch:"+tblk);
+		BlockAccessIndex nextBlk = findOrAddBlock(tblk.getBlk().getNextblk());
 		if( DEBUG )
-			System.out.println("MappedBlockBuffer.getnextblk next block fetch retrieved:"+(nextBlk == null ? "<null>" : nextBlk.get()));
+			System.out.println("MappedBlockBuffer.getnextblk next block fetch retrieved:"+(nextBlk == null ? "<null>" : nextBlk));
 		if( nextBlk != null )
-			notifyObservers(nextBlk.get());
+			notifyObservers(nextBlk);
 		return nextBlk;
 	}
 	
@@ -386,28 +488,28 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return number of bytes read, -1 if we reach end of stream and/or there is no next block
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized int readn(SoftReference<BlockAccessIndex> lbai, byte[] buf, int offs, int numbyte) throws IOException {
-		SoftReference<BlockAccessIndex> tblk;
+	public synchronized int readn(BlockAccessIndex lbai, byte[] buf, int offs, int numbyte) throws IOException {
+		BlockAccessIndex tblk;
 		int i = offs, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.get().getByteindex() >= lbai.get().getBlk().getBytesused()-1)
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
 			if((tblk=getnextblk(lbai)) != null) {
 				lbai=tblk;
 			} else {
 				return -1;
 			}
 		for (;;) {
-			blkbytes = lbai.get().getBlk().getBytesused() - lbai.get().getByteindex();
+			blkbytes = lbai.getBlk().getBytesused() - lbai.getByteindex();
 			if (runcount > blkbytes) {
 				runcount -= blkbytes;
 				System.arraycopy(
-					lbai.get().getBlk().getData(),
-					lbai.get().getByteindex(),
+					lbai.getBlk().getData(),
+					lbai.getByteindex(),
 					buf,
 					i,
 					blkbytes);
-				lbai.get().setByteindex((short) (lbai.get().getByteindex() + (short)blkbytes));
+				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
 				i += blkbytes;
 				if ((tblk=getnextblk(lbai)) != null) {
 					lbai=tblk;
@@ -416,19 +518,19 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 				}
 			} else {
 				System.arraycopy(
-					lbai.get().getBlk().getData(),
-					lbai.get().getByteindex(),
+					lbai.getBlk().getData(),
+					lbai.getByteindex(),
 					buf,
 					i,
 					runcount);
-				lbai.get().setByteindex((short) (lbai.get().getByteindex() + runcount));
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
 				i += runcount;
 				return (i != 0 ? (i-offs) : -1);
 			}
 		}
 	}
 	
-	public synchronized int readn(SoftReference<BlockAccessIndex> lbai, byte[] buf, int numbyte) throws IOException {
+	public synchronized int readn(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
 		return readn(lbai, buf, 0, numbyte);
 	}
 	/**
@@ -438,24 +540,24 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return number of bytes read
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized int readn(SoftReference<BlockAccessIndex> lbai, ByteBuffer buf, int numbyte) throws IOException {
-		SoftReference<BlockAccessIndex> tblk;
+	public synchronized int readn(BlockAccessIndex lbai, ByteBuffer buf, int numbyte) throws IOException {
+		BlockAccessIndex tblk;
 		int i = 0, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.get().getByteindex() >= lbai.get().getBlk().getBytesused()-1)
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
 			if((tblk=getnextblk(lbai)) != null) {
 				lbai=tblk;
 			} else {
 				return (i != 0 ? i : -1);
 			}
 		for (;;) {
-			blkbytes = lbai.get().getBlk().getBytesused() - lbai.get().getByteindex();
+			blkbytes = lbai.getBlk().getBytesused() - lbai.getByteindex();
 			if (runcount > blkbytes) {
 				runcount -= blkbytes;
 				buf.position(i);
-				buf.put(lbai.get().getBlk().getData(), lbai.get().getByteindex(), blkbytes);
-				lbai.get().setByteindex((short) (lbai.get().getByteindex() + (short)blkbytes));
+				buf.put(lbai.getBlk().getData(), lbai.getByteindex(), blkbytes);
+				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
 				i += blkbytes;
 				if((tblk=getnextblk(lbai)) != null) {
 					lbai=tblk;
@@ -464,8 +566,8 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 				}
 			} else {
 				buf.position(i);
-				buf.put(lbai.get().getBlk().getData(), lbai.get().getByteindex(), runcount);
-				lbai.get().setByteindex((short) (lbai.get().getByteindex() + runcount));
+				buf.put(lbai.getBlk().getData(), lbai.getByteindex(), runcount);
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
 				i += runcount;
 				return (i != 0 ? i : -1);
 			}
@@ -477,18 +579,18 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return the byte as integer for InputStream
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized int readi(SoftReference<BlockAccessIndex> lbai) throws IOException {
-		SoftReference<BlockAccessIndex> tblk;
+	public synchronized int readi(BlockAccessIndex lbai) throws IOException {
+		BlockAccessIndex tblk;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.get().getByteindex() >= lbai.get().getBlk().getBytesused()-1) {
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1) {
 			if((tblk=getnextblk(lbai)) == null) {
 				return -1;
 			}
 			lbai = tblk;
 		}
-		int ret = lbai.get().getBlk().getData()[lbai.get().getByteindex()] & 255;
-		lbai.get().setByteindex((short) (lbai.get().getByteindex() + 1));
+		int ret = lbai.getBlk().getData()[lbai.getByteindex()] & 255;
+		lbai.setByteindex((short) (lbai.getByteindex() + 1));
 		return ret;
 	}
 	/**
@@ -499,13 +601,13 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return number of bytes written
 	* @exception IOException if can't acquire new block
 	*/
-	public synchronized int writen(SoftReference<BlockAccessIndex> lbai, byte[] buf, int numbyte) throws IOException {
-		SoftReference<BlockAccessIndex> tblk = null;
-		SoftReference<BlockAccessIndex> ablk = null;
+	public synchronized int writen(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
+		BlockAccessIndex tblk = null;
+		BlockAccessIndex ablk = null;
 		int i = 0, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
 		// and flag our position, tblk has passed block or a new acquired one
-		if (lbai.get().getByteindex() >= DBPhysicalConstants.DATASIZE) {
+		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
 			if ((tblk=getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
 				tblk = acquireNewBlk(lbai);
 			}
@@ -514,7 +616,7 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		}
 		// Iterate, reducing the byte count in buffer by room in each block
 		for (;;) {
-			blkbytes = DBPhysicalConstants.DATASIZE - tblk.get().getByteindex();
+			blkbytes = DBPhysicalConstants.DATASIZE - tblk.getByteindex();
 			if(DEBUG)
 				System.out.printf("Writing %d to tblk:%s%n",blkbytes, tblk);
 			if (runcount > blkbytes) {  //overflow block
@@ -522,16 +624,16 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 				System.arraycopy(
 					buf,
 					i,
-					tblk.get().getBlk().getData(),
-					tblk.get().getByteindex(),
+					tblk.getBlk().getData(),
+					tblk.getByteindex(),
 					blkbytes);
-				tblk.get().setByteindex((short) (tblk.get().getByteindex() + (short)blkbytes));
+				tblk.setByteindex((short) (tblk.getByteindex() + (short)blkbytes));
 				i += blkbytes;
-				tblk.get().getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
+				tblk.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
 				//update control info
-				tblk.get().getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
-				tblk.get().getBlk().setIncore(true);
-				tblk.get().getBlk().setInlog(false);
+				tblk.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
+				tblk.getBlk().setIncore(true);
+				tblk.getBlk().setInlog(false);
 				if((ablk=getnextblk(tblk)) == null) { // no linked block to write into? get one
 					ablk = acquireNewBlk(tblk);
 				}
@@ -541,18 +643,18 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 				System.arraycopy(
 					buf,
 					i,
-					tblk.get().getBlk().getData(),
-					tblk.get().getByteindex(),
+					tblk.getBlk().getData(),
+					tblk.getByteindex(),
 					runcount);
-				tblk.get().setByteindex((short) (tblk.get().getByteindex() + runcount));
+				tblk.setByteindex((short) (tblk.getByteindex() + runcount));
 				i += runcount;
-				if (tblk.get().getByteindex() > tblk.get().getBlk().getBytesused()) {
+				if (tblk.getByteindex() > tblk.getBlk().getBytesused()) {
 					//update control info
-					tblk.get().getBlk().setBytesused(tblk.get().getByteindex());
-					tblk.get().getBlk().setBytesinuse(tblk.get().getBlk().getBytesused());
+					tblk.getBlk().setBytesused(tblk.getByteindex());
+					tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
 				}
-				tblk.get().getBlk().setIncore(true);
-				tblk.get().getBlk().setInlog(false);
+				tblk.getBlk().setIncore(true);
+				tblk.getBlk().setInlog(false);
 				return i;
 			}
 		}
@@ -566,14 +668,14 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return number of bytes written
 	* @exception IOException if can't acquire new block
 	*/
-	public synchronized int writen(SoftReference<BlockAccessIndex> lbai, ByteBuffer buf, int numbyte) throws IOException {
-		SoftReference<BlockAccessIndex> tblk = null;
-		SoftReference<BlockAccessIndex> ablk = null;
+	public synchronized int writen(BlockAccessIndex lbai, ByteBuffer buf, int numbyte) throws IOException {
+		BlockAccessIndex tblk = null;
+		BlockAccessIndex ablk = null;
 		int i = 0, runcount = numbyte, blkbytes;
 		// sets the incore to true and the inlog to false on both blocks
 		// see if we need the next block to start
 		// and flag our position, tblk has passed block or a new acquired one
-		if (lbai.get().getByteindex() >= DBPhysicalConstants.DATASIZE) {
+		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
 			if ((tblk=getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
 				tblk = acquireNewBlk(lbai);
 			}
@@ -582,36 +684,36 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		}
 		//
 		for (;;) {
-			blkbytes = DBPhysicalConstants.DATASIZE - tblk.get().getByteindex();
+			blkbytes = DBPhysicalConstants.DATASIZE - tblk.getByteindex();
 			if(DEBUG)
 				System.out.printf("Writing %d to tblk:%s buffer:%s%n",blkbytes, tblk, buf);
 			if (runcount > blkbytes) {
 				runcount -= blkbytes;
 				buf.position(i);
-				buf.get(tblk.get().getBlk().getData(), tblk.get().getByteindex(), blkbytes);
-				tblk.get().setByteindex((short) (tblk.get().getByteindex() + (short)blkbytes));
+				buf.get(tblk.getBlk().getData(), tblk.getByteindex(), blkbytes);
+				tblk.setByteindex((short) (tblk.getByteindex() + (short)blkbytes));
 				i += blkbytes;
-				tblk.get().getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
+				tblk.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
 				//update control info
-				tblk.get().getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
-				tblk.get().getBlk().setIncore(true);
-				tblk.get().getBlk().setInlog(false);
+				tblk.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
+				tblk.getBlk().setIncore(true);
+				tblk.getBlk().setInlog(false);
 				if ((ablk=getnextblk(tblk)) == null) {
 					ablk = acquireNewBlk(tblk);
 				}
 				tblk = ablk;
 			} else {
 				buf.position(i);
-				buf.get(tblk.get().getBlk().getData(), tblk.get().getByteindex(), runcount);
-				tblk.get().setByteindex((short) (tblk.get().getByteindex() + runcount));
+				buf.get(tblk.getBlk().getData(), tblk.getByteindex(), runcount);
+				tblk.setByteindex((short) (tblk.getByteindex() + runcount));
 				i += runcount;
-				if (tblk.get().getByteindex() >= tblk.get().getBlk().getBytesused()) {
+				if (tblk.getByteindex() >= tblk.getBlk().getBytesused()) {
 					//update control info
-					tblk.get().getBlk().setBytesused(tblk.get().getByteindex());
-					tblk.get().getBlk().setBytesinuse(tblk.get().getBlk().getBytesused());
+					tblk.getBlk().setBytesused(tblk.getByteindex());
+					tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
 				}
-				tblk.get().getBlk().setIncore(true);
-				tblk.get().getBlk().setInlog(false);
+				tblk.getBlk().setIncore(true);
+				tblk.getBlk().setInlog(false);
 				return i;
 			}
 		}
@@ -624,25 +726,25 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @param byte to write
 	* @exception IOException If cannot acquire new block
 	*/
-	public synchronized void writei(SoftReference<BlockAccessIndex> lbai, int tbyte) throws IOException {
-		SoftReference<BlockAccessIndex> tblk;
+	public synchronized void writei(BlockAccessIndex lbai, int tbyte) throws IOException {
+		BlockAccessIndex tblk;
 		// see if we need the next block to start
 		// and flag our position
-		if (lbai.get().getByteindex() >= DBPhysicalConstants.DATASIZE) {
+		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
 			if ((tblk=getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
 				tblk = acquireNewBlk(lbai);
 			}
 		} else { // we have some room in the passed block
 			tblk = lbai;
 		}
-		if (!tblk.get().getBlk().isIncore())
-			tblk.get().getBlk().setIncore(true);
-		tblk.get().getBlk().getData()[tblk.get().getByteindex()] = (byte) tbyte;
-		tblk.get().setByteindex((short) (tblk.get().getByteindex() + 1));
-		if (tblk.get().getByteindex() > tblk.get().getBlk().getBytesused()) {
+		if (!tblk.getBlk().isIncore())
+			tblk.getBlk().setIncore(true);
+		tblk.getBlk().getData()[tblk.getByteindex()] = (byte) tbyte;
+		tblk.setByteindex((short) (tblk.getByteindex() + 1));
+		if (tblk.getByteindex() > tblk.getBlk().getBytesused()) {
 			//update control info
-			tblk.get().getBlk().setBytesused( tblk.get().getByteindex()) ;
-			tblk.get().getBlk().setBytesinuse(tblk.get().getBlk().getBytesused());
+			tblk.getBlk().setBytesused( tblk.getByteindex()) ;
+			tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
 		}
 	}
 
@@ -653,9 +755,9 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 	* @return true if success
 	* @exception IOException If we cannot write block, or we attempted to seek past the end of a chain, or if the high water mark and total bytes used did not ultimately agree.
 	*/
-	protected synchronized void deleten(SoftReference<BlockAccessIndex> lbai, int osize) throws IOException {
+	protected synchronized void deleten(BlockAccessIndex lbai, int osize) throws IOException {
 		//System.out.println("MappedBlockBuffer.deleten:"+lbai+" size:"+osize);
-		SoftReference<BlockAccessIndex> tblk;
+		BlockAccessIndex tblk;
 		int runcount = osize;
 		if (osize <= 0)
 			throw new IOException("Attempt to delete object with size invalid: " + osize);
@@ -664,13 +766,13 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		// we are not altering the high water mark because the entry falls between the beginning and high water
 		// and there may be another entry between it and high water
 		//
-		if( (((int)lbai.get().getByteindex()) + runcount) < ((int)lbai.get().getBlk().getBytesused())) {
-			lbai.get().getBlk().setBytesinuse((short) (((int)(lbai.get().getBlk().getBytesinuse()) - runcount)) ); // reduce total bytes being used by delete amount
+		if( (((int)lbai.getByteindex()) + runcount) < ((int)lbai.getBlk().getBytesused())) {
+			lbai.getBlk().setBytesinuse((short) (((int)(lbai.getBlk().getBytesinuse()) - runcount)) ); // reduce total bytes being used by delete amount
 			// assertion did everything make sense at the end?
-			if(lbai.get().getBlk().getBytesinuse() < 0)
+			if(lbai.getBlk().getBytesinuse() < 0)
 				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount:"+runcount+" delete size:"+osize);
-			lbai.get().getBlk().setIncore(true);
-			lbai.get().getBlk().setInlog(false);
+			lbai.getBlk().setIncore(true);
+			lbai.getBlk().setInlog(false);
 			return;
 		}
 		//
@@ -682,31 +784,31 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 		//
 		do {
 			//
-			int bspan = ((int)lbai.get().getByteindex()) + runcount; // current delete amount plus start of delete
-			int dspan = ((int)lbai.get().getBlk().getBytesused()) - ((int)lbai.get().getByteindex()); // (high water mark bytesused - index) total available to delete this page
+			int bspan = ((int)lbai.getByteindex()) + runcount; // current delete amount plus start of delete
+			int dspan = ((int)lbai.getBlk().getBytesused()) - ((int)lbai.getByteindex()); // (high water mark bytesused - index) total available to delete this page
 			if( bspan < dspan ) { // If the total we want to delete plus start, does not exceed total this page, set to delete remaining runcount
 				dspan = runcount;
 			} else {
 				// reduce bytesused by total this page, set high water mark back since we exceeded it
-				lbai.get().getBlk().setBytesused( (short) (((int)(lbai.get().getBlk().getBytesused()) - dspan)) );
+				lbai.getBlk().setBytesused( (short) (((int)(lbai.getBlk().getBytesused()) - dspan)) );
 			}
 			//System.out.println("runcount="+runcount+" dspan="+dspan+" bspan="+bspan);
 			runcount = runcount - dspan; //reduce runcount by total available to delete this page
-			lbai.get().getBlk().setBytesinuse((short) (((int)(lbai.get().getBlk().getBytesinuse()) - dspan)) ); // reduce total bytes being used by delete amount
+			lbai.getBlk().setBytesinuse((short) (((int)(lbai.getBlk().getBytesinuse()) - dspan)) ); // reduce total bytes being used by delete amount
 			//
 			// assertion did everything make sense at the end?
-			if(lbai.get().getBlk().getBytesinuse() < 0)
+			if(lbai.getBlk().getBytesinuse() < 0)
 				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount:"+runcount+" delete size:"+osize);
-			if(lbai.get().getBlk().getBytesused() < 0)
+			if(lbai.getBlk().getBytesused() < 0)
 				throw new IOException(this.toString() + " "+lbai+" negative bytesused from runcount "+runcount+" delete size:"+osize);
 			// high water mark 0, but bytes used for data is not, something went horribly wrong
-			if(lbai.get().getBlk().getBytesinuse() == 0) { //if total bytes used is 0, reset high water mark to 0 to eventually reclaim block
-				lbai.get().getBlk().setBytesused((short)0);
-				lbai.get().setByteindex((short)0);	
+			if(lbai.getBlk().getBytesinuse() == 0) { //if total bytes used is 0, reset high water mark to 0 to eventually reclaim block
+				lbai.getBlk().setBytesused((short)0);
+				lbai.setByteindex((short)0);	
 			}
 			//
-			lbai.get().getBlk().setIncore(true);
-			lbai.get().getBlk().setInlog(false);
+			lbai.getBlk().setIncore(true);
+			lbai.getBlk().setInlog(false);
 			if(runcount > 0) { // if we have more to delete
 				tblk = getnextblk(lbai);
 				// another sanity check
@@ -714,16 +816,16 @@ public class MappedBlockBuffer extends ConcurrentHashMap<Long, SoftReference<Blo
 					throw new IOException(
 						"Attempted delete past end of block chain for "+ osize + " bytes total, with remaining runcount "+runcount+" in "+ lbai);
 				// we have to unlink this from the next block
-				lbai.get().getBlk().setNextblk(-1L);
+				lbai.getBlk().setNextblk(-1L);
 				lbai = tblk;
-				lbai.get().setByteindex((short) 0);// start at the beginning of the next block to continue delete, or whatever
+				lbai.setByteindex((short) 0);// start at the beginning of the next block to continue delete, or whatever
 			}
 		} while( runcount > 0); // while we still have more to delete
 	}
 	
-
+	@Override
 	public String toString() {
-		return "MappedBlockBuffer tablespace "+tablespace+" blocks:"+this.size()+" cache hit="+cacheHit+" miss="+cacheMiss;
+		return "MappedBlockBuffer tablespace "+tablespace+" blocks:"+usedBlockList.size()+" cache hit="+cacheHit+" miss="+cacheMiss;
 	}
 
 

@@ -35,7 +35,7 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
  *
  */
 public class HMapRootKeyPage implements RootKeyPageInterface {
-	private boolean DEBUG = false;
+	private boolean DEBUG = true;
 	protected long numKeys; // number of keys currently utilized
 	public final static int MAXKEYSROOT = 4; // 2 bits (0-3) times 8 bytes long page pointer
 	protected BlockAccessIndex rootPage; // initial root page with 2 bit keys
@@ -67,9 +67,13 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 		if(dis.available() < 8)
 			return;
 		numKeys = dis.readLong(); // size
+		if(DEBUG)
+			System.out.printf("%s.readFromDBStream read numKeys=%d %s%n",this.getClass().getName(),numKeys,rootPage);
 		for(int i = 0; i < numKeys; i++) {
 			rootKeys[i] = dis.readLong();	
 		}
+		if(DEBUG)
+			System.out.printf("%s.readFromDBStream read %s%n",this.getClass().getName(),this);
 	}
 	
 	@Override
@@ -180,8 +184,10 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 		sb.append(" ");
 		sb.append(rootPage);
 		sb.append(" ");
+		sb.append("numKeys reported=");
+		sb.append(numKeys);
+		sb.append(" all keys=");
 		for(int i = 0; i < MAXKEYSROOT; i++) {
-			sb.append("key ");
 			sb.append(i);
 			sb.append("=");
 			sb.append(GlobalDBIO.valueOf(rootKeys[i]));

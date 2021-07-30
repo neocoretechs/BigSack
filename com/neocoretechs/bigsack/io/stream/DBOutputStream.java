@@ -35,9 +35,9 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 */
 public final class DBOutputStream extends OutputStream {
 	MappedBlockBuffer blockBuffer;
-	SoftReference<BlockAccessIndex> lbai;
+	BlockAccessIndex lbai;
 	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai =  new SoftReference<BlockAccessIndex>(tlbai);
+		lbai =  tlbai;
 		//tlbai.getBlk().setIncore(true);
 		blockBuffer = tsdbio;
 	}
@@ -48,7 +48,7 @@ public final class DBOutputStream extends OutputStream {
 	 * @param tsdbio
 	 */
 	public void replaceSource(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai = new SoftReference<BlockAccessIndex>(tlbai);
+		lbai = tlbai;
 		blockBuffer = tsdbio;
 	}
 	

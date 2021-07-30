@@ -435,9 +435,9 @@ public final class FileLogger implements Logger {
 					UndoableBlock ub = (UndoableBlock)loggable;
 					BlockAccessIndex lbai = ub.getBlkV2();
 					if(pool.containsKey(GlobalDBIO.getBlock(lbai.getBlockNum()))) {
-						SoftReference<BlockAccessIndex> sbai = pool.get(GlobalDBIO.getBlock(lbai.getBlockNum()));
-						sbai.get().getBlk().setInlog(false);
-						t.FseekAndWriteHeader(sbai.get().getBlockNum(), sbai.get().getBlk());
+						BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)(pool.get(GlobalDBIO.getBlock(lbai.getBlockNum())))).get();
+						bai.getBlk().setInlog(false);
+						t.FseekAndWriteHeader(bai.getBlockNum(), bai.getBlk());
 					} else {
 						long tblock = lbai.getBlockNum();
 						t.FseekAndReadHeader(tblock, dblk);
@@ -459,7 +459,6 @@ public final class FileLogger implements Logger {
 			compensation.releaseResource(t);
 			}
 		}
-
 		if(DEBUG) {
 			System.out.println("FileLogger.commit: Finish commit");
 		}
