@@ -21,7 +21,7 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
  * Class BTree
  * Description: BTree implementation
  */
-public class BTree<K extends Comparable, V> {
+public class BTreeNavigator<K extends Comparable, V> {
 	private static final boolean DEBUGINSERT = true;
     public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
     public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
@@ -31,13 +31,13 @@ public class BTree<K extends Comparable, V> {
     private BTNode<K, V> mIntermediateInternalNode = null;
     private int mNodeIdx = 0;
     private final Stack<StackInfo> mStackTracer = new Stack<StackInfo>();
-    private BTreeMain bMain;
+    private KeyValueMainInterface bTreeMain;
     // search results
     private KeySearchResult tsr;
 	private boolean DEBUG;
 
-    public BTree(BTreeMain bMain) {
-    	this.bMain = bMain;
+    public BTreeNavigator(KeyValueMainInterface bMain) {
+    	this.bTreeMain = bMain;
     	//mRoot = getRootNode(); may need buckets first
     }
     /**
@@ -56,14 +56,12 @@ public class BTree<K extends Comparable, V> {
         return mRoot;
     }
 
-
     //
     // The total number of nodes in the tree
     //
     public long size() {
         return mSize;
     }
-
 
     /**
      * Clear all tree entries
@@ -74,7 +72,7 @@ public class BTree<K extends Comparable, V> {
     }
 
     public KeyValueMainInterface getKeyValueMain() {
-    	return bMain;
+    	return bTreeMain;
     }
 
     /**
@@ -86,10 +84,10 @@ public class BTree<K extends Comparable, V> {
      */
     private NodeInterface<K, V> createNode(boolean isLeaf) throws IOException {
         BTNode<K, V> btNode;
-        btNode = new BTNode(this, isLeaf);
+        KeyPageInterface kpi = ((BTreeMain)bTreeMain).sdbio.getBTreePageFromPool(-1L);
+        btNode = new BTNode(this, kpi, isLeaf);
         btNode.setNumKeys(0);
-        KeyPageInterface newNode = bMain.createNode(btNode);
-        btNode.pageId = newNode.getBlockAccessIndex().getBlockNum();
+        KeyPageInterface newNode = bTreeMain.createNode(btNode);
         return btNode;
     }
     /**
@@ -100,10 +98,9 @@ public class BTree<K extends Comparable, V> {
      */
     private NodeInterface<K, V> createRootNode() throws IOException {
         BTNode<K, V> btNode;
-        btNode = new BTNode(this, true); // leaf true
-        btNode.pageId = 0L;
+        btNode = new BTNode(this, 0L, true); // leaf true
         btNode.setNumKeys(0);
-        bMain.createRootNode(btNode);
+        bTreeMain.createRootNode(btNode);
         return btNode;
     }
 
@@ -135,7 +132,7 @@ public class BTree<K extends Comparable, V> {
             }
 
             if ((i < numberOfKeys) && (key.compareTo(currentKey.getmKey()) == 0)) {
-            	tsr = new KeySearchResult(currentNode.pageId, i, true);
+            	tsr = new KeySearchResult(currentNode.getPageId(), i, true);
                 return currentKey.getmValue();
             }
 
@@ -667,8 +664,8 @@ public class BTree<K extends Comparable, V> {
             return null;
         }
         --mSize;
-        bMain.delete(keyVal.getValueOptr(), keyVal.getmValue());
-        bMain.delete(keyVal.getKeyOptr(), key);
+        bTreeMain.delete(keyVal.getValueOptr(), keyVal.getmValue());
+        bTreeMain.delete(keyVal.getKeyOptr(), key);
         return keyVal.getmValue();
     }
 
@@ -1092,7 +1089,7 @@ public class BTree<K extends Comparable, V> {
 		if(bTNode == null) {
 			throw new IOException(String.format("%s.putPage BTNode is null:%s%n",this.getClass().getName(),this));
 		}
-		if(!bTNode.updated) {
+		if(!bTNode.getUpdated()) {
 			if(DEBUG)
 				System.out.printf("%s.putPage page NOT updated:%s%n",this.getClass().getName(),this);
 			return;
@@ -1176,7 +1173,7 @@ public class BTree<K extends Comparable, V> {
 		if( DEBUG ) {
 			System.out.println("KeyPageInterface.putPage Added Keypage @:"+this);
 		}
-		bTNode.updated = false;
+		bTNode.setUpdated(false);
 	}
 
     /**

@@ -256,14 +256,14 @@ public class GlobalDBIO {
 	* @return Object instance
 	* @exception IOException cannot convert
 	*/
-	public static Object deserializeObject(GlobalDBIO sdbio, byte[] obuf) throws IOException {
+	public static Object deserializeObject(GlobalDBIO globalIO, byte[] obuf) throws IOException {
 		Object Od;
 		try {
 			ObjectInputStream s;
 			ByteArrayInputStream bais = new ByteArrayInputStream(obuf);
 			ReadableByteChannel rbc = Channels.newChannel(bais);
-			if (sdbio.isCustomClassLoader())
-				s = new CObjectInputStream(Channels.newInputStream(rbc), sdbio.getCustomClassLoader());
+			if(globalIO.isCustomClassLoader())
+				s = new CObjectInputStream(Channels.newInputStream(rbc), globalIO.getCustomClassLoader());
 			else
 				s = new ObjectInputStream(Channels.newInputStream(rbc));
 			Od = s.readObject();
@@ -314,6 +314,7 @@ public class GlobalDBIO {
 		}
 		return Od;
 	}
+	
 	/**
 	 * Deserialize an object from the provided InputStream
 	 * @param is
@@ -598,19 +599,18 @@ public class GlobalDBIO {
 	* Get a page from the buffer pool based on the specified location.<p/>
 	* No effort is made to guarantee the record being accessed is a viable KeyPageInterface, that is assumed.
 	* The KeyPageInterface constructor is called with option true to read the page upon access.
-	* @param sdbio The BufferPool io instance
 	* @param pos The block containing page
 	* @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and BTreeMain
 	* @exception IOException If retrieval fails
 	*/
-	public static BTreeKeyPage getBTreePageFromPool(GlobalDBIO sdbio, long pos) throws IOException {
-		assert(pos != -1L) : "Page index invalid in getPage "+sdbio.getDBName();
-		BlockAccessIndex bai = sdbio.findOrAddBlock(pos);
-		BTreeKeyPage btk = new BTreeKeyPage(sdbio.getKeyValueMain(), bai, true);
+	public BTreeKeyPage getBTreePageFromPool(long pos) throws IOException {
+		assert(pos != -1L) : "Page index invalid in getPage "+getDBName();
+		BlockAccessIndex bai = findOrAddBlock(pos);
+		BTreeKeyPage btk = new BTreeKeyPage(getKeyValueMain(), bai, true);
 		if( DEBUG ) 
 			System.out.printf("getBtreePageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
 		//for(int i = 0; i <= MAXKEYS; i++) {
-		//	btk.pageArray[i] = btk.getPage(sdbio,i);
+		//	btk.pageArray[i] = btk.getPage(this,i);
 		//}
 		return btk;
 	}
@@ -619,26 +619,25 @@ public class GlobalDBIO {
 	 * Call stealblk, create KeyPageInterface with the page Id of stolen block.
 	 * KeyPageInterface constructor is called with option false (no read), set up for new block instead.
 	 * This will set the updated flag in the block since the block is new,
-	 * @param sdbio The io module to talk to deep store.
 	 * @param btnode The new node
 	 * @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and new node
 	 * @throws IOException
 	 */
-	public static BTreeKeyPage getBTreePageFromPool(GlobalDBIO sdbio, NodeInterface btnode) throws IOException {
+	public BTreeKeyPage getBTreePageFromPool(NodeInterface btnode) throws IOException {
 		// Get a fresh block
-		BlockAccessIndex lbai = sdbio.stealblk();
+		BlockAccessIndex lbai = stealblk();
 		// initialize transients, set page with this block, false=no read, set up for new block instead
 		// this will set updated since the block is new
-		BTreeKeyPage btk = new BTreeKeyPage(sdbio.getKeyValueMain(), lbai, true);
+		BTreeKeyPage btk = new BTreeKeyPage(getKeyValueMain(), lbai, true);
 		btk.setNode(btnode);
 		if( DEBUG ) 
 			System.out.printf("getBTreePageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,lbai);
 		return btk;
 	}
 	
-	public static BTreeRootKeyPage getBTreeRootPageFromPool(GlobalDBIO sdbio) throws IOException {
-		BlockAccessIndex bai = sdbio.findOrAddBlock(0L);
-		BTreeRootKeyPage btk = new BTreeRootKeyPage(sdbio.getKeyValueMain(), bai, true);
+	public BTreeRootKeyPage getBTreeRootPageFromPool() throws IOException {
+		BlockAccessIndex bai = findOrAddBlock(0L);
+		BTreeRootKeyPage btk = new BTreeRootKeyPage(getKeyValueMain(), bai, true);
 		if( DEBUG ) 
 			System.out.printf("getBTreeRootPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
 		return btk;
@@ -652,15 +651,15 @@ public class GlobalDBIO {
 	* @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and BTreeMain
 	* @exception IOException If retrieval fails
 	*/
-	public static HMapKeyPage getHMapPageFromPool(GlobalDBIO sdbio, long pos) throws IOException {
+	public HMapKeyPage getHMapPageFromPool(long pos) throws IOException {
 		//assert(pos != -1L) : "Page index invalid in getPage "+sdbio.getDBName();
 		BlockAccessIndex bai;
 		if(pos == -1L) {
-			bai = sdbio.stealblk();
+			bai = stealblk();
 		} else {
-			bai = sdbio.findOrAddBlock(pos);
+			bai = findOrAddBlock(pos);
 		}
-		HMapKeyPage btk = new HMapKeyPage((HMapMain) sdbio.getKeyValueMain(), bai, true);
+		HMapKeyPage btk = new HMapKeyPage((HMapMain) getKeyValueMain(), bai, true);
 		if( DEBUG ) 
 			System.out.printf("getHMapPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
 		return btk;
@@ -711,23 +710,22 @@ public class GlobalDBIO {
 	 * Call stealblk, create KeyPageInterface with the page Id of stolen block.
 	 * KeyPageInterface constructor is called with option false (no read), set up for new block instead.
 	 * This will set the updated flag in the block since the block is new,
-	 * @param sdbio The io module to talk to deep store.
 	 * @param btnode The new node
 	 * @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and new node
 	 * @throws IOException
 	 */
-	public static HMapKeyPage getHMapPageFromPool(GlobalDBIO sdbio, NodeInterface btnode) throws IOException {
+	public HMapKeyPage getHMapPageFromPool(NodeInterface btnode) throws IOException {
 		// Get a fresh block if necessary
 		BlockAccessIndex lbai = null;
 		if(btnode.getPageId() == -1L) {
-			lbai = sdbio.stealblk();
+			lbai = stealblk();
 			btnode.setPageId(lbai.getBlockNum());
 		} else {
-			lbai = sdbio.findOrAddBlock(btnode.getPageId());
+			lbai = findOrAddBlock(btnode.getPageId());
 		}
 		// initialize transients, set page with this block, false=no read, set up for new block instead
 		// this will set updated since the block is new
-		HMapKeyPage btk = new HMapKeyPage((HMapMain) sdbio.getKeyValueMain(), lbai, true);
+		HMapKeyPage btk = new HMapKeyPage((HMapMain) getKeyValueMain(), lbai, true);
 		btk.setNode(btnode);
 		if( DEBUG ) 
 			System.out.printf("getHMapPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,lbai);
@@ -737,15 +735,14 @@ public class GlobalDBIO {
 	* Get the first Root page from the buffer pool from 0 block of tablespace.<p/>
 	* No effort is made to guarantee the record being accessed is a viable KeyPageInterface, that is assumed.
 	* The RootKeyPageInterface constructor is called with option true to read the page upon access.
-	* @param sdbio The BufferPool io instance
 	* @param tablespace The tablespace
 	* @return The KeyPageInterface page instance, which also contains a reference to the BlockAccessIndex and BTreeMain
 	* @exception IOException If retrieval fails
 	*/
-	public static HMapRootKeyPage getHMapRootPageFromPool(GlobalDBIO sdbio, int tablespace) throws IOException {
+	public HMapRootKeyPage getHMapRootPageFromPool(int tablespace) throws IOException {
 		long pos = GlobalDBIO.makeVblock(tablespace, 0L);
-		BlockAccessIndex bai = sdbio.findOrAddBlock(pos);
-		HMapRootKeyPage btk = new HMapRootKeyPage((HMapMain) sdbio.getKeyValueMain(), bai, true);
+		BlockAccessIndex bai = findOrAddBlock(pos);
+		HMapRootKeyPage btk = new HMapRootKeyPage((HMapMain) getKeyValueMain(), bai, true);
 		if( DEBUG ) 
 			System.out.printf("getHMapRootPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
 		return btk;
@@ -754,22 +751,21 @@ public class GlobalDBIO {
 	 * Get a child of the root HMap page from the pool. Upon acquiring a new page we have to prepare it by setting the contents
 	 * so the page pointers come back as -1 so that as we fan out our key space the intermediary pointers read as empty.<p/>
 	 * This is because our numKeys is essentially a high water mark.
-	 * @param sdbio
 	 * @param pos block number, if -1, acquire block from freechain
 	 * @return The HMapChildRootKeyPage as derived from the BlockAccessIndex.
 	 * @throws IOException
 	 */
-	public static HMapChildRootKeyPage getHMapChildRootPageFromPool(GlobalDBIO sdbio, long pos) throws IOException {
+	public HMapChildRootKeyPage getHMapChildRootPageFromPool(long pos) throws IOException {
 		// Get a fresh block if necessary
 		BlockAccessIndex lbai = null;
 		if(pos == -1L) {
-			lbai = sdbio.stealblk();
+			lbai = stealblk();
 		} else {
-			lbai = sdbio.findOrAddBlock(pos);
+			lbai = findOrAddBlock(pos);
 		}
 		// initialize transients, set page with this block, false=no read, set up for new block instead
 		// this will set updated since the block is new
-		HMapChildRootKeyPage btk = new HMapChildRootKeyPage((HMapMain) sdbio.getKeyValueMain(), lbai, true);
+		HMapChildRootKeyPage btk = new HMapChildRootKeyPage((HMapMain)getKeyValueMain(), lbai, true);
 		if( DEBUG ) 
 			System.out.printf("%s getHMapChildPageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",BlockAccessIndex.class.getName(), btk,lbai);
 		return btk;

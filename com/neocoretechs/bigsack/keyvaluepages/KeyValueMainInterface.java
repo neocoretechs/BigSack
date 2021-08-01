@@ -3,7 +3,7 @@ package com.neocoretechs.bigsack.keyvaluepages;
 import java.io.IOException;
 
 import com.neocoretechs.bigsack.btree.BTNode;
-import com.neocoretechs.bigsack.btree.BTree;
+import com.neocoretechs.bigsack.btree.BTreeNavigator;
 import com.neocoretechs.bigsack.btree.StructureCallBackListener;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;

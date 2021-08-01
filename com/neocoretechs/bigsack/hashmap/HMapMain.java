@@ -118,7 +118,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	 */
 	public RootKeyPageInterface createRootNode() throws IOException {
 		for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-			HMapRootKeyPage htk = GlobalDBIO.getHMapRootPageFromPool(sdbio, i);
+			HMapRootKeyPage htk = sdbio.getHMapRootPageFromPool(i);
 			this.root[i] = htk;
 		}
 		if( DEBUG ) {
@@ -142,7 +142,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	 */
 	public RootKeyPageInterface createRootNode(NodeInterface htNode) throws IOException {
 		int tblsp = htNode.getTablespace();
-		HMapKeyPage htk = GlobalDBIO.getHMapPageFromPool(sdbio, tblsp);
+		HMapKeyPage htk = sdbio.getHMapPageFromPool(tblsp);
 		htNode.setPageId(htk.getPageId());
 		root[tblsp].setRootNode(htk.getBlockAccessIndex());
 		if( DEBUG )
@@ -161,7 +161,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @throws IOException
 	 */
 	public KeyPageInterface createNode(NodeInterface hnode) throws IOException {
-		return GlobalDBIO.getHMapPageFromPool(sdbio, hnode);
+		return sdbio.getHMapPageFromPool(hnode);
 	}
 	
 	@Override
@@ -362,7 +362,7 @@ public final class HMapMain implements KeyValueMainInterface {
 			// didnt find the key, proceed to next page of collision space if any
 			if(nPage.nextPage == null) {
 				if(nPage.nextPageId != -1L) {
-					nPage.nextPage = GlobalDBIO.getHMapPageFromPool(sdbio, nPage.nextPageId);
+					nPage.nextPage = sdbio.getHMapPageFromPool(nPage.nextPageId);
 					lastPage = nPage;
 					nPage = (HMapKeyPage) nPage.nextPage;
 				} else {

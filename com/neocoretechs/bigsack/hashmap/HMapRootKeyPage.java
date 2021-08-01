@@ -142,7 +142,7 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 
 	@Override
 	public synchronized RootKeyPageInterface getPage(int index) throws IOException {
-		return GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(),rootKeys[index]);
+		return hMapMain.getIO().getHMapChildRootPageFromPool(rootKeys[index]);
 	}
 
 	@Override

@@ -84,15 +84,14 @@ public class BTreeKeyPage implements KeyPageInterface {
 	private static final boolean DEBUGGETDATA = false;
 	private static final boolean DEBUGPUTDATA = false;
 	static final long serialVersionUID = -2441425588886011772L;
-	public static final int BTREEKEYSIZE = 28; // total size of non-transient recurring fields here
-	public static final int BTREEDATASIZE = 13; // total number of non transient single entry fields stored per block (numkeys,page) plus 8 bytes for last BTree page pointer entry
+	public static final int BTREEKEYSIZE = 28; // total size per key/value 2 Optr for key/value + child node page to the left
+	public static final int BTREEDATASIZE = 16; // extra data in key/value page, long number of keys, long last child right node page ID
+	public static int TOTALKEYS = 
+			((int) Math.floor((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE));
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
 	// The number of maximum children is MAXKEYS+1 per node.
-	// Calculate the maximum number of odd keys that can fit per block.
-	public static int MAXKEYS = (
-			((int) Math.floor(((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE)) % 2) == 0 ? 
-			((int) Math.floor((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE)) - 1 : // even, subtract 1 from total
-			((int) Math.floor((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE)) );
+	// Calculate the maximum number of odd keys that can fit per block. Must be odd for splits that leave an even balance of left/right
+	public static int MAXKEYS = (TOTALKEYS % 2 == 0 ? TOTALKEYS - 1 : TOTALKEYS);
 	// Non transient number of keys on this page. Adjusted as necessary when inserting/deleting.
 	//private int numKeys = 0; // 4 bytes, SINGLE ENTRY
 	// The array of page locations of stored keys as block and offset, used to fill keyArray lazily
@@ -115,7 +114,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	//private transient boolean updated = false; // has the node been updated for purposes of write
 	//
 	protected transient BlockAccessIndex lbai = null; // The page is tied to a block
-	protected transient KeyValueMainInterface bTree;
+	protected transient KeyValueMainInterface bTreeMain;
 	protected transient NodeInterface<Comparable, Object> bTNode = null;
 
 	/**
@@ -125,7 +124,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @param read true to read the contents of the btree key from page, otherwise a new page to be filled
 	 */
 	public BTreeKeyPage(KeyValueMainInterface bTree, BlockAccessIndex lbai, boolean read) throws IOException {
-		this.bTree = bTree;
+		this.bTreeMain = bTree;
 		this.lbai = lbai;
 		if( DEBUG ) 
 			System.out.printf("%s ctor1 BlockAccessIndex:%s for MAXKEYS=%d%n",this.getClass().getName(), lbai, MAXKEYS);
@@ -151,7 +150,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @param read true to read the contents of the btree key from page, otherwise a new page to be filled
 	 */
 	public BTreeKeyPage(KeyValueMainInterface bTree, BlockAccessIndex lbai, BTNode btNode, boolean read) throws IOException {
-		this.bTree = bTree;
+		this.bTreeMain = bTree;
 		this.lbai = lbai;
 		this.bTNode = btNode;
 		if( DEBUG ) 
@@ -230,7 +229,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		}
 		// pageId
 		for(int i = 0; i <= MAXKEYS; i++) {	
-			((BTNode)(bTNode.getChild(i))).pageId = dis.readLong();
+			((BTNode)(bTNode.getChild(i))).setPageId(dis.readLong());
 		}
 	}
 	
@@ -243,7 +242,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
 		getKeyValueArray(index).setKeyOptr(optr);
 		bTNode.getKeyValueArray(index).setKeyUpdated(update);
-		((BTNode)bTNode).updated = update;
+		((BTNode)bTNode).setUpdated(update);
 	}
 	
 	@Override
@@ -259,7 +258,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	public synchronized void setDataIdArray(int index, Optr optr, boolean update) {
 		getKeyValueArray(index).setValueOptr(optr);
 		getKeyValueArray(index).setValueUpdated(update);
-		((BTNode)bTNode).updated = update;
+		((BTNode)bTNode).setUpdated(update);
 	}
 	
 	@Override
@@ -273,13 +272,13 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	@Override
 	public synchronized void setPageIdArray(int index, long optr, boolean update) {
-		((BTNode)bTNode.getChildNoread(index)).pageId = optr;
-		((BTNode)bTNode).updated = update;
+		((BTNode)bTNode.getChildNoread(index)).setPageId(optr);
+		((BTNode)bTNode).setUpdated(update);
 	}
 	
 	@Override
 	public synchronized long getPageId(int index) {
-		return ((BTNode)bTNode.getChildNoread(index)).pageId;
+		return ((BTNode)bTNode.getChildNoread(index)).getPageId();
 	}
 	
 	
@@ -354,9 +353,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if( bTNode.getKeyValueArray(index) == null )
 			throw new IOException("Node at index "+index+" null for attempted delete");
 		if( !bTNode.getKeyValueArray(index).getKeyOptr().equals(Optr.emptyPointer))
-			bTree.getIO().delete_object(bTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmKey()).length);
+			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmKey()).length);
 		if( bTNode.getKeyValueArray(index).getValueOptr() != null && !bTNode.getKeyValueArray(index).getValueOptr().equals(Optr.emptyPointer))
-			bTree.getIO().delete_object(bTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmValue()).length);
+			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmValue()).length);
 		// If its the rightmost key ignore move
 		setUpdated(true);
 	}
@@ -452,16 +451,16 @@ public class BTreeKeyPage implements KeyPageInterface {
 				System.out.printf("%s.getPage target index:[%d] child at index null, cant get page..",this.getClass().getName(), index);
 			return null;
 		}
-		if(((BTNode)bTNode.getChildNoread(index)).pageId != -1L) {
+		if(((BTNode)bTNode.getChildNoread(index)).getPageId() != -1L) {
 			// has a key to retrieve page
 			if( DEBUG ) {
-				System.out.println("KeyPageInterface.getPage about to retrieve index:["+index+"] loc:"+GlobalDBIO.valueOf(((BTNode)bTNode.getChildNoread(index)).pageId));
+				System.out.println("KeyPageInterface.getPage about to retrieve index:["+index+"] loc:"+GlobalDBIO.valueOf(((BTNode)bTNode.getChildNoread(index)).getPageId()));
 			}
 			// this will read the data values for the page
-			btk = (BTreeKeyPage) GlobalDBIO.getBTreePageFromPool(bTree.getIO(),((BTNode) bTNode.getChildNoread(index)).pageId);
+			btk = (BTreeKeyPage) bTreeMain.getIO().getBTreePageFromPool(((BTNode) bTNode.getChildNoread(index)).getPageId());
 			btk.bTNode = (BTNode<Comparable, Object>) bTNode.getChild(index);
 			if( DEBUG ) {
-				System.out.println("KeyPageInterface.getPage RETRIEVED index:"+index+" loc:"+GlobalDBIO.valueOf(((BTNode)bTNode.getChildNoread(index)).pageId)+" page:"+bTNode.getChildNoread(index));
+				System.out.println("KeyPageInterface.getPage RETRIEVED index:"+index+" loc:"+GlobalDBIO.valueOf(((BTNode)bTNode.getChildNoread(index)).getPageId())+" page:"+bTNode.getChildNoread(index));
 			}
 		}
 
@@ -470,7 +469,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 			for(int i = 0; i < bTNode.getNumKeys(); i++) {
 				if( i == index )
 					continue;
-				if (bTNode.getChildNoread(i) != null && ((BTNode)bTNode.getChildNoread(i)).pageId != -1L && bTNode.getChildNoread(i) == bTNode.getChildNoread(index)) {
+				if (bTNode.getChildNoread(i) != null && ((BTNode)bTNode.getChildNoread(i)).getPageId() != -1L && bTNode.getChildNoread(i) == bTNode.getChildNoread(index)) {
 					throw new IOException("Duplicate child page encountered");
 				}
 			}
@@ -499,7 +498,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getKey about to retrieve index:"+index+" loc:"+bTNode.getKeyValueArray(index).getKeyOptr());
 			}
-			bTNode.getKeyValueArray(index).setmKey((Comparable) bTree.getIO().deserializeObject(bTNode.getKeyValueArray(index).getKeyOptr()));
+			bTNode.getKeyValueArray(index).setmKey((Comparable) bTreeMain.getIO().deserializeObject(bTNode.getKeyValueArray(index).getKeyOptr()));
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getKey retrieved index:"+index+" loc:"+bTNode.getKeyValueArray(index).getKeyOptr()+" retrieved:"+bTNode.getKeyValueArray(index).getmKey());
 				for(int i = 0; i < getNumKeys(); i++)System.out.println(i+"="+bTNode.getKeyValueArray(index).getmKey());
@@ -529,7 +528,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getData about to retrieve index:"+index+" loc:"+bTNode.getKeyValueArray(index).getValueOptr());
 			}
-			bTNode.getKeyValueArray(index).setmValue((Comparable) bTree.getIO().deserializeObject(bTNode.getKeyValueArray(index).getValueOptr()));
+			bTNode.getKeyValueArray(index).setmValue((Comparable) bTreeMain.getIO().deserializeObject(bTNode.getKeyValueArray(index).getValueOptr()));
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getData retrieved index:"+index+" loc:"+bTNode.getKeyValueArray(index).getValueOptr()+" retrieved:"+bTNode.getKeyValueArray(index).getmValue());
 				for(int i = 0; i < getNumKeys(); i++)System.out.println(i+"="+bTNode.getKeyValueArray(index).getmValue());
@@ -615,12 +614,12 @@ public class BTreeKeyPage implements KeyPageInterface {
 
 	@Override
 	public synchronized boolean isUpdated() {
-		return ((BTNode)bTNode).updated;
+		return ((BTNode)bTNode).getUpdated();
 	}
 
 	@Override
 	public synchronized void setUpdated(boolean updated) {
-		((BTNode)bTNode).updated = updated;
+		((BTNode)bTNode).setUpdated(updated);
 	}       
 
     /**
@@ -671,7 +670,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	public synchronized void setmIsLeafNode(boolean mIsLeafNode) {
 		((BTNode)bTNode).setmIsLeaf(mIsLeafNode);
-		((BTNode)bTNode).updated = true;
+		((BTNode)bTNode).setUpdated(true);
 	}
 
 	/**
@@ -690,7 +689,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUGSETNUMKEYS)
 			System.out.printf("Setting num keys=%d MAX=%d leaf:%b page:%s%n", numKeys, MAXKEYS, ((BTNode)bTNode).getIsLeaf(), GlobalDBIO.valueOf(lbai.getBlockNum()));
 		bTNode.setNumKeys(numKeys);
-		((BTNode)bTNode).updated = true;
+		((BTNode)bTNode).setUpdated(true);
 	}
 	
 	/**
@@ -704,7 +703,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	
 	@Override
 	public KeyValueMainInterface getKeyValueMain() {
-		return bTree;
+		return bTreeMain;
 	}
 	@Override
 	public void setRootNode(BlockAccessIndex bai) throws IOException {

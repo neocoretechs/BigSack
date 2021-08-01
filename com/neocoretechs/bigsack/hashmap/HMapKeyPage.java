@@ -214,7 +214,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		hTNode.initKeyValueArray(index);
 		getKeyValueArray(index).setKeyOptr(optr);
 		hTNode.getKeyValueArray(index).setKeyUpdated(update);
-		((HTNode)hTNode).updated = update;
+		((HTNode)hTNode).setUpdated(update);
 	}
 	
 	public synchronized Optr getKeyId(int index) {
@@ -228,7 +228,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	public synchronized void setDataIdArray(int index, Optr optr, boolean update) {
 		getKeyValueArray(index).setValueOptr(optr);
 		getKeyValueArray(index).setValueUpdated(update);
-		((HTNode)hTNode).updated = update;
+		((HTNode)hTNode).setUpdated(update);
 	}
 	
 	public synchronized Optr getDataId(int index) {
@@ -516,7 +516,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @throws IOException
 	 */
 	protected synchronized HMapKeyPage createAndSetNextHTNode(RootKeyPageInterface page) throws IOException {
-		((HMapKeyPage)page).nextPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), -1L);
+		((HMapKeyPage)page).nextPage = hMapMain.getIO().getHMapPageFromPool(-1L);
 		HTNode newhTNode = new HTNode(((HMapKeyPage)page).nextPage);
 		((HMapKeyPage)(((HMapKeyPage)page).nextPage)).hTNode = newhTNode;
 		setUpdated(true);
@@ -532,14 +532,14 @@ public final class HMapKeyPage implements KeyPageInterface {
 		if(nextPageId == -1L)
 			return null;
 		if(nextPage == null)
-			nextPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(),nextPage.getPageId());
+			nextPage = hMapMain.getIO().getHMapPageFromPool(nextPage.getPageId());
 		HMapKeyPage pageList = (HMapKeyPage) nextPage;
 		for(int i = 0 ; i < index; i++) {
 			if(pageList.nextPageId == -1L) {
 				return null;
 			}
 			if(pageList.nextPage == null)
-				pageList.nextPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(),pageList.nextPageId);
+				pageList.nextPage = hMapMain.getIO().getHMapPageFromPool(pageList.nextPageId);
 			pageList = (HMapKeyPage) pageList.nextPage;
 		}
 		return pageList;
@@ -695,11 +695,11 @@ public final class HMapKeyPage implements KeyPageInterface {
 	}
 
 	public synchronized boolean isUpdated() {
-		return ((HTNode)hTNode).updated;
+		return ((HTNode)hTNode).isUpdated();
 	}
 
 	public synchronized void setUpdated(boolean updated) {
-		((HTNode)hTNode).updated = updated;
+		((HTNode)hTNode).setUpdated(updated);
 	}       
 
     /**

@@ -23,16 +23,16 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	public static boolean DEBUG = false;
     private KeyValue<K, V> mKeys[] = new KeyValue[HMapKeyPage.MAXKEYS];
     protected long pageId = -1L;
-    protected boolean updated = false;
+    private boolean updated = false;
     protected boolean needsRead = true;
     protected int tablespace = -1;
-    protected KeyValueMainInterface hMapMain;
+    protected KeyValueMainInterface keyValueMain;
     protected KeyPageInterface page = null;
-    protected HTNode<K,V> nextPage = null; // child
+    protected NodeInterface<K, V> nextPage = null; // child
     private int numKeys = 0;
 
     public HTNode(KeyValueMainInterface hMapMain, long pageId) {
-       this.hMapMain = hMapMain;
+       this.keyValueMain = hMapMain;
        this.pageId = pageId;
        this.tablespace = GlobalDBIO.getTablespace(pageId);
     }
@@ -54,7 +54,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	 */
     public void setPage(KeyPageInterface page) throws IOException {
     	this.page = page;
-        this.hMapMain = page.getKeyValueMain();
+        this.keyValueMain = page.getKeyValueMain();
         this.pageId = page.getPageId();
         this.tablespace = GlobalDBIO.getTablespace(pageId);
         if(page.getNumKeys() > 0) { // if page has data, load it to this
@@ -91,21 +91,25 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		if(numKeys > 0)
 			throw new IOException("Attempt to overwrite node "+this+" with page "+page);
 		DataInputStream dis = GlobalDBIO.getBlockInputStream(page.getBlockAccessIndex());
-		if(dis.available() == 0)
+		if(dis.available() == 0) {
+			System.out.printf("%s.loadNode nothing avail for page %s%n", this.getClass().getName(),page);
 			return;
+		}
 		numKeys = (int) dis.readLong();
+		System.out.printf("%s.loadNode loading %d keys for page %s%n", this.getClass().getName(),numKeys,page);
 		for(int i = 0; i < numKeys; i++) {
-			KeyValue<Comparable,Object> keyValue = new KeyValue<Comparable,Object>((NodeInterface<Comparable, Object>) this);
+			KeyValue<K,V> keyValue = new KeyValue<K,V>(this);
 			long block = dis.readLong();
 			short offset = dis.readShort();
 			keyValue.setKeyOptr(new Optr(block,offset));
 			block = dis.readLong();
 			offset = dis.readShort();
 			keyValue.setValueOptr(new Optr(block,offset));
+			mKeys[i] = keyValue;
 		}
 		long blockNextPage = dis.readLong();
 		if(blockNextPage != -1L)
-			nextPage = new HTNode<K,V>(hMapMain, blockNextPage);
+			nextPage = new HTNode<K,V>(keyValueMain, blockNextPage);
 	}
 	
     /**
@@ -117,10 +121,9 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 
 	@Override
 	public KeyValueMainInterface getKeyValueMain() {
-		return hMapMain;
+		return keyValueMain;
 	}
 
-	
 	public int getTablespace() {
 		return tablespace;
 	}
@@ -295,7 +298,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	 * @exception IOException If write fails
 	 */
 	public synchronized void putNodeToPage(KeyPageInterface page) throws IOException {
-		if(!updated) {
+		if(!isUpdated()) {
 			if(DEBUG)
 				System.out.printf("%s.putPage page NOT updated:%s%n",this.getClass().getName(),this);
 			return;
@@ -360,12 +363,26 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		if( DEBUG ) {
 			System.out.println("KeyPageInterface.putPage Added Keypage @:"+this);
 		}
-		updated = false;
+		setUpdated(false);
 	}
 
 	@Override
 	public String toString() {
 		return String.format("%s keys=%d tablespace=%d pageId=%s updated=%b needsRead=%b has next page=%b%n", 
-				this.getClass().getName(), numKeys,tablespace,GlobalDBIO.valueOf(pageId),updated,needsRead, (nextPage != null));
+				this.getClass().getName(), numKeys,tablespace,GlobalDBIO.valueOf(pageId),isUpdated(),needsRead, (nextPage != null));
+	}
+
+	/**
+	 * @return the updated
+	 */
+	public boolean isUpdated() {
+		return updated;
+	}
+
+	/**
+	 * @param updated the updated to set
+	 */
+	public void setUpdated(boolean updated) {
+		this.updated = updated;
 	}
 }

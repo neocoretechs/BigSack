@@ -86,7 +86,7 @@ public class HMapNavigator {
 				public void item(RootKeyPageInterface page) throws IOException {
 					for(int i = 0; i < page.getNumKeys(); i++) {
 						if(page.getPageId(i) != -1L)
-							childIterImpl2.item(GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), page.getPageId(i)));
+							childIterImpl2.item(hMapMain.getIO().getHMapPageFromPool(page.getPageId(i)));
 					}
 				}
 		 };
@@ -96,14 +96,14 @@ public class HMapNavigator {
 					public void item(RootKeyPageInterface page) throws IOException {
 						for(int i = 0; i < page.getNumKeys(); i++) {
 							if(page.getPageId(i) != -1L)
-								childIterImpl1.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)));
+								childIterImpl1.item(hMapMain.getIO().getHMapChildRootPageFromPool(page.getPageId(i)));
 						}
 					}
 		 };
 		 // retrieve each page of the root indexes for this tablespace, hashkey[1], 2 bits
 		 for(int i = 0; i < rootPage.getNumKeys(); i++) {
 				if(rootPage.getPageId(i) != -1L ) {				 
-					childIterImpl0.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), rootPage.getPageId(i)));
+					childIterImpl0.item(hMapMain.getIO().getHMapChildRootPageFromPool(rootPage.getPageId(i)));
 				}
 		 }
 	 }
@@ -138,7 +138,7 @@ public class HMapNavigator {
 				public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
 					for(int i = 0; i < page.getNumKeys(); i++) {
 						if(page.getPageId(i) != -1L) {
-							count += childIterImpl3.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)), count, limit);
+							count += childIterImpl3.item(hMapMain.getIO().getHMapChildRootPageFromPool(page.getPageId(i)), count, limit);
 							if( limit != -1 || count >= limit )
 								break;
 						}
@@ -152,7 +152,7 @@ public class HMapNavigator {
 				public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
 					for(int i = 0; i < page.getNumKeys(); i++) {
 						if(page.getPageId(i) != -1L) {
-							count += childIterImpl2.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)), count, limit);
+							count += childIterImpl2.item(hMapMain.getIO().getHMapChildRootPageFromPool(page.getPageId(i)), count, limit);
 							if( limit != -1 || count >= limit )
 								break;
 						}
@@ -166,7 +166,7 @@ public class HMapNavigator {
 					public int item(RootKeyPageInterface page, int count, int limit) throws IOException {
 						for(int i = 0; i < page.getNumKeys(); i++) {
 							if(page.getPageId(i) != -1L) {
-								count += childIterImpl1.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), page.getPageId(i)), count, limit);
+								count += childIterImpl1.item(hMapMain.getIO().getHMapChildRootPageFromPool(page.getPageId(i)), count, limit);
 								if( limit != -1 || count >= limit )
 									break;
 							}
@@ -179,7 +179,7 @@ public class HMapNavigator {
 	
 		 for(int i = 0; i < rootPage.getNumKeys(); i++) {
 				if(rootPage.getPageId(i) != -1L ) {				 
-					count += childIterImpl0.item(GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), rootPage.getPageId(i)), count, limit);
+					count += childIterImpl0.item(hMapMain.getIO().getHMapChildRootPageFromPool(rootPage.getPageId(i)), count, limit);
 					if( limit != -1 || count >= limit )
 						break;
 				}
@@ -215,19 +215,19 @@ public class HMapNavigator {
 		if(!ksr.atKey) {
 			switch(ksr.insertPoint) {
 				case 1: // hash key index 1
-					childPage[0] = GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), -1L);
+					childPage[0] = hMapMain.getIO().getHMapChildRootPageFromPool(-1L);
 					rootPage.setPageIdArray(hashKeys[1], childPage[0].getPageId(), true);
 					rootPage.putPage();
 				case 2: // index 2, child Page set from search  or above
-					childPage[1] = GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), -1L);
+					childPage[1] = hMapMain.getIO().getHMapChildRootPageFromPool(-1L);
 					childPage[0].setPageIdArray(hashKeys[2], childPage[1].getPageId(), true);
 					childPage[0].putPage();
 				case 3: // index 3
-					childPage[2] = GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), -1L);
+					childPage[2] = hMapMain.getIO().getHMapChildRootPageFromPool(-1L);
 					childPage[1].setPageIdArray(hashKeys[3], childPage[2].getPageId(), true);
 					childPage[1].putPage();
 				case 4: // index 4
-					keyValuesPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), -1L);
+					keyValuesPage = hMapMain.getIO().getHMapPageFromPool(-1L);
 					childPage[2].setPageIdArray(hashKeys[4], keyValuesPage.getPageId(), true);
 					childPage[2].putPage();
 				default:
@@ -244,7 +244,7 @@ public class HMapNavigator {
 	 * Primary goal is to set up pages in root and child to acquire pointers
 	 */
 	synchronized KeySearchResult search() throws IOException {
-		RootKeyPageInterface rootPage = GlobalDBIO.getHMapRootPageFromPool(hMapMain.getIO(),hashKeys[0]);
+		RootKeyPageInterface rootPage = hMapMain.getIO().getHMapRootPageFromPool(hashKeys[0]);
 		return search(rootPage);
 	}
 	
@@ -252,7 +252,7 @@ public class HMapNavigator {
 		if(rootPage.getPageId(hashKeys[1]) == -1L) {	
 			return new KeySearchResult(1, false);
 		} else {
-			childPage[0] = GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), rootPage.getPageId(hashKeys[1]));
+			childPage[0] = hMapMain.getIO().getHMapChildRootPageFromPool(rootPage.getPageId(hashKeys[1]));
 			for(int keyNum = 1; keyNum < 3; keyNum++) {
 					if(childPage[keyNum-1].getPageId(hashKeys[keyNum+1]) == -1L) {
 						KeySearchResult ksr = new KeySearchResult(keyNum+1, false);
@@ -260,7 +260,7 @@ public class HMapNavigator {
 							System.out.printf("%s.search returning keysearchresult=%s%n", this.getClass().getName(),ksr);
 						return ksr;
 					} else {
-						childPage[keyNum] = GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), childPage[keyNum-1].getPageId(hashKeys[keyNum+1]));
+						childPage[keyNum] = hMapMain.getIO().getHMapChildRootPageFromPool(childPage[keyNum-1].getPageId(hashKeys[keyNum+1]));
 					}
 			}
 			if(DEBUG) {
@@ -274,7 +274,7 @@ public class HMapNavigator {
 					System.out.printf("%s.search returning keysearchresult=%s%n", this.getClass().getName(),ksr);
 				return ksr;
 			} 
-			keyValuesPage = GlobalDBIO.getHMapPageFromPool(hMapMain.getIO(), childPage[2].getPageId(hashKeys[4]));
+			keyValuesPage = hMapMain.getIO().getHMapPageFromPool(childPage[2].getPageId(hashKeys[4]));
 			return new KeySearchResult(keyValuesPage, 5, true);
 		}
 	}

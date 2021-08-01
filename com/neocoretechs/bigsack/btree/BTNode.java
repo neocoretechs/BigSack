@@ -3,6 +3,8 @@ package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.util.ArrayList;
 
+import com.neocoretechs.bigsack.hashmap.HMapKeyPage;
+import com.neocoretechs.bigsack.hashmap.HTNode;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
@@ -13,32 +15,28 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 /**
  * Class BTNode
  */
-public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
+public class BTNode<K extends Comparable, V> extends HTNode {
     public final static int MIN_DEGREE          =   (BTreeKeyPage.MAXKEYS/2)+1;
     public final static int LOWER_BOUND_KEYNUM  =   MIN_DEGREE - 1;
     public final static int UPPER_BOUND_KEYNUM  =   BTreeKeyPage.MAXKEYS;
 
     private boolean mIsLeaf;
     //private int mCurrentKeyNum;
-    protected BTree<K,V> bTree;
-    private ArrayList<KeyValue<K, V>> mKeys;
-    private ArrayList<BTNode<K,V>> mChildren;
-    protected long pageId = -1L;
-    protected KeyPageInterface page;
-    protected boolean updated = true;
-    protected boolean needsRead = true;
+    protected BTreeNavigator<K,V> bTree;
+    private KeyValue<K, V> mKeys[] = new KeyValue[BTreeKeyPage.MAXKEYS];
+    private NodeInterface<K,V> mChildren[] = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
 
-    public BTNode(BTree<K,V> bTree, boolean mIsLeaf) {
+    public BTNode(BTreeNavigator<K,V> bTree, Long pageId, boolean mIsLeaf) {
+    	super(bTree.getKeyValueMain(), pageId);
     	this.bTree = bTree;
         this.mIsLeaf = mIsLeaf;
         //mCurrentKeyNum = 0;
-        mKeys = new ArrayList<KeyValue<K, V>>();//new KeyValue[UPPER_BOUND_KEYNUM];
-        mChildren = new ArrayList<BTNode<K, V>>();//new BTNode[UPPER_BOUND_KEYNUM + 1];
     }
     
-    public BTNode(KeyPageInterface page) {
-    	this.page = page;
-        this.pageId = page.getPageId();
+    public BTNode(BTreeNavigator<K,V> bTree, KeyPageInterface page, boolean mIsLeaf) throws IOException {
+    	super(page.getKeyValueMain(), page.getPageId());
+       	this.bTree = bTree;
+        this.mIsLeaf = mIsLeaf;
     }
     
 	@Override
@@ -67,8 +65,9 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	public void setAsNewRoot() {
 		pageId = 0L;
 		mIsLeaf = true;
-		mKeys = new ArrayList<KeyValue<K, V>>();//new KeyValue[UPPER_BOUND_KEYNUM];
-		mChildren = new ArrayList<BTNode<K, V>>();//new BTNode[UPPER_BOUND_KEYNUM + 1];
+		setNumKeys(0);
+	    mKeys = new KeyValue[BTreeKeyPage.MAXKEYS];
+	    mChildren = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
 	}
 	
     @Override
@@ -76,95 +75,75 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
         // pre-create blank keys to receive key Ids so we can assign the page pointers and offsets
         // for subsequent retrieval
     	//if(mKeys[0] == null)
-    	if(mKeys.isEmpty())
+    	if(getNumKeys() == 0)
     		return null;
-    	return mKeys.get(index);//mKeys[index];
+    	return mKeys[index];
     }
     
-    @Override
-	public long getPageId() { 
-    	return pageId; 
-    }
-    
-    @Override
-    public void setPageId(long pageId) {
-    	this.pageId = pageId;
-    }
     
     @Override
 	public NodeInterface<K, V> getChild(int index) {
-        // pre-create blank nodes to receive page Ids when we retrieve a page, so we
-        // can assign pageIds to children to retrieve subsequent nodes.
-    	if(mChildren.isEmpty()) {
+    	if(getNumKeys() == 0) {
     		return null;
     	}
-        long pageId = mChildren.get(index).pageId;//mChildren[index].pageId;
-        if(pageId != -1L && mChildren.get(index).needsRead) { //mChildren[index].needsRead) {
+    	BTreeRootKeyPage kpi;
+        long pageId = mChildren[index].getPageId();
+        if(pageId != -1L ) {
 			try {
-				bTree.getKeyValueMain().getNode(mChildren.get(index), pageId);//mChildren[index], pageId);
-				mChildren.get(index).needsRead = false;//mChildren[index].needsRead = false;
+				if(mChildren[index] == null || mChildren[index].getPageId() != pageId) {
+					kpi = (BTreeRootKeyPage)bTree.getKeyValueMain().getNode(mChildren[index], pageId);
+					mChildren[index] = (NodeInterface<K, V>) kpi.bTNode;
+				}
 			} catch (IOException e) {
 				throw new RuntimeException(e);
 			}
         }
-    	return mChildren.get(index);//mChildren[index];
+    	return mChildren[index];
     }
     
 	@Override
 	public NodeInterface getChildNoread(int index) {
-	   	if(mChildren.isEmpty()) {
-    		return null;
-    	}
-		return mChildren.get(index);//mChildren[index];
+		return mChildren[index];
 	}
 	
-    @Override
-	public void setKeyValueArray(int index, KeyValue<K,V> bTKey) {
-    	if(index >= mKeys.size()-1)
-    		mKeys.ensureCapacity(index+1);
-    	mKeys.add(index, bTKey);
-    }
-    
-    @Override
-	public void setChild(int index, NodeInterface<K,V> bTNode) {
-    	if(index >= mChildren.size()-1) {
-    		mChildren.ensureCapacity(index+1);
+	@Override
+	public void setChild(int index, NodeInterface bTNode) {
+    	if(index > getNumKeys()) {
+    		setNumKeys(index);
     	}
-    	mChildren.add(index, (BTNode<K, V>) bTNode);
+    	mChildren[index] = (BTNode<K, V>) bTNode;
     }
     
+	public void setUpdated(boolean updated) {
+		super.setUpdated(updated);
+	}
+	
+	public boolean getUpdated() {
+		return isUpdated();
+	}
+	
     public boolean getIsLeaf() {
     	return mIsLeaf;
     }
     
     @Override
 	public int getNumKeys() {
-    	return mKeys.size();//mCurrentKeyNum;
+    	return super.getNumKeys();
     }
     
     @Override
 	public void setNumKeys(int numKeys) {
-		if(numKeys > mKeys.size())
-			mKeys.ensureCapacity(numKeys);
-        mKeys = new ArrayList<KeyValue<K, V>>(numKeys);
+    	super.setNumKeys(numKeys);
     }
     
     protected static NodeInterface getChildNodeAtIndex(BTNode btNode, int keyIdx, int nDirection) {
         if (btNode.mIsLeaf) {
             return null;
         }
-
         keyIdx += nDirection;
         if ((keyIdx < 0) || (keyIdx > btNode.getNumKeys())) {
             return null;
         }
-        long pageId = ((BTNode) (btNode.getChildNoread(keyIdx))).pageId;
-        if(pageId != -1L)
-			try {
-				btNode.bTree.getKeyValueMain().getNode(btNode, pageId);
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
         return btNode.getChild(keyIdx);
     }
 
@@ -211,12 +190,12 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		sb.append(" Leaf:");
 		sb.append(mIsLeaf);
 		sb.append(" Children:");
-		sb.append(mChildren.size());//.length);
+		sb.append(mChildren.length);
 		sb.append("\r\n");
 		
 		sb.append("Key/Value Array:\r\n");
-		String[] sout = new String[mKeys.size()];
-		for (int i = 0; i < mKeys.size() /*keyArray.length*/; i++) {
+		String[] sout = new String[mKeys.length];
+		for (int i = 0; i < mKeys.length /*keyArray.length*/; i++) {
 			KeyValue<K,V> keyval = getKeyValueArray(i);
 			if(keyval != null) {
 				try {
@@ -239,7 +218,7 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		if(allEntriesDefault) {
 			sb.append("ALL ENTRIES DEFAULT\r\n");
 		} else {	
-			for (int i = 0; i < mKeys.size() /*keyArray.length*/; i++) {
+			for (int i = 0; i < mKeys.length /*keyArray.length*/; i++) {
 				if(sout[i] != null) {
 					sb.append(i+"=");
 					sb.append(getKeyValueArray(i));
@@ -248,8 +227,8 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 			}
 		}
 		sb.append("BTree Child Page Array:\r\n");
-		String[] sout2 = new String[mChildren.size()];
-		for (int i = 0 ; i < mChildren.size() /*pageArray.length*/; i++) {
+		String[] sout2 = new String[mChildren.length];
+		for (int i = 0 ; i < mChildren.length /*pageArray.length*/; i++) {
 				if(getChild(i) != null) {
 					sout2[i] = getChild(i).toString()+"\r\n";
 				} else {
@@ -263,7 +242,7 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 			sb.append("ALL CHILDREN EMPTY\r\n");
 		} else {
 			int j = 0;
-			for (int i = 0 ; i < mChildren.size() /*pageArray.length*/; i++) {
+			for (int i = 0 ; i < mChildren.length /*pageArray.length*/; i++) {
 				if(sout2[i] != null) {
 					sb.append(i+"=");
 					sb.append(sout2[i]);
@@ -287,11 +266,8 @@ public class BTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 
 	@Override
 	public void initKeyValueArray(int index) {
-		//if(index >= numKeys)
-			//numKeys = index+1;
-		if(mKeys.get(index) == null)
-			mKeys.add(index,new KeyValue<K,V>(this));
-		
+		if(index >= getNumKeys())
+			setNumKeys(index+1);	
 	}
 
 }

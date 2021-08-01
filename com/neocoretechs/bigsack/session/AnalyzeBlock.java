@@ -29,7 +29,7 @@ public class AnalyzeBlock {
 		long vblock = GlobalDBIO.makeVblock(Integer.parseInt(args[2]), xsize );
 		bTree.getIO().getIOManager().FseekAndReadFully(vblock, db);
 		System.out.printf("--Raw Block:%d = %s%n",vblock,db);		
-		KeyPageInterface btk = GlobalDBIO.getBTreePageFromPool(bTree.getIO(), vblock);
+		KeyPageInterface btk = bTree.getIO().getBTreePageFromPool(vblock);
 		System.out.printf("--Keypage from BlockAccessIndex:%s%n",btk);
 	}
 }

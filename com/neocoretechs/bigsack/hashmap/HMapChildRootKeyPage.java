@@ -82,7 +82,7 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 	@Override
 	public synchronized RootKeyPageInterface getPage(int index) throws IOException {
 		if(childKeys[index] != -1L)
-			return GlobalDBIO.getHMapChildRootPageFromPool(hMapMain.getIO(), childKeys[index]);
+			return hMapMain.getIO().getHMapChildRootPageFromPool(childKeys[index]);
 		return null;
 	}
 
