@@ -228,14 +228,14 @@ public abstract class BufferedSet implements SetInterface {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> headMap(Comparable tkey) throws IOException {
+	public Iterator<?> headSet(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.headSet(tkey);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> headMapStream(Comparable tkey) throws IOException {
+	public Stream<?> headSetStream(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.headSetStream(tkey);
 		}
@@ -246,14 +246,14 @@ public abstract class BufferedSet implements SetInterface {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> headMapKV(Comparable tkey) throws IOException {
+	public Iterator<?> headSetKV(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.headSetKV(tkey);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> headMapKVStream(Comparable tkey) throws IOException {
+	public Stream<?> headSetKVStream(Comparable tkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.headSetKVStream(tkey);
 		}
@@ -264,14 +264,14 @@ public abstract class BufferedSet implements SetInterface {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> tailMap(Comparable fkey) throws IOException {
+	public Iterator<?> tailSet(Comparable fkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.tailSet(fkey);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> tailMapStream(Comparable fkey) throws IOException {
+	public Stream<?> tailSetStream(Comparable fkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.tailSetStream(fkey);
 		}
@@ -282,14 +282,14 @@ public abstract class BufferedSet implements SetInterface {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> tailMapKV(Comparable fkey) throws IOException {
+	public Iterator<?> tailSetKV(Comparable fkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.tailSetKV(fkey);
 		}
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> tailMapKVStream(Comparable fkey) throws IOException {
+	public Stream<?> tailSetKVStream(Comparable fkey) throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.tailSetKVStream(fkey);
 		}
@@ -301,7 +301,7 @@ public abstract class BufferedSet implements SetInterface {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> subMap(Comparable fkey, Comparable tkey)
+	public Iterator<?> subSet(Comparable fkey, Comparable tkey)
 		throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSet(fkey, tkey);
@@ -309,7 +309,7 @@ public abstract class BufferedSet implements SetInterface {
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> subMapStream(Comparable fkey, Comparable tkey)
+	public Stream<?> subSetStream(Comparable fkey, Comparable tkey)
 		throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSetStream(fkey, tkey);
@@ -322,7 +322,7 @@ public abstract class BufferedSet implements SetInterface {
 	* @exception IOException If backing store retrieval failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public Iterator<?> subMapKV(Comparable fkey, Comparable tkey)
+	public Iterator<?> subSetKV(Comparable fkey, Comparable tkey)
 		throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSetKV(fkey, tkey);
@@ -330,7 +330,7 @@ public abstract class BufferedSet implements SetInterface {
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public Stream<?> subMapKVStream(Comparable fkey, Comparable tkey)
+	public Stream<?> subSetKVStream(Comparable fkey, Comparable tkey)
 		throws IOException {
 		synchronized (session.getMutexObject()) {
 			return session.subSetKVStream(fkey, tkey);
