@@ -107,7 +107,125 @@ public class HMapNavigator {
 				}
 		 }
 	 }
-	 
+	 /**
+	  * Return the first page that contains valid key/value data, which will be the lowest value hash key entry.
+	  * Iterate the root pages until the first valid root page entry, then pass that to the method.
+	  * @param hMapMain
+	  * @param rootPage
+	  * @return KeyPageInterface for the first page unless no pages are active in the root page for this tablespace
+	  * @throws IOException
+	  */
+	 public KeyPageInterface firstPage(RootKeyPageInterface rootPage) throws IOException {
+		 // keypage pointed to by 3rd and last of 9 bit key, which contains node to retrieve collision space items that all share same hashcode
+		 PageSearchIF<RootKeyPageInterface> childIterImpl3 = new PageSearchIF<RootKeyPageInterface>() {
+				@Override
+				public KeyPageInterface item(RootKeyPageInterface page) throws IOException {
+					for(int i = 0; i < page.getNumKeys(); i++) {
+						if(page.getPageId(i) != -1L) {
+							hashKeys[4] = i;
+							keyValuesPage = hMapMain.getIO().getHMapPageFromPool(page.getPageId(i));
+							return keyValuesPage;
+						}
+					}
+					return null;
+				}
+		 };
+		 // retrieve page for second of the 3 9 bit spaces hashkey[3]
+		 PageSearchIF<RootKeyPageInterface> childIterImpl1 = new PageSearchIF<RootKeyPageInterface>() {
+				@Override
+				public KeyPageInterface item(RootKeyPageInterface page) throws IOException {
+					for(int i = 0; i < page.getNumKeys(); i++) {
+						if(page.getPageId(i) != -1L) {
+							hashKeys[3] = i;
+							childPage[2] = hMapMain.getIO().getHMapChildRootPageFromPool(page.getPageId(i));
+							return childIterImpl3.item(childPage[2]);
+						}
+					}
+					return null;
+				}
+		 };
+		 // retrieve page for each of first 9 bit key spaces hashkey[2]
+		 PageSearchIF<RootKeyPageInterface> childIterImpl0 = new PageSearchIF<RootKeyPageInterface>() {
+					@Override
+					public KeyPageInterface item(RootKeyPageInterface page) throws IOException {
+						for(int i = 0; i < page.getNumKeys(); i++) {
+							if(page.getPageId(i) != -1L) {
+								hashKeys[2] = i;
+								childPage[1] = hMapMain.getIO().getHMapChildRootPageFromPool(page.getPageId(i));
+								return childIterImpl1.item(childPage[1]);
+							}
+						}
+						return null;
+					}
+		 };
+		 hashKeys = new int[5];
+		 for(int i = 0; i < hashKeys.length; i++) {
+			 hashKeys[i] = -1;
+		 }
+		 // retrieve each page of the root indexes for this tablespace, hashkey[1], 2 bits
+		 for(int i = 0; i < rootPage.getNumKeys(); i++) {
+				if(rootPage.getPageId(i) != -1L ) {
+					hashKeys[1] = i;
+					childPage[0] = hMapMain.getIO().getHMapChildRootPageFromPool(rootPage.getPageId(i));
+					return childIterImpl0.item(childPage[0]);
+				}
+		 }
+		 return null;
+	 }
+	/**
+	 * Return the next page in the sequence established by firstPage for the particular root page in the tablespace
+	 * @param hMapMain
+	 * @param rootPage
+	 * @return KeyPageInterface of next page or null if the tablespace is exhausted
+	 * @throws IOException
+	 */
+	 public KeyPageInterface nextPage() throws IOException {
+		 // keypage pointed to by 3rd and last of 9 bit key, which contains node to retrieve collision space items that all share same hashcode
+		 // retrieve each page of the root indexes for this tablespace, hashkey[1], 2 bits
+		 for(int i = hashKeys[4]+1; i < childPage[2].getNumKeys(); i++) {
+				if(childPage[2].getPageId(i) != -1L ) {
+					hashKeys[4] = i;
+					keyValuesPage = hMapMain.getIO().getHMapPageFromPool(childPage[2].getPageId(hashKeys[4]));
+					return keyValuesPage;
+				}
+		 }
+		 for(int i = hashKeys[3]+1; i < childPage[1].getNumKeys(); i++) {
+				if(childPage[1].getPageId(i) != -1L ) {
+					hashKeys[3] = i;
+					childPage[2] = hMapMain.getIO().getHMapChildRootPageFromPool(childPage[1].getPageId(hashKeys[3]));
+					hashKeys[4] = 0;
+					for(int j = hashKeys[4]; j < childPage[2].getNumKeys(); j++) {
+							if(childPage[2].getPageId(j) != -1L ) {
+								hashKeys[4] = j;
+								keyValuesPage = hMapMain.getIO().getHMapPageFromPool(childPage[2].getPageId(hashKeys[4]));
+								return keyValuesPage;
+							}
+					}
+				}
+		 }
+		 for(int i = hashKeys[2]+1; i < childPage[0].getNumKeys(); i++) {
+				if(childPage[0].getPageId(i) != -1L ) {
+					hashKeys[2] = i;
+					childPage[1] = hMapMain.getIO().getHMapChildRootPageFromPool(childPage[0].getPageId(hashKeys[2]));
+					hashKeys[3] = 0;
+					for(int j = hashKeys[3]; j < childPage[1].getNumKeys(); j++) {
+						if(childPage[1].getPageId(j) != -1L ) {
+							hashKeys[3] = j;
+							childPage[2] = hMapMain.getIO().getHMapChildRootPageFromPool(childPage[1].getPageId(hashKeys[3]));
+							hashKeys[4] = 0;
+							for(int k = hashKeys[4]; k < childPage[2].getNumKeys(); k++) {
+									if(childPage[2].getPageId(k) != -1L ) {
+										hashKeys[4] = k;
+										keyValuesPage = hMapMain.getIO().getHMapPageFromPool(childPage[2].getPageId(hashKeys[4]));
+										return keyValuesPage;
+									}
+							}
+						}
+					}
+				}
+		 }
+		 return null;
+	 }
 	 /**
 	  * Stream oriented
 	  * @param hMapMain

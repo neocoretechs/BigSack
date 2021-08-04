@@ -85,6 +85,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	private Object result = null; // result of object seek,etc.
 	private long count = 0L; // result of count
 	private Object mutex = new Object();
+	private HMapNavigator iteratorSupport;
 	/**
 	 * Create the array of {@link HMap} instances for primary root pages
 	 * @param globalDBIO
@@ -207,11 +208,8 @@ public final class HMapMain implements KeyValueMainInterface {
 			@Override
 			public void item(KeyPageInterface page) throws IOException {
 				HMapKeyPage nPage = (HMapKeyPage) page;
-				while(nPage != null ) {
-					synchronized(mutex) {
-						count += nPage.getNumKeys();
-					}
-					nPage = (HMapKeyPage) nPage.nextPage;
+				synchronized(mutex) {
+					count += nPage.getNumKeys();
 				}
 			}
 		};
@@ -491,7 +489,18 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	public synchronized KeyValue rewind() throws IOException {
-		return null;
+		iteratorSupport = new HMapNavigator(this, null);
+		int lastRoot = -1;
+		for(int i = 0; i < root.length; i++) {
+			if(root[i].getNumKeys() > 0)
+				lastRoot = i;
+		}
+		if(lastRoot == -1)
+			return null;
+		KeyPageInterface kpi = iteratorSupport.firstPage(root[lastRoot]);
+		if(kpi == null || kpi.getNumKeys() == 0)
+			return null;
+		return kpi.getKeyValueArray(0);
 	}
 
     @Override
@@ -502,7 +511,27 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	public synchronized KeyValue toEnd() throws IOException {
-		return null;
+		iteratorSupport = new HMapNavigator(this, null);
+		int lastRoot = -1;
+		for(int i = 0; i < root.length; i++) {
+			if(root[i].getNumKeys() > 0)
+				lastRoot = i;
+		}
+		if(lastRoot == -1)
+			return null;
+		KeyPageInterface kpi = iteratorSupport.firstPage(root[lastRoot]);
+		if(kpi == null || kpi.getNumKeys() == 0)
+			return null;
+		KeyPageInterface kpx = null;
+    	while((kpx = iteratorSupport.nextPage()) != null) {
+    		kpi = kpx;
+    	}
+		while(((HMapKeyPage)kpi).nextPage != null) {
+			kpi = ((HMapKeyPage)kpi).nextPage;
+		}
+		if(kpi.getNumKeys() == 0)
+			return null;
+		return kpi.getKeyValueArray(kpi.getNumKeys()-1);
 	}
 
     @Override
@@ -524,13 +553,28 @@ public final class HMapMain implements KeyValueMainInterface {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.printf("%s.gotoNextKey index:%s%n",this.getClass().getName(),tse);
 		}
+		int currentIndex = tse.index+1;
 		// If we are at a key, then advance the index
-
-		// Pointer is null, we can return this index as we cant descend subtree
-		if( DEBUG || DEBUGSEARCH) {
-			System.out.printf("%s.gotoNextKey child index is null:%n",this.getClass().getName());
+		if (currentIndex < tse.keyPage.getNumKeys()) {
+			tse.index = currentIndex; // use advanced index
+			tse.child = currentIndex; // left
+			return tse;
+		} else {
+			// If we are at a key, then advance the index
+			KeyPageInterface kpi = (KeyPageInterface) tse.keyPage;
+			if(((HMapKeyPage)kpi).nextPage != null) {
+				kpi = ((HMapKeyPage)kpi).nextPage;
+			} else {
+				kpi = iteratorSupport.nextPage();
+			}
+			if(kpi.getNumKeys() == 0)
+				return null;
+			// Pointer is null, we can return this index as we cant descend subtree
+			if( DEBUG || DEBUGSEARCH) {
+				System.out.printf("%s.gotoNextKey index %s%n",this.getClass().getName(), kpi);
+			}
+			return new TraversalStackElement(kpi, 0, 0);
 		}
-		return null;
 	}
 
 	@Override
@@ -543,7 +587,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.printf("%s.gotoPrevKey index:%s%n",this.getClass().getName(),tse);
 		}
-		return null;
+		throw new IOException("not supported");
 	}
 
 	@Override
