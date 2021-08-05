@@ -50,6 +50,12 @@ public class HMapNavigator {
 		if(DEBUG) 
 			System.out.printf("%s HashKeys: %s for key:%s%n",this.getClass().getName(), Arrays.toString(hashKeys), targetKey);
 	}
+	
+	public HMapNavigator(KeyValueMainInterface hMapMain) {
+		this.hMapMain = hMapMain;
+		if(DEBUG) 
+			System.out.printf("%s constructor%n",this.getClass().getName());
+	}
 	/**
 	 * 
 	 * @return the array of indexes for the target key

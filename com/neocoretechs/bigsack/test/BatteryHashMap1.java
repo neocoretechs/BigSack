@@ -50,10 +50,10 @@ public class BatteryHashMap1 {
 		//battery1(session, argv);
 		//BigSackAdapter.commitTransaction(bigtestx.class);
 		//session = BigSackAdapter.getBigSackHashSet(bigtestx.class);
-		battery1A(session, argv);
-		battery1B(session, argv);
+		//battery1A(session, argv);
+		//battery1B(session, argv);
 		//battery1E(session, argv);
-		//battery2(session, argv);
+		battery3(session, argv);
 		BigSackAdapter.commitTransaction(bigtestx.class);
 		System.out.println("TEST BATTERY BATTERYHASHMAP1 COMPLETE.");
 		System.exit(0);
@@ -170,7 +170,24 @@ public class BatteryHashMap1 {
 		bigtestx l = (bigtestx) session.last();
 		System.out.println("BATTERY2 SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
-
+	
+	public static void battery3(SetInterface session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		bigtestx b = new bigtestx();
+		b.init(i, payloadSize);
+		TransactionalHashSet ths = (TransactionalHashSet)session;
+		Iterator<?> it = ths.iterator();
+		i = 0;
+		while(it.hasNext()) {
+			Object o = it.next();
+			//System.out.println(i+" = "+o);
+			if(i != (int)((bigtestx)(((Map.Entry)o).getKey())).key)
+				throw new Exception(i+" does not match key "+((bigtestx)(((Map.Entry)o).getKey())).key);
+			++i;
+		}
+		System.out.println("BATTERY3 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	
 	public static void batteryHashMap1(BufferedHashSet session, String[] argv) throws Exception {
 		bigtestx key = new bigtestx();
 		key.init(123567, payloadSize);

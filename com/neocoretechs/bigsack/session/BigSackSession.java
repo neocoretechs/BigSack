@@ -57,7 +57,7 @@ import com.neocoretechs.bigsack.stream.TailSetStream;
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
 final class BigSackSession implements TransactionInterface {
-	private boolean DEBUG = false;
+	private boolean DEBUG = true;
 	private int uid;
 	private int gid;
 	private KeyValueMainInterface kvStore;
@@ -380,6 +380,8 @@ final class BigSackSession implements TransactionInterface {
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Comparable firstKey() throws IOException {
+		if(DEBUG)
+			System.out.printf("%s.firstKey for kvStore %s%n", this.getClass().getName(),kvStore);
 		KeyValue current = kvStore.rewind();
 		Comparable retVal = current.getmKey();
 		kvStore.clearStack();

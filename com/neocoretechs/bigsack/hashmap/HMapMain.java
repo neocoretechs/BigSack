@@ -489,18 +489,28 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	public synchronized KeyValue rewind() throws IOException {
-		iteratorSupport = new HMapNavigator(this, null);
+		iteratorSupport = new HMapNavigator(this);
 		int lastRoot = -1;
 		for(int i = 0; i < root.length; i++) {
 			if(root[i].getNumKeys() > 0)
 				lastRoot = i;
 		}
+		if(DEBUG)
+			System.out.printf("%s.rewind first root page at index %d%n",this.getClass().getName(),lastRoot);
 		if(lastRoot == -1)
 			return null;
 		KeyPageInterface kpi = iteratorSupport.firstPage(root[lastRoot]);
-		if(kpi == null || kpi.getNumKeys() == 0)
+		if(kpi == null || kpi.getNumKeys() == 0) {
+			if(DEBUG)
+				System.out.printf("%s.rewind returning null from iteratorSupport.firstPage%n",this.getClass().getName());
 			return null;
-		return kpi.getKeyValueArray(0);
+		}
+		KeyValue kv = kpi.getKeyValueArray(0);
+		kv.getmKey();
+		kv.getmValue();
+		if(DEBUG)
+			System.out.printf("%s.rewind returning %s%n",this.getClass().getName(),kv);
+		return kv;
 	}
 
     @Override
@@ -511,7 +521,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	public synchronized KeyValue toEnd() throws IOException {
-		iteratorSupport = new HMapNavigator(this, null);
+		iteratorSupport = new HMapNavigator(this);
 		int lastRoot = -1;
 		for(int i = 0; i < root.length; i++) {
 			if(root[i].getNumKeys() > 0)
@@ -567,7 +577,7 @@ public final class HMapMain implements KeyValueMainInterface {
 			} else {
 				kpi = iteratorSupport.nextPage();
 			}
-			if(kpi.getNumKeys() == 0)
+			if(kpi == null || kpi.getNumKeys() == 0)
 				return null;
 			// Pointer is null, we can return this index as we cant descend subtree
 			if( DEBUG || DEBUGSEARCH) {

@@ -57,5 +57,10 @@ public class BufferedHashSet extends BufferedSet {
 		super(tdbname, "HMap", backingStore, poolBlocks);
 	}
 	
-
+	@Override
+	public Iterator<?> iterator() throws IOException {
+		synchronized(session.getMutexObject()) {
+			return session.entrySet();
+		}
+	}
 }

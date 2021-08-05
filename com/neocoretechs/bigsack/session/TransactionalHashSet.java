@@ -106,7 +106,7 @@ public class TransactionalHashSet implements SetInterface, TransactionInterface 
 	@Override
 	public Iterator<?> iterator() throws IOException {
 		synchronized(session.getMutexObject()) {
-			return session.tailSet(session.firstKey());
+			return session.entrySet();
 		}
 	}
 
