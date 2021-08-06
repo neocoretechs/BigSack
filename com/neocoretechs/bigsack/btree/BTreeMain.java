@@ -162,7 +162,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 */
 	@Override
 	public KeyPageInterface createNode(NodeInterface btnode) throws IOException {
-		return (KeyPageInterface) sdbio.getBTreePageFromPool(btnode);
+		return sdbio.getBTreePageFromPool(btnode);
 	}
 
 	@Override

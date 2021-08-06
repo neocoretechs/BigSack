@@ -13,7 +13,11 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
 /**
- * Class BTNode
+ * BTNode is derived from the HMap node structure and includes the child of each key organized
+ * as the left child at the same index as the key and the right child at index+1 of the key.
+ * The other addition is designation as leaf or non-leaf.the {@link KeyValue} structure is shared
+ * as is the contract for {@link KeyPageInterface}. {@link HTNode}.
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class BTNode<K extends Comparable, V> extends HTNode {
     public final static int MIN_DEGREE          =   (BTreeKeyPage.MAXKEYS/2)+1;
@@ -39,6 +43,15 @@ public class BTNode<K extends Comparable, V> extends HTNode {
         this.mIsLeaf = mIsLeaf;
     }
     
+    /**
+     * setPage is called when this is constructed with a page, so if the page has data, it is loaded to this new node.
+     * @param page
+     * @throws IOException
+     */
+    public BTNode(KeyPageInterface page) throws IOException {
+    	super(page);
+    }
+
 	@Override
     public void setPage(KeyPageInterface page) {
     	this.page = page;
@@ -113,10 +126,6 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     	}
     	mChildren[index] = (BTNode<K, V>) bTNode;
     }
-    
-	public void setUpdated(boolean updated) {
-		super.setUpdated(updated);
-	}
 	
 	public boolean getUpdated() {
 		return isUpdated();
@@ -124,16 +133,6 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 	
     public boolean getIsLeaf() {
     	return mIsLeaf;
-    }
-    
-    @Override
-	public int getNumKeys() {
-    	return super.getNumKeys();
-    }
-    
-    @Override
-	public void setNumKeys(int numKeys) {
-    	super.setNumKeys(numKeys);
     }
     
     protected static NodeInterface getChildNodeAtIndex(BTNode btNode, int keyIdx, int nDirection) {
@@ -257,17 +256,5 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		return sb.toString();
 	}
 
-	@Override
-	public int getTablespace() {
-		if(pageId == -1)
-			return -1;
-		return GlobalDBIO.getTablespace(pageId);
-	}
-
-	@Override
-	public void initKeyValueArray(int index) {
-		if(index >= getNumKeys())
-			setNumKeys(index+1);	
-	}
 
 }

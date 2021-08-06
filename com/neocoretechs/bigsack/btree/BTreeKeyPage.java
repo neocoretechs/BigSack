@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.function.Supplier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.hashmap.HTNode;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
@@ -44,15 +45,12 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 /**
 * A key page in the bTree. This class functions as a wrapper, or facade pattern as an interface
 * between the in-memory BTree object model and the buffer pool/persistent storage disk, non-volatile 
-* memory structure. It contains no appreciable data elements of its own except for the array of boolean flags
-* that indicate whether object model elemts have changes and should be persisted. Other than that, merely pointers
-* to the bTnode btree node and the BlockAccessIndex NVM layout.<p/>
+* memory structure. It contains fewer data elements of its own then HMap since ulike HMap a page will always contain a node
+* because there are no keys-only pages.<p/>
 * The in-memory BTnode/BTree object model Performs operations on its set of keys and
 * optional sets of object values. The non-volatile model persists itself to the buffer pool as as block stream that appears
 * as input and output streams connected to pages in the backing store.<p/>
 * MAXKEYS are the odd maximum keys without spanning page boundaries, calculated by block payload divided by keysize.
-* The 'transient' keyword designations in the class fields are an artifact leftover from serialization, retained to 
-* illustrate the items that are not persisted via block streams.
 * 
 * Unlike a binary search tree, each node of a B-tree may have a variable number of keys and children.
 * The keys are stored in non-decreasing order. Each node either is a leaf node or
@@ -83,31 +81,14 @@ public class BTreeKeyPage implements KeyPageInterface {
 	private static final boolean DEBUGSETNUMKEYS = false;
 	private static final boolean DEBUGGETDATA = false;
 	private static final boolean DEBUGPUTDATA = false;
-	static final long serialVersionUID = -2441425588886011772L;
 	public static final int BTREEKEYSIZE = 28; // total size per key/value 2 Optr for key/value + child node page to the left
-	public static final int BTREEDATASIZE = 16; // extra data in key/value page, long number of keys, long last child right node page ID
+	public static final int BTREEDATASIZE = 17; // extra data in key/value page, long number of keys, long last child right node page ID, one byte for leaf
 	public static int TOTALKEYS = 
 			((int) Math.floor((DBPhysicalConstants.DATASIZE-BTREEDATASIZE)/BTREEKEYSIZE));
 	// number of keys per page; number of instances of the non transient fields of 'this' per DB block.
 	// The number of maximum children is MAXKEYS+1 per node.
 	// Calculate the maximum number of odd keys that can fit per block. Must be odd for splits that leave an even balance of left/right
 	public static int MAXKEYS = (TOTALKEYS % 2 == 0 ? TOTALKEYS - 1 : TOTALKEYS);
-	// Non transient number of keys on this page. Adjusted as necessary when inserting/deleting.
-	//private int numKeys = 0; // 4 bytes, SINGLE ENTRY
-	// The array of page locations of stored keys as block and offset, used to fill keyArray lazily
-	// BTNode KeyValue keyOptr = private Optr[] keyIdArray 10 bytes, MAXKEYS ENTRIES
-	// Array to hold updated key status
-	//private transient boolean[] keyUpdatedArray = new boolean[MAXKEYS];
-	// The array of page ids from which the btree key page array is filled. This data is persisted as virtual page pointers. Since
-	// we align indexes on page boundaries we dont need an offset as we do with value data associated with the indexes for maps.
-	// BTNode pageId = private long[] pageIdArray 8 bytes, MAXKEYS+1 ENTRIES
-	// This array is present for maps where values are associated with keys. In sets it is absent or empty.
-	// It contains the page and offset of the data item associated with a key. We pack value data on pages, hence
-	// we need an additional 2 byte offset value to indicate that.
-	// BTNode KeyValue valueOptr = private Optr[] dataIdArray 10 bytes, MAXKEYS ENTRIES
-	// This transient array maintains boolean values indicating whether the data item at that index has been updated
-	// and needs written back to deep store.
-	//transient boolean[] dataUpdatedArray = new boolean[MAXKEYS];
 	// Global is this leaf node flag.
 	//private boolean mIsLeafNode = true; //1 byte, SINGLE ENTRY ,We treat as leaf since the logic is geared to proving it not
 	// Global page updated flag.
@@ -119,13 +100,14 @@ public class BTreeKeyPage implements KeyPageInterface {
 
 	/**
 	 * This is called from getPageFromPool get set up a new clean node
-	 * @param sdbio The database IO main class
+	 * @param bTMain The database IO main class instance of KeyValueMainInterface
 	 * @param lbai The BlockAcceesIndex page block holding page data
 	 * @param read true to read the contents of the btree key from page, otherwise a new page to be filled
 	 */
 	public BTreeKeyPage(KeyValueMainInterface bTree, BlockAccessIndex lbai, boolean read) throws IOException {
 		this.bTreeMain = bTree;
 		this.lbai = lbai;
+		this.bTNode = new BTNode(this);
 		if( DEBUG ) 
 			System.out.printf("%s ctor1 BlockAccessIndex:%s for MAXKEYS=%d%n",this.getClass().getName(), lbai, MAXKEYS);
 		//initTransients();
@@ -144,27 +126,25 @@ public class BTreeKeyPage implements KeyPageInterface {
 			System.out.printf("%s ctor1 exit BlockAccessIndex:%s for MAXKEYS=%d%n",this.getClass().getName(), lbai, MAXKEYS);
 	}
 	/**
-	 * This is called from getPageFromPool get set up a new clean node
-	 * @param sdbio The database IO main class
-	 * @param lbai The BlockAcceesIndex page block holding page data
-	 * @param read true to read the contents of the btree key from page, otherwise a new page to be filled
+	 * This constructor is called to drive the page creation from an already created node.
+	 * If the node has a page ID of -1, it is set to the block number of the BlockAccessIndex.
+	 * If the node has a page ID, it is checked against the BlockAccessIndex page Id and if they dont agree an exception is thrown.
+	 * This is called from getNode of KeyValueMainInterface after we do a findOrAddBlock on the pageId.
+	 * @param bTMain The database IO main class instance of KeyValueMainInterface
+	 * @param lbai The BlockAccessIndex page block holding page data
+	 * @param btNode the BTree node to associate with this keypage
+	 * @param read true to read the contents of the bTree keys from page, otherwise a new page to be filled
 	 */
-	public BTreeKeyPage(KeyValueMainInterface bTree, BlockAccessIndex lbai, BTNode btNode, boolean read) throws IOException {
-		this.bTreeMain = bTree;
-		this.lbai = lbai;
-		this.bTNode = btNode;
+	public BTreeKeyPage(KeyValueMainInterface bTMain, BlockAccessIndex lbai, BTNode btNode, boolean read) throws IOException {
+		this(bTMain, lbai, read);
 		if( DEBUG ) 
 			System.out.printf("%s ctor2 BlockAccessIndex:%s BTNode:%s for MAXKEYS=%d%n",this.getClass().getName(), lbai, btNode, MAXKEYS);
-		//initTransients();
-		// Pre-allocate the arrays that hold persistent data
-		//setupKeyArrays();
-		if( read && lbai.getBlk().getBytesinuse() > 0) {// intentional clear or we may have deleted or rolled back all the way to primordial
-			readFromDBStream(lbai.getDBStream());
+		this.bTNode = btNode;
+		if(this.bTNode.getPageId() == -1L) {
+			this.bTNode.setPageId(lbai.getBlockNum());
 		} else {
-			// If we are not reading, we must be preparing the block for new key. Really no
-			// reason for a new block with unassigned and not updating keys conceptually.
-			// Set the appropriate flags to write to associated block when the time comes
-			lbai.resetBlock(false); // set up headers without revoking access
+			if( this.bTNode.getPageId() != lbai.getBlockNum())
+				throw new IOException("Node "+btNode+" block number mismatch with BlockAccessIndex block "+lbai);
 		}
 		
 		if( DEBUG ) 
@@ -210,14 +190,19 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	@Override
 	public synchronized void readFromDBStream(DataInputStream dis) throws IOException {
+		// check for fresh database
+		if(dis.available() < 8)
+			return;
+		setNumKeys((int) dis.readLong()); // size
+		((BTNode)(bTNode.getChild(0))).setPageId(dis.readLong()); // left node of 0 key
 		setmIsLeafNode(dis.readByte() == 0 ? false : true);
-		setNumKeys(dis.readInt());
 		for(int i = 0; i < MAXKEYS; i++) {
 			long sblk = dis.readLong();
 			short shblk = dis.readShort();
 			//if( DEBUG ) { 
 			//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
 			//}
+			bTNode.initKeyValueArray(i);
 			bTNode.getKeyValueArray(i).setKeyOptr(new Optr(sblk, shblk));
 			//
 			sblk = dis.readLong();
@@ -226,10 +211,8 @@ public class BTreeKeyPage implements KeyPageInterface {
 			//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
 			//}
 			bTNode.getKeyValueArray(i).setValueOptr(new Optr(sblk, shblk));
-		}
-		// pageId
-		for(int i = 0; i <= MAXKEYS; i++) {	
-			((BTNode)(bTNode.getChild(i))).setPageId(dis.readLong());
+			// pageId
+			((BTNode)(bTNode.getChild(i+1))).setPageId(dis.readLong());
 		}
 	}
 	
@@ -240,6 +223,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	@Override
 	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
+		bTNode.initKeyValueArray(index);
 		getKeyValueArray(index).setKeyOptr(optr);
 		bTNode.getKeyValueArray(index).setKeyUpdated(update);
 		((BTNode)bTNode).setUpdated(update);
@@ -389,9 +373,100 @@ public class BTreeKeyPage implements KeyPageInterface {
 		return true;
 	}
 	
+	/**
+	 * Create a unique list of blocks that have already been populated with values from this node in order to possibly
+	 * cluster new entries more efficiently.
+	 * @return The list of unique blocks containing entries for this node.
+	 */
+	public ArrayList<Long> aggregatePayloadBlocks() {
+		ArrayList<Long> blocks = new ArrayList<Long>();
+		int i = 0;
+		for(; i < getNumKeys(); i++) {
+			if(getKeyValueArray(i) != null) { 
+				if(getKeyValueArray(i).getKeyOptr() != null && 
+					!blocks.contains(getKeyValueArray(i).getKeyOptr().getBlock()) &&
+					!getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
+						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
+				}
+				if(getKeyValueArray(i).getValueOptr() != null && 
+					!blocks.contains(getKeyValueArray(i).getValueOptr().getBlock()) &&
+					!getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
+						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
+				}
+			}
+		}
+		return blocks;
+	}
+	
 	@Override
 	public void putPage() throws IOException {
-		
+		if(bTNode == null) {
+			throw new IOException(String.format("%s.putPage BTNode is null:%s%n",this.getClass().getName(),this));
+		}
+		if(!isUpdated()) {
+			if(DEBUG)
+				System.out.printf("%s.putPage page NOT updated:%s%n",this.getClass().getName(),this);
+			return;
+			//throw new IOException("KeyPageInterface.putPage page NOT updated:"+this);
+		}
+		if( DEBUG ) 
+			System.out.printf("%s.putPage:%s%n",this.getClass().getName(),this);
+		// hold accumulated insert pages
+		ArrayList<Long> currentPayloadBlocks = aggregatePayloadBlocks();
+		// Persist each key that is updated to fill the keyIds in the current page
+		// Once this is complete we write the page contiguously
+		// Write the object serialized keys out to deep store, we want to do this out of band of writing key page
+		for(int i = 0; i < getNumKeys(); i++) {
+			if( getKeyValueArray(i) != null ) {
+				if(getKeyValueArray(i).getKeyUpdated()) {
+					// put the key to a block via serialization and assign KeyIdArray the position of stored key
+					putKey(i, currentPayloadBlocks);
+				}
+				if(getKeyValueArray(i).getValueUpdated()) {
+					putData(i, currentPayloadBlocks);
+				}
+			}
+		}
+		//
+		assert (lbai.getBlockNum() != -1L) : " KeyPageInterface unlinked from page pool:"+this;
+		// write the page to the current block
+		// Write to the block output stream
+		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(lbai);
+		bs.writeLong(getNumKeys());
+		bs.writeByte(getmIsLeafNode() ? 1 : 0);
+		bs.writeLong(((BTNode)(bTNode.getChild(0))).getPageId());
+		for(int i = 0; i < getNumKeys(); i++) {
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).getKeyUpdated() ) { // if set, key was processed by putKey[i]
+				bs.writeLong(getKeyValueArray(i).getKeyOptr().getBlock());
+				bs.writeShort(getKeyValueArray(i).getKeyOptr().getOffset());
+				getKeyValueArray(i).setKeyUpdated(false);
+				if( DEBUG ) 
+					System.out.printf("%s.putPage %d Optr key:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
+			} else { // skip 
+				lbai.setByteindex((short) (lbai.getByteindex()+10));
+				if( DEBUG ) 
+					System.out.printf("%s.putPage %d Optr key skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
+			}
+			// data array
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).getValueUpdated()) {
+				bs.writeLong(getKeyValueArray(i).getValueOptr().getBlock());
+				bs.writeShort(getKeyValueArray(i).getValueOptr().getOffset());
+				getKeyValueArray(i).setValueUpdated(false);
+				if( DEBUG ) 
+					System.out.printf("%s.putPage %d Optr value:%s%n",this.getClass().getName(),i,getKeyValueArray(i));	
+			} else {
+				// skip the data Id for this index as it was not updated, so no need to write anything
+				lbai.setByteindex((short) (lbai.getByteindex()+10));
+				if( DEBUG ) 
+					System.out.printf("%s.putPage %d value Optr skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
+			}
+			bs.writeLong(((BTNode)(bTNode.getChild(i+1))).getPageId());
+		}
+		bs.flush();
+		bs.close();
+		if( DEBUG ) {
+			System.out.println("KeyPageInterface.putPage Added Keypage @"+GlobalDBIO.valueOf(getBlockAccessIndex().getBlockNum())+" block for keypage:"+this+" page:"+this);
+		}	
 	}
 	
 	/**
@@ -493,6 +568,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUG) {
 			System.out.println("KeyPageInterface.getKey Entering KeyPageInterface to retrieve target index "+index);
 		}
+		if(bTNode.getNumKeys() < index+1)
+			return null;
+		bTNode.initKeyValueArray(index);
 		if(bTNode.getKeyValueArray(index).getmKey() == null && !bTNode.getKeyValueArray(index).getKeyOptr().isEmptyPointer() && !bTNode.getKeyValueArray(index).getKeyUpdated()) {
 			// eligible to retrieve page
 			if( DEBUG ) {
@@ -523,6 +601,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUG) {
 			System.out.println("KeyPageInterface.getKey Entering KeyPageInterface to retrieve target index "+index);
 		}
+		if(bTNode.getNumKeys() < index+1)
+			return null;
+		bTNode.initKeyValueArray(index);
 		if(bTNode.getKeyValueArray(index).getmValue() == null && !bTNode.getKeyValueArray(index).getValueOptr().isEmptyPointer() && !bTNode.getKeyValueArray(index).getValueUpdated() ){
 			// eligible to retrieve page
 			if( DEBUG ) {
@@ -546,6 +627,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @param index
 	 */
 	synchronized void putKeyToArray(Comparable key, int index) {
+		bTNode.initKeyValueArray(index);
 		bTNode.getKeyValueArray(index).setmKey(key);
 		bTNode.getKeyValueArray(index).setKeyOptr(Optr.emptyPointer);
 		setUpdated(true);
@@ -561,12 +643,14 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @throws IOException 
 	 */
 	synchronized void copyKeyToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
+		bTNode.initKeyValueArray(targetIndex);
 		bTNode.getKeyValueArray(targetIndex).setmKey(sourceKey.getKey(sourceIndex)); // get the key from pointer from source if not already
 		bTNode.getKeyValueArray(targetIndex).setKeyOptr(sourceKey.getKeyId(sourceIndex));
 		setUpdated(true);
 	}
 	
 	synchronized void copyDataToArray(BTreeKeyPage sourceKey, int sourceIndex, int targetIndex) throws IOException {
+		bTNode.initKeyValueArray(targetIndex);
 		bTNode.getKeyValueArray(targetIndex).setmValue(sourceKey.getData(sourceIndex)); // get the key from pointer from source if not already
 		bTNode.getKeyValueArray(targetIndex).setValueOptr(sourceKey.getDataId(sourceIndex));
 		setUpdated(true);
@@ -584,6 +668,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @param index
 	 */
 	synchronized void putDataToArray(Object data, int index) {
+		bTNode.initKeyValueArray(index);
 		bTNode.getKeyValueArray(index).setmValue(data);
 		bTNode.getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
 		setUpdated(true);
@@ -707,13 +792,23 @@ public class BTreeKeyPage implements KeyPageInterface {
 	}
 	@Override
 	public void setRootNode(BlockAccessIndex bai) throws IOException {
-		// TODO Auto-generated method stub
-		
+		this.lbai = bai;
+		bTNode = new BTNode(((BTreeMain)bTreeMain).bTreeNavigator, 0L, true);
 	}
 	@Override
 	public KeyValue<Comparable, Object> readBlockAndGetKV(DataInputStream dis, NodeInterface node) throws IOException {
-		// TODO Auto-generated method stub
-		return null;
+		long block = dis.readLong();
+		short offset = dis.readShort();
+		Optr keyPtr = new Optr(block, offset);
+		block = dis.readLong();
+		offset = dis.readShort();
+		Optr dataPtr = new Optr(block, offset);
+		KeyValue<Comparable, Object> kv = new KeyValue<Comparable, Object>(node);
+		kv.setKeyOptr(keyPtr);
+		kv.setValueOptr(dataPtr);
+		kv.setKeyUpdated(false);
+		kv.setValueUpdated(false);
+		return kv;
 	}
 	@Override
 	public void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl) {

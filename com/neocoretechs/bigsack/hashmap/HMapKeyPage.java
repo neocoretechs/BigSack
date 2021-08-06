@@ -68,7 +68,6 @@ public final class HMapKeyPage implements KeyPageInterface {
 	private static final boolean DEBUGSETNUMKEYS = false;
 	private static final boolean DEBUGGETDATA = false;
 	private static final boolean DEBUGPUTDATA = false;
-	static final long serialVersionUID = -2441425588886011772L;
 	public static final int HMAPKEYSIZE = 20; // total size per key/value 2 Optr for key/value
 	public static final int HMAPDATASIZE = 16; // extra data in key/value page, long number of keys, long next page page ID
 	public static int MAXKEYS = 
@@ -107,7 +106,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	/**
 	 * This constructor is called to drive the page creation from an already created node.
 	 * If the node has a page ID of -1, it is set to the block number of the BlockAccessIndex.
-	 * If the node has a page ID, it is checked against the BLockAccessIndex page Id and if they dont agree an exception is thrown.
+	 * If the node has a page ID, it is checked against the BlockAccessIndex page Id and if they dont agree an exception is thrown.
 	 * This is called from getNode of KeyValueMainInterface after we do a findOrAddBlock on the pageId.
 	 * @param hMapMain The database IO main class instance of KeyValueMainInterface
 	 * @param lbai The BlockAccessIndex page block holding page data
@@ -124,7 +123,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 				throw new IOException("Node "+htNode+" block number mismatch with BlockAccessIndex block "+lbai);
 		}
 		if( DEBUG ) 
-			System.out.printf("%s ctor2 exit BlockAccessIndex:%s BTNode:%s%n",this.getClass().getName(), lbai, htNode);
+			System.out.printf("%s ctor2 exit BlockAccessIndex:%s HTNode:%s%n",this.getClass().getName(), lbai, htNode);
 	}
 
 	/**
