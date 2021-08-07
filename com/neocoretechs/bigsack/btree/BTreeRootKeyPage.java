@@ -18,15 +18,7 @@ public class BTreeRootKeyPage extends BTreeKeyPage implements RootKeyPageInterfa
 		super(bTree, lbai, read);
 	}
 
-	/**
-	 * This is called from getPageFromPool get set up a new clean node
-	 * @param sdbio The database IO main class
-	 * @param lbai The BlockAcceesIndex page block holding page data
-	 * @param read true to read the contents of the btree key from page, otherwise a new page to be filled
-	 */
-	public BTreeRootKeyPage(KeyValueMainInterface bTree, BlockAccessIndex lbai, BTNode btNode, boolean read) throws IOException {
-		super(bTree, lbai, btNode, read);
-	}
+
 	/**
 	 * Calls {@link BTreeMain}.createRootNode and sets bTNode here to returned value.
 	 * @param bai 

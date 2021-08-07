@@ -103,28 +103,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 			System.out.printf("%s ctor1 exit BlockAccessIndex:%s%n",this.getClass().getName(), lbai);
 	}
 	
-	/**
-	 * This constructor is called to drive the page creation from an already created node.
-	 * If the node has a page ID of -1, it is set to the block number of the BlockAccessIndex.
-	 * If the node has a page ID, it is checked against the BlockAccessIndex page Id and if they dont agree an exception is thrown.
-	 * This is called from getNode of KeyValueMainInterface after we do a findOrAddBlock on the pageId.
-	 * @param hMapMain The database IO main class instance of KeyValueMainInterface
-	 * @param lbai The BlockAccessIndex page block holding page data
-	 * @param htNode the HashMap node to associate with this keypage
-	 * @param read true to read the contents of the hMap keys from page, otherwise a new page to be filled
-	 */
-	public HMapKeyPage(HMapMain hMapMain, BlockAccessIndex lbai, HTNode htNode, boolean read) throws IOException {
-		this(hMapMain, lbai, read);
-		this.hTNode = htNode;
-		if(this.hTNode.getPageId() == -1L) {
-			this.hTNode.setPageId(lbai.getBlockNum());
-		} else {
-			if( this.hTNode.getPageId() != lbai.getBlockNum())
-				throw new IOException("Node "+htNode+" block number mismatch with BlockAccessIndex block "+lbai);
-		}
-		if( DEBUG ) 
-			System.out.printf("%s ctor2 exit BlockAccessIndex:%s HTNode:%s%n",this.getClass().getName(), lbai, htNode);
-	}
+
 
 	/**
 	 * Initialize the key page NON-TRANSIENT arrays, the part that actually gets written to backing store.

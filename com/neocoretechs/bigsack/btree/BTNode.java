@@ -1,11 +1,13 @@
 package com.neocoretechs.bigsack.btree;
 
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 
 import com.neocoretechs.bigsack.hashmap.HMapKeyPage;
 import com.neocoretechs.bigsack.hashmap.HTNode;
 import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
@@ -29,17 +31,20 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     protected BTreeNavigator<K,V> bTree;
     private KeyValue<K, V> mKeys[] = new KeyValue[BTreeKeyPage.MAXKEYS];
     private NodeInterface<K,V> mChildren[] = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
+    Long childPages[] = new Long[BTreeKeyPage.MAXKEYS+1];
 
-    public BTNode(BTreeNavigator<K,V> bTree, Long pageId, boolean mIsLeaf) {
+    public BTNode(BTreeNavigator<K,V> bTree, Long pageId, boolean mIsLeaf) throws IOException {
     	super(bTree.getKeyValueMain(), pageId);
     	this.bTree = bTree;
         this.mIsLeaf = mIsLeaf;
         //mCurrentKeyNum = 0;
+        setPage(new BTreeRootKeyPage(bTree.getKeyValueMain(), bTree.getKeyValueMain().getIO().findOrAddBlock(pageId), true));
     }
     
     public BTNode(BTreeNavigator<K,V> bTree, KeyPageInterface page, boolean mIsLeaf) throws IOException {
     	super(page.getKeyValueMain(), page.getPageId());
        	this.bTree = bTree;
+       	this.page = page;
         this.mIsLeaf = mIsLeaf;
     }
     
@@ -49,26 +54,77 @@ public class BTNode<K extends Comparable, V> extends HTNode {
      * @throws IOException
      */
     public BTNode(KeyPageInterface page) throws IOException {
-    	super(page);
+    	super(page.getKeyValueMain(), page.getPageId());
+    	setPage(page);
     }
-
+    
 	@Override
-    public void setPage(KeyPageInterface page) {
+	/**
+	 * We can use this method to set up the node on construction, or change its contents later with a new page.<p/>
+	 * Conversely, if this node is presented with a blank page and has data, it will load it to the blank page.
+	 */
+    public void setPage(KeyPageInterface page) throws IOException {
     	this.page = page;
-        this.pageId = page.getPageId();
+        if(page.getNumKeys() > 0) { // if page has data, load it to this
+        	loadNode();
+        } else {
+        	if(getNumKeys() > 0) { // page has no data, but if this node has data, load it to the page
+        		loadPage();
+        	}
+        }
     }
+	
+	/**
+	 * Set up to load the newly presented page with the data in this node.<p/>
+	 * Transfer the data we currently have. If pointers are empty, acquire the position.
+	 * If pointers are valid, transfer them and assume existing pages are written.
+	 * @throws IOException 
+	 */
+	private void loadPage() throws IOException {
+		if(page.getNumKeys() > 0)
+			throw new IOException("Attempt to overwrite page "+page+" with node "+this);
+		page.setNode(this);
+		// set everything to updated, forcing a load to the page
+		for(int i = 0; i < getNumKeys(); i++) {
+			mKeys[i].setKeyUpdated(true);
+		}
+		((BTreeKeyPage)page).putPage();
+	}
+	/**
+	 * Set up to Load this node with data from the page.<p/> 
+	 * @param page
+	 * @throws IOException
+	 */
+	private void loadNode() throws IOException {
+		if(getNumKeys() > 0)
+			throw new IOException("Attempt to overwrite node "+this+" with page "+page);
+		page.readFromDBStream(GlobalDBIO.getBlockInputStream(page.getBlockAccessIndex()));
+	}
+	
 	
     public KeyValueMainInterface getKeyValueMain() {
     	return (KeyValueMainInterface) bTree.getKeyValueMain();
     }
- 
-
+    
+	@Override
+	public void initKeyValueArray(int index) {
+		super.initKeyValueArray(index);
+		childPages[index] = -1L;
+		childPages[index+1] = -1L;
+		mChildren[index] = null;
+		mChildren[index+1] = null;
+	}
 	/**
      * ONLY USED FROM BTREEKEYPAGE TO SET UP NODE UPON RETRIEVAL, DONT USE IT ANYWHERE ELSE!!
      * @param isLeaf
      */
     public void setmIsLeaf(boolean isLeaf) {
     	mIsLeaf = isLeaf;
+    	setUpdated(true);
+    }
+    
+    public KeyPageInterface getPage() { 
+    	return page; 
     }
     
     /**
@@ -81,6 +137,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		setNumKeys(0);
 	    mKeys = new KeyValue[BTreeKeyPage.MAXKEYS];
 	    mChildren = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
+	    childPages = new Long[BTreeKeyPage.MAXKEYS+1];
+	    setUpdated(true);
 	}
 	
     @Override
@@ -99,12 +157,12 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     	if(getNumKeys() == 0) {
     		return null;
     	}
-    	BTreeRootKeyPage kpi;
-        long pageId = mChildren[index].getPageId();
-        if(pageId != -1L ) {
+    	BTreeKeyPage kpi;
+        if(childPages[index] != -1L ) {
 			try {
-				if(mChildren[index] == null || mChildren[index].getPageId() != pageId) {
-					kpi = (BTreeRootKeyPage)bTree.getKeyValueMain().getNode(mChildren[index], pageId);
+				if(mChildren[index] == null) {
+					BlockAccessIndex bai = bTree.getKeyValueMain().getIO().findOrAddBlock(pageId);
+					kpi = new BTreeKeyPage(bTree.getKeyValueMain(), bai, true);
 					mChildren[index] = (NodeInterface<K, V>) kpi.bTNode;
 				}
 			} catch (IOException e) {
@@ -125,6 +183,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     		setNumKeys(index);
     	}
     	mChildren[index] = (BTNode<K, V>) bTNode;
+    	childPages[index] = mChildren[index].getPageId();
+    	setUpdated(true);
     }
 	
 	public boolean getUpdated() {

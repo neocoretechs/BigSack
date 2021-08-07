@@ -165,16 +165,6 @@ public final class HMapMain implements KeyValueMainInterface {
 		return sdbio.getHMapPageFromPool(hnode);
 	}
 	
-	@Override
-	/**
-	 * Get the BlockAccessIndex at the pageId, create an HMapKeyPage with it using the hNode
-	 * with true to read the content of the block. Sets the currentPage with the retrieved page.
-	 * @return 
-	 */
-	public KeyPageInterface getNode(NodeInterface hNode, long pageId) throws IOException {
-		BlockAccessIndex bai = sdbio.findOrAddBlock(pageId);
-		return new HMapKeyPage(this, bai , (HTNode) hNode, true);
-	}
 	
 	public void test() throws IOException {
 		if( TEST ) {

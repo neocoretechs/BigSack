@@ -87,7 +87,6 @@ public class BTreeNavigator<K extends Comparable, V> {
         KeyPageInterface kpi = ((BTreeMain)bTreeMain).sdbio.getBTreePageFromPool(-1L);
         btNode = new BTNode(this, kpi, isLeaf);
         btNode.setNumKeys(0);
-        KeyPageInterface newNode = bTreeMain.createNode(btNode);
         return btNode;
     }
     /**
@@ -202,20 +201,30 @@ public class BTreeNavigator<K extends Comparable, V> {
             		System.out.printf("%s.insertKeyAtNode root is leaf, current keys=0 key=%s value=%s%n", this.getClass().getName(), key, value);
                 // Empty root
                 rootNode.setKeyValueArray(0, new KeyValue<K, V>(key, value, rootNode));
-                rootNode.setNumKeys(rootNode.getNumKeys() + 1);
+                rootNode.getKeyValueArray(0).setKeyUpdated(true);
+                rootNode.getKeyValueArray(0).setValueUpdated(true);
+                rootNode.getPage().setNumKeys(rootNode.getNumKeys());
+                rootNode.getPage().putPage();
+                //rootNode.setNumKeys(rootNode.getNumKeys() + 1);
                 return false;
             }
-
+           	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode root is leaf, current keys=%d key=%s value=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value);
             // Verify if the specified key doesn't exist in the node
             for (i = 0; i < rootNode.getNumKeys(); ++i) {
+              	if(DEBUGINSERT)
+            		System.out.printf("%s.insertKeyAtNode search leaf root, current key=%d is %s key=%s value=%s%n", this.getClass().getName(), i,rootNode.getKeyValueArray(i).getmKey(), key, value);
                 if (key.compareTo(rootNode.getKeyValueArray(i).getmKey()) == 0) {
                     // Find existing key, overwrite its value only
                     rootNode.getKeyValueArray(i).setmValue(value);
+                    rootNode.getKeyValueArray(0).setValueUpdated(true);
+                    rootNode.getPage().putPage();
                     --mSize;
                     return true;
                 }
             }
-
+          	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode root is leaf, key not present, current keys=%d key=%s value=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value);
             i = currentKeyNum - 1;
             KeyValue<K, V> existingKeyVal = rootNode.getKeyValueArray(i);
             while ((i > -1) && (key.compareTo(existingKeyVal.getmKey()) < 0)) {
@@ -228,11 +237,15 @@ public class BTreeNavigator<K extends Comparable, V> {
 
             i = i + 1;
             rootNode.setKeyValueArray(i, new KeyValue<K, V>(key, value, rootNode));
-
-            rootNode.setNumKeys(rootNode.getNumKeys() + 1);
+            rootNode.getKeyValueArray(i).setKeyUpdated(true);
+            rootNode.getKeyValueArray(i).setValueUpdated(true);
+            rootNode.getPage().setNumKeys(rootNode.getNumKeys());
+            rootNode.getPage().putPage();
+            //rootNode.setNumKeys(rootNode.getNumKeys() + 1);
             return false;
         }
-
+       	if(DEBUGINSERT)
+    		System.out.printf("%s.insertKeyAtNode root is non-leaf, key not present, current keys=%d key=%s value=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value);
         // This is an internal node (i.e: not a leaf node)
         // So let find the child node where the key is supposed to belong
         i = 0;
@@ -252,6 +265,8 @@ public class BTreeNavigator<K extends Comparable, V> {
         if ((i < numberOfKeys) && (key.compareTo(currentKey.getmKey()) == 0)) {
             // The key already existed so replace its value and done with it
             currentKey.setmValue(value);
+            rootNode.getKeyValueArray(i).setValueUpdated(true);
+            rootNode.getPage().putPage();
             --mSize;
             return true;
         }
@@ -269,15 +284,21 @@ public class BTreeNavigator<K extends Comparable, V> {
                 btNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(rootNode, i);
             }
         }
-
+      	if(DEBUGINSERT)
+    		System.out.printf("%s.insertKeyAtNode selected node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
         if (btNode.getNumKeys() == BTNode.UPPER_BOUND_KEYNUM) {
             // If the child node is a full node then handle it by splitting out
             // then insert key starting at the root node after splitting node
+           	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode moving to split node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
             splitNode(rootNode, i, btNode);
+          	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode moving to recursively insert after root split in node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
             insertKeyAtNode(rootNode, key, value);
             return false;
         }
-
+      	if(DEBUGINSERT)
+    		System.out.printf("%s.insertKeyAtNode moving to recursively insert in node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
         return insertKeyAtNode(btNode, key, value);
     }
 
@@ -1077,104 +1098,6 @@ public class BTreeNavigator<K extends Comparable, V> {
             }
         }
     }
-	/**
-	 * Serialize this page to deep store on a page boundary.
-	 * Key pages are always on page boundaries. The data is written
-	 * to the page buffers from the updated node values via the {@link BTreeKeyPage} facade.
-	 * The push to deep store takes place at commit time or
-	 * when the buffer fills and it becomes necessary to open a spot.
-	 * @exception IOException If write fails
-	 */
-	public synchronized void putNodeToPage(BTNode<K,V> bTNode, KeyPageInterface page) throws IOException {
-		if(bTNode == null) {
-			throw new IOException(String.format("%s.putPage BTNode is null:%s%n",this.getClass().getName(),this));
-		}
-		if(!bTNode.getUpdated()) {
-			if(DEBUG)
-				System.out.printf("%s.putPage page NOT updated:%s%n",this.getClass().getName(),this);
-			return;
-			//throw new IOException("KeyPageInterface.putPage page NOT updated:"+this);
-		}
-		if( DEBUG ) 
-			System.out.printf("%s.putPage:%s%n",this.getClass().getName(),this);
-		// hold accumulated insert pages
-		ArrayList<Optr> keys = new ArrayList<Optr>();
-		ArrayList<Optr> values = new ArrayList<Optr>();
-		int i = 0;
-		for(; i < bTNode.getNumKeys(); i++) {
-			if(bTNode.getKeyValueArray(i) != null && bTNode.getKeyValueArray(i) != null ) {
-				if(!bTNode.getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
-					keys.add(bTNode.getKeyValueArray(i).getKeyOptr());
-				}
-			}
-			if(bTNode.getKeyValueArray(i) != null && bTNode.getKeyValueArray(i) != null ) {
-				if(!bTNode.getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
-					values.add(bTNode.getKeyValueArray(i).getValueOptr());
-				}
-			}
-		}
-		//.map(Map::values)                  // -> Stream<List<List<String>>>
-		//.flatMap(Collection::stream)       // -> Stream<List<String>>
-		//.flatMap(Collection::stream)       // -> Stream<String>
-		//.collect(Collectors.toSet())       // -> Set<String>
-		// Persist each key that is updated to fill the keyIds in the current page
-		// Once this is complete we write the page contiguously
-		// Write the object serialized keys out to deep store, we want to do this out of band of writing key page
-		for(i = 0; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
-			if( bTNode.getKeyValueArray(i) != null ) {
-				if(bTNode.getKeyValueArray(i).getKeyUpdated() ) {
-					// put the key to a block via serialization and assign KeyIdArray the position of stored key
-					//page.putKey(i, keys);	
-				}
-				if( bTNode.getKeyValueArray(i).getValueUpdated()) {
-					//putData(i, values);
-				}
-			}
-		}
-		//
-		assert (page.getBlockAccessIndex().getBlockNum() != -1L) : " KeyPageInterface unlinked from page pool:"+this;
-		// write the page to the current block
-		page.getBlockAccessIndex().setByteindex((short) 0);
-		// Write to the block output stream
-		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(page.getBlockAccessIndex());
-		if( DEBUG )
-			System.out.println("KeyPageInterface.putPage BlockStream:"+page);
-		bs.writeByte(bTNode.getIsLeaf() ? 1 : 0);
-		bs.writeInt(bTNode.getNumKeys());
-		for(i = 0; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
-			if(bTNode.getKeyValueArray(i) != null && bTNode.getKeyValueArray(i).getKeyUpdated() ) { // if set, key was processed by putKey[i]
-				bs.writeLong(bTNode.getKeyValueArray(i).getKeyOptr().getBlock());
-				bs.writeShort(bTNode.getKeyValueArray(i).getKeyOptr().getOffset());
-				bTNode.getKeyValueArray(i).setKeyUpdated(false);
-			} else { // skip
-				page.getBlockAccessIndex().setByteindex((short) (page.getBlockAccessIndex().getByteindex()+10));
-			}
-			// data array
-			if(bTNode.getKeyValueArray(i) != null &&  bTNode.getKeyValueArray(i).getValueUpdated() ) {
-				bs.writeLong(bTNode.getKeyValueArray(i).getValueOptr().getBlock());
-				bs.writeShort(bTNode.getKeyValueArray(i).getValueOptr().getOffset());
-				bTNode.getKeyValueArray(i).setValueUpdated(false);
-			} else {
-				// skip the data Id for this index as it was not updated, so no need to write anything
-				page.getBlockAccessIndex().setByteindex((short) (page.getBlockAccessIndex().getByteindex()+10));
-			}
-		}
-		// persist btree key page indexes
-		for(i = 0; i <= BTNode.UPPER_BOUND_KEYNUM; i++) {
-			BTreeKeyPage btk = (BTreeKeyPage) page.getPage(i);
-			if(btk != null)
-				bs.writeLong(btk.getBlockAccessIndex().getBlockNum());
-			else // skip 8 bytes
-				//bks.getBlockAccessIndex().setByteindex((short) (bks.getBlockAccessIndex().getByteindex()+8));
-				bs.writeLong(-1L); // empty page
-		}
-		bs.flush();
-		bs.close();
-		if( DEBUG ) {
-			System.out.println("KeyPageInterface.putPage Added Keypage @:"+this);
-		}
-		bTNode.setUpdated(false);
-	}
 
     /**
      * Inner class StackInfo for back tracing

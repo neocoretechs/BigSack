@@ -41,14 +41,6 @@ public interface KeyValueMainInterface {
 	 */
 	KeyPageInterface createNode(NodeInterface tnode) throws IOException;
 	
-	/**
-	 * Retrieve the page that contains key/value instances and use the data from that page to
-	 * set it up. Similar to createNode but used for existing pages.
-	 * @param tNode the node to be set up.
-	 * @param pageId the page to be retrieved
-	 * @throws IOException
-	 */
-	KeyPageInterface getNode(NodeInterface tNode, long pageId) throws IOException;
 
 	Comparable getKey(Optr keyLoc) throws IOException;
 	

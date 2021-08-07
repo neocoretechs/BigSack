@@ -165,11 +165,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		return sdbio.getBTreePageFromPool(btnode);
 	}
 
-	@Override
-	public KeyPageInterface getNode(NodeInterface btNode, long pageId) throws IOException {
-		BlockAccessIndex bai = sdbio.findOrAddBlock(pageId);
-		return new BTreeKeyPage(this, bai , (BTNode) btNode, true);
-	}
 	/**
 	 * Returns number of table scanned keys, sets numKeys field
 	 * TODO: Alternate more efficient implementation that counts keys on pages

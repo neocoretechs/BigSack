@@ -29,34 +29,39 @@ public class BatteryBigSack2 {
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0; // controls range of testing
-	static int max = 100000;
+	static int max = 1000;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
 	* Analysis test fixture, pass supplemental method payloads on cmdl.
 	*/
 	public static void main(String[] argv) throws Exception {
+		if (argv.length < 1) {
+			 System.out.println("usage: java BatteryBigSack2 <database>");
+			System.exit(1);
+		}
+		BigSackAdapter.setTableSpaceDir(argv[0]);
 		BufferedTreeMap session = BigSackAdapter.getBigSackTreeMap(key.getClass());
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
 		battery1(session, argv);
 		// get and verify min to max
-		battery1A(session, argv);
+		//battery1A(session, argv);
 		// count
-		battery1A1(session, argv);
+		//battery1A1(session, argv);
 		// first last
-		battery1B(session, argv);
+		//battery1B(session, argv);
 		// keyset, entryset
-		battery1C(session, argv);
+		//battery1C(session, argv);
 		// from/to range
-		battery1D(session, argv);
+		//battery1D(session, argv);
 		// from/to range
-		battery1D1(session, argv);
+		//battery1D1(session, argv);
 		// compare to synthetic key
-		battery1E(session, argv);
-		battery1E1(session, argv);
-		battery1F(session, argv);
-		battery1F1(session, argv);
+		//battery1E(session, argv);
+		//battery1E1(session, argv);
+		//battery1F(session, argv);
+		//battery1F1(session, argv);
 		// overwrite
 		//battery1G(session, argv);
 		// deletion tests below
