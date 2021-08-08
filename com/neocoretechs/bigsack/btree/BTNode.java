@@ -22,6 +22,7 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class BTNode<K extends Comparable, V> extends HTNode {
+	public static boolean DEBUG = true;
     public final static int MIN_DEGREE          =   (BTreeKeyPage.MAXKEYS/2)+1;
     public final static int LOWER_BOUND_KEYNUM  =   MIN_DEGREE - 1;
     public final static int UPPER_BOUND_KEYNUM  =   BTreeKeyPage.MAXKEYS;
@@ -100,10 +101,6 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		page.readFromDBStream(GlobalDBIO.getBlockInputStream(page.getBlockAccessIndex()));
 	}
 	
-	
-    public KeyValueMainInterface getKeyValueMain() {
-    	return (KeyValueMainInterface) bTree.getKeyValueMain();
-    }
     
 	@Override
 	public void initKeyValueArray(int index) {
@@ -144,21 +141,24 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     
     @Override
 	public NodeInterface<K, V> getChild(int index) {
-    	if(getNumKeys() == 0) {
+    	if(index >= getNumKeys()) {
     		return null;
     	}
     	BTreeKeyPage kpi;
-        if(childPages[index] != -1L ) {
-			try {
-				if(mChildren[index] == null) {
-					BlockAccessIndex bai = bTree.getKeyValueMain().getIO().findOrAddBlock(pageId);
-					kpi = new BTreeKeyPage(bTree.getKeyValueMain(), bai, true);
-					mChildren[index] = (NodeInterface<K, V>) kpi.bTNode;
-				}
-			} catch (IOException e) {
-				throw new RuntimeException(e);
+		try {
+			if(mChildren[index] == null && childPages[index] != null && childPages[index] != -1L) {
+				if(DEBUG)
+					System.out.printf("%s.getChild(%d) for childPage %d%n", this.getClass().getName(), index, childPages[index]);
+				BlockAccessIndex bai = keyValueMain.getIO().findOrAddBlock(childPages[index]);
+				kpi = new BTreeKeyPage(keyValueMain, bai, true);
+				mChildren[index] = (NodeInterface<K, V>) kpi.bTNode;
+				childPages[index] = bai.getBlockNum();
 			}
-        }
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		if(DEBUG)
+			System.out.printf("%s.getChild(%d) for childPage %d returning %s%n", this.getClass().getName(), index, childPages[index], mChildren[index]);
     	return mChildren[index];
     }
     
@@ -276,8 +276,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 			}
 		}
 		sb.append("BTree Child Page Array:\r\n");
-		String[] sout2 = new String[mChildren.length];
-		for (int i = 0 ; i < mChildren.length /*pageArray.length*/; i++) {
+		String[] sout2 = new String[getNumKeys()];
+		for (int i = 0 ; i < getNumKeys() /*pageArray.length*/; i++) {
 				if(getChild(i) != null) {
 					sout2[i] = getChild(i).toString()+"\r\n";
 				} else {
@@ -290,15 +290,12 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		if(allChildrenEmpty) {
 			sb.append("ALL CHILDREN EMPTY\r\n");
 		} else {
-			int j = 0;
-			for (int i = 0 ; i < mChildren.length /*pageArray.length*/; i++) {
+			for (int i = 0 ; i < getNumKeys() /*pageArray.length*/; i++) {
 				if(sout2[i] != null) {
 					sb.append(i+"=");
 					sb.append(sout2[i]);
-					if(getChild(i) == null) ++j;
 				}
 			}
-			sb.append("Children Array null for "+j+" members\r\n");
 		}
 		sb.append(GlobalDBIO.valueOf(pageId));
 		sb.append(" >>>>>>>>>>>>>>End ");

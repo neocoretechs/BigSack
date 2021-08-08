@@ -26,7 +26,6 @@ public class BTreeNavigator<K extends Comparable, V> {
     public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
     public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
 
-    private BTNode<K, V> mRoot = null;
     private long  mSize = 0L;
     private BTNode<K, V> mIntermediateInternalNode = null;
     private int mNodeIdx = 0;
@@ -41,19 +40,11 @@ public class BTreeNavigator<K extends Comparable, V> {
     	//mRoot = getRootNode(); may need buckets first
     }
     /**
-     * Gets the root node stored in mRoot instance, if its null call {@link createRootNode} to
-     * Explicitly create root node at db creation time. Create a {@link BTNode}, set pageId to 0.
-     * then calls {@link HMapMain.createRootNode} with the newly created BTNode
+     * Gets the root node from KeyValueMainInterface. We have only one root for a btree.
      * @return
      */
     public NodeInterface<K, V> getRootNode() {
-    	if(mRoot == null)
-			try {
-				mRoot = (BTNode<K, V>) createRootNode();
-			} catch (IOException e) {
-				throw new RuntimeException(e);
-			}
-        return mRoot;
+    	return (NodeInterface<K, V>) ((BTreeRootKeyPage)bTreeMain.getRoot()[0]).bTNode;
     }
 
     //
@@ -68,7 +59,6 @@ public class BTreeNavigator<K extends Comparable, V> {
      */
     public void clear() {
         mSize = 0L;
-        mRoot = null;
     }
 
     public KeyValueMainInterface getKeyValueMain() {
@@ -78,29 +68,14 @@ public class BTreeNavigator<K extends Comparable, V> {
     /**
      * private method to create node. We communicate back to our KeyPageInterface, which talks to 
      * our BlockAccessIndex, and eventually to deep store. Does not preclude creating a new root at some point.
-     * Calls {@link HMapMain.createNode} with the new {@link BTNode}
      * @return
      * @throws IOException 
      */
     private NodeInterface<K, V> createNode(boolean isLeaf) throws IOException {
-        BTNode<K, V> btNode;
         KeyPageInterface kpi = ((BTreeMain)bTreeMain).sdbio.getBTreePageFromPool(-1L);
-        btNode = new BTNode(this, kpi, isLeaf);
-        btNode.setNumKeys(0);
-        return btNode;
-    }
-    /**
-     * Explicitly create root node at db creation time. Create a {@link BTNode}, set pageId to 0.
-     * then calls {@link HMapMain.createRootNode} with the newly created BTNode
-     * @return
-     * @throws IOException
-     */
-    private NodeInterface<K, V> createRootNode() throws IOException {
-        BTNode<K, V> btNode;
-        btNode = new BTNode(this, 0L, true); // leaf true
-        btNode.setNumKeys(0);
-        bTreeMain.createRootNode(btNode);
-        return btNode;
+        NodeInterface ni = (NodeInterface<K, V>) ((BTreeKeyPage)kpi).bTNode;
+        ((BTNode)ni).setmIsLeaf(isLeaf);
+        return ni;
     }
 
     public KeySearchResult getTreeSearchResult() {
@@ -111,7 +86,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     //
     @SuppressWarnings("unchecked")
 	public V search(K key) throws IOException {
-        BTNode<K, V> currentNode = mRoot;
+        BTNode<K, V> currentNode = (BTNode<K, V>) getRootNode();
         KeyValue<K, V> currentKey;
         int i=0, numberOfKeys;
 
@@ -161,25 +136,19 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException
      */
     public int insert(K key, V value) throws IOException {
-        if (mRoot == null) {
-        	if(DEBUGINSERT)
-        		System.out.printf("%s.insert root is null key=%s value=%s%n", this.getClass().getName(), key, value);
-            mRoot = (BTNode<K, V>) createNode(true);
-        }
-
         ++mSize;
-        if (mRoot.getNumKeys() == BTNode.UPPER_BOUND_KEYNUM) {
+        if (getRootNode().getNumKeys() == BTNode.UPPER_BOUND_KEYNUM) {
          	if(DEBUGINSERT)
         		System.out.printf("%s.insert root is full, splitting key=%s value=%s%n", this.getClass().getName(), key, value);
             // The root is full, split it
             BTNode<K, V> btNode = (BTNode<K, V>) createNode(false);
-            //btNode.mIsLeaf = false;
-            btNode.setChild(0, mRoot);
-            mRoot = btNode;
-            splitNode(mRoot, 0, (BTNode) btNode.getChild(0));
+            btNode.setmIsLeaf(false);
+            btNode.setChild(0, getRootNode());
+            btNode.setAsNewRoot();
+            splitNode((BTNode) getRootNode(), 0, (BTNode) btNode.getChild(0));
         }
 
-        return insertKeyAtNode(mRoot, key, value) ? 1 : 0;
+        return insertKeyAtNode((BTNode) getRootNode(), key, value) ? 1 : 0;
     }
 
 
@@ -203,7 +172,7 @@ public class BTreeNavigator<K extends Comparable, V> {
                 rootNode.setKeyValueArray(0, new KeyValue<K, V>(key, value, rootNode));
                 rootNode.getKeyValueArray(0).setKeyUpdated(true);
                 rootNode.getKeyValueArray(0).setValueUpdated(true);
-                rootNode.getPage().setNumKeys(rootNode.getNumKeys());
+                rootNode.getPage().setNumKeys(rootNode.getNumKeys()); // set the page with new number of keys
                 rootNode.getPage().putPage();
                 //rootNode.setNumKeys(rootNode.getNumKeys() + 1);
                 return false;
@@ -239,7 +208,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             rootNode.setKeyValueArray(i, new KeyValue<K, V>(key, value, rootNode));
             rootNode.getKeyValueArray(i).setKeyUpdated(true);
             rootNode.getKeyValueArray(i).setValueUpdated(true);
-            rootNode.getPage().setNumKeys(rootNode.getNumKeys());
+            rootNode.getPage().setNumKeys(rootNode.getNumKeys()); // update the page with new number of keys
             rootNode.getPage().putPage();
             //rootNode.setNumKeys(rootNode.getNumKeys() + 1);
             return false;
@@ -520,9 +489,9 @@ public class BTreeNavigator<K extends Comparable, V> {
         // Make sure the parent point to the correct child after the merge
         parentNode.setChild(nodeIdx,leftSiblingNode);
 
-        if ((parentNode == mRoot) && (parentNode.getNumKeys() == 0)) {
+        if ((parentNode == getRootNode()) && (parentNode.getNumKeys() == 0)) {
             // Root node is updated.  It should be done
-            mRoot = leftSiblingNode;
+            leftSiblingNode.setAsNewRoot();
             return false;
         }
 
@@ -563,9 +532,9 @@ public class BTreeNavigator<K extends Comparable, V> {
         // Make sure the parent point to the correct child after the merge
         parentNode.setChild(nodeIdx, btNode);
 
-        if ((parentNode == mRoot) && (parentNode.getNumKeys() == 0)) {
+        if ((parentNode == getRootNode()) && (parentNode.getNumKeys() == 0)) {
             // Root node is updated.  It should be done
-            mRoot = btNode;
+            btNode.setAsNewRoot();
             return false;
         }
 
@@ -604,7 +573,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             return;
         }
 
-        listEntriesInOrder(mRoot, iterImpl);
+        listEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl);
     }
 
     public KeyValue get(Object object) throws IOException {
@@ -616,7 +585,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 				return false;
 			}		
     	};
-    	return retrieveEntriesInOrder(mRoot, iterImpl);
+    	return retrieveEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl);
     }
     //
     // Recursively loop to list out the keys and their values
@@ -680,7 +649,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     //
     public V delete(K key) throws IOException {
         mIntermediateInternalNode = null;
-        KeyValue<K, V> keyVal = deleteKey(null, mRoot, key, 0);
+        KeyValue<K, V> keyVal = deleteKey(null, (BTNode)getRootNode(), key, 0);
         if (keyVal == null) {
             return null;
         }
@@ -723,7 +692,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 
                 if (btNode.getNumKeys() == 0) {
                     // btNode is actually the root node
-                    mRoot = null;
+                    btNode.setAsNewRoot();
                 }
 
                 return retVal;
@@ -769,8 +738,8 @@ public class BTreeNavigator<K extends Comparable, V> {
                         }
                     }
 
-                    if (isRebalanceNeeded && (mRoot != null)) {
-                        rebalanceTree(mRoot, parentNode, (K) parentNode.getKeyValueArray(0).getmKey());
+                    if (isRebalanceNeeded && (getRootNode() != null)) {
+                        rebalanceTree((BTNode<K, V>) getRootNode(), parentNode, (K) parentNode.getKeyValueArray(0).getmKey());
                     }
                 }
             }
@@ -958,9 +927,9 @@ public class BTreeNavigator<K extends Comparable, V> {
             parentNode.setChild(nodeIdx, siblingNode);
         }
 
-        if ((mRoot == parentNode) && (mRoot.getNumKeys() == 0)) {
+        if ((getRootNode() == parentNode) && (getRootNode().getNumKeys() == 0)) {
             // Only root left
-            mRoot = (BTNode<K, V>) parentNode.getChild(nodeIdx);
+            BTNode mRoot = (BTNode<K, V>) parentNode.getChild(nodeIdx);
             mRoot.setAsNewRoot();
             //mRoot.mIsLeaf = true;
             return false;  // Root has been changed, we don't need to go further
@@ -981,7 +950,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      */
     private boolean rebalanceTreeAtNode(BTNode<K, V> parentNode, BTNode<K, V> btNode, int nodeIdx, int balanceType) throws IOException {
         if (balanceType == REBALANCE_FOR_LEAF_NODE) {
-            if ((btNode == null) || (btNode == mRoot)) {
+            if ((btNode == null) || (btNode == getRootNode())) {
                 return false;
             }
         }

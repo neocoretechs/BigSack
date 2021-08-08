@@ -111,7 +111,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	@Override
 	/**
 	 * Populate the array of {@link RootKeyPageInterface} {@link HMapRootKeyPage}
-	 * Gets a page from the pool via {@link BlockAccessIndex.getPageFromPool}. Called from {@link HMap.createRootNode}.
+	 * Gets a page from the pool via {@link BlockAccessIndex.getPageFromPool}. Called from {@link MultithreadedIOManager}.
 	 * This method attempts to link the {@link BlockAccessIndex} to the {@link KeyPageInterface} to 'this'
 	 * then link the {@link HTNode} which was created by {@link HMap} and its pageId was set to 0L.<p/>
 	 * We will create the array of root nodes with root pages at each tablespace.

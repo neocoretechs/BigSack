@@ -121,12 +121,11 @@ public final class BTreeMain implements KeyValueMainInterface {
 	@Override
 	public RootKeyPageInterface createRootNode() throws IOException {
 		this.root = sdbio.getBTreeRootPageFromPool();
-		BTNode broot = (BTNode) bTreeNavigator.getRootNode();
-		root.setNode(broot);
+		((BTNode)((BTreeKeyPage)(this.root)).bTNode).setmIsLeaf(true);
 		if( DEBUG )
 			System.out.printf("%s Root KeyPageInterface: %s%n",this.getClass().getName(),root);	
 		//return (BTNode<Comparable, Object>) bTree.getRootNode();
-		return root;
+		return this.root;
 	}
 	
 	public void test() throws IOException {
@@ -140,9 +139,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		}
 	}
 	/**
-	 * When we create BTree in the constructor above, a call to getRootNode in BTree will either
-	 * return the root node, or call createRootNode in BTree, which will call back here.<p/>
-	 * We acquire our BlockAccessIndex, which is rolled into our KeyPageInterface which communicates with our BTNode.
 	 * @return 
 	 * @throws IOException
 	 */

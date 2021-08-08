@@ -18,19 +18,22 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.btree.BTreeRootKeyPage;
+
 import com.neocoretechs.bigsack.hashmap.HMapChildRootKeyPage;
 import com.neocoretechs.bigsack.hashmap.HMapKeyPage;
 import com.neocoretechs.bigsack.hashmap.HMapMain;
 import com.neocoretechs.bigsack.hashmap.HMapRootKeyPage;
-import com.neocoretechs.bigsack.io.IoInterface;
+
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
+
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
@@ -604,8 +607,13 @@ public class GlobalDBIO {
 	* @exception IOException If retrieval fails
 	*/
 	public BTreeKeyPage getBTreePageFromPool(long pos) throws IOException {
-		assert(pos != -1L) : "Page index invalid in getPage "+getDBName();
-		BlockAccessIndex bai = findOrAddBlock(pos);
+		//assert(pos != -1L) : "Page index invalid in getPage "+getDBName();
+		BlockAccessIndex bai;
+		if(pos == -1L) {
+			bai = stealblk();
+		} else {
+			bai = findOrAddBlock(pos);
+		}
 		BTreeKeyPage btk = new BTreeKeyPage(getKeyValueMain(), bai, true);
 		if( DEBUG ) 
 			System.out.printf("getBtreePageFromPool KeyPageInterface:%s BlockAccessIndex:%s%n",btk,bai);
@@ -624,8 +632,14 @@ public class GlobalDBIO {
 	 * @throws IOException
 	 */
 	public BTreeKeyPage getBTreePageFromPool(NodeInterface btnode) throws IOException {
-		// Get a fresh block
-		BlockAccessIndex lbai = stealblk();
+		// Get a fresh block if necessary
+		BlockAccessIndex lbai = null;
+		if(btnode.getPageId() == -1L) {
+			lbai = stealblk();
+			btnode.setPageId(lbai.getBlockNum());
+		} else {
+			lbai = findOrAddBlock(btnode.getPageId());
+		}
 		// initialize transients, set page with this block, false=no read, set up for new block instead
 		// this will set updated since the block is new
 		BTreeKeyPage btk = new BTreeKeyPage(getKeyValueMain(), lbai, true);

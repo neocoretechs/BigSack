@@ -43,7 +43,6 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
      * @throws IOException
      */
     public HTNode(KeyPageInterface page) throws IOException {
-    	this.page = page;
     	setPage(page);
     }
     

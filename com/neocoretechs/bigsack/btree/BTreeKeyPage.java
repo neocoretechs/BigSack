@@ -6,10 +6,8 @@ import java.util.ArrayList;
 import java.util.function.Supplier;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.hashmap.HTNode;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
@@ -200,7 +198,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	@Override
 	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
-		bTNode.initKeyValueArray(index);
 		getKeyValueArray(index).setKeyOptr(optr);
 		bTNode.getKeyValueArray(index).setKeyUpdated(update);
 		((BTNode)bTNode).setUpdated(update);
@@ -241,8 +238,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	public synchronized long getPageId(int index) {
 		return ((BTNode)bTNode.getChildNoread(index)).getPageId();
 	}
-	
-	
+		
 	/**
 	* Given a Comparable object, search for that object on this page.
 	* The key was found on this page and loc is index of
@@ -462,7 +458,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	@Override
 	public synchronized boolean putData(int index, ArrayList<Long> values) throws IOException {
-
 		if( getKeyValueArray(index).getmValue() == null ) {
 			//|| bTreeKeyPage.getKeyValueArray()[index].getValueOptr().equals(Optr.emptyPointer)) {
 			getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
@@ -482,57 +477,16 @@ public class BTreeKeyPage implements KeyPageInterface {
 	}
 	/**
 	* Retrieve a page based on an index to this page containing a page.
-	* If the pageArray at index is NOT null we dont fetch anything.
-	* In effect, this is our lazy initialization of the 'pageArray' and we strictly
-	* work in pageArray in this method. If the pageIdArray contains a valid non -1 entry, then
-	* we retrieve that virtual block to an entry in the pageArray at the index passed in the params
-	* location. If we retrieve an instance we also fill in the transient fields from our current data
 	* @param index The index to the page array on this page that contains the virtual record to deserialize.
 	* @return The constructed page instance of the page at 'index' on this page.
 	* @exception IOException If retrieval fails
 	*/
 	@Override
 	public synchronized KeyPageInterface getPage(int index) throws IOException {
-		BTreeKeyPage btk = null;
-		if(bTNode == null ) {
-			System.out.printf("%s.getPage null bTNode trying to rerieve index%d%n",this.getClass().getName(), index);
+		NodeInterface ni = bTNode.getChild(index);
+		if(ni == null) 
 			return null;
-		}
-		if(DEBUG) {
-			System.out.println("KeyPageInterface.getPage ENTER KeyPageInterface to retrieve BTNode "+bTNode+" target index:["+index+"]");
-			//for(int i = 0; i <= bTNode.mCurrentKeyNum; i++) {
-			//	System.out.println("KeyPageInterface.getPage initial page index:["+i+"]="+GlobalDBIO.valueOf(bTNode.mChildren[i].pageId)+" page:"+bTNode.mChildren[index]);
-			//}
-		}
-		if(bTNode.getChildNoread(index) == null) {
-			if(DEBUG)
-				System.out.printf("%s.getPage target index:[%d] child at index null, cant get page..",this.getClass().getName(), index);
-			return null;
-		}
-		if(((BTNode)bTNode.getChildNoread(index)).getPageId() != -1L) {
-			// has a key to retrieve page
-			if( DEBUG ) {
-				System.out.println("KeyPageInterface.getPage about to retrieve index:["+index+"] loc:"+GlobalDBIO.valueOf(((BTNode)bTNode.getChildNoread(index)).getPageId()));
-			}
-			// this will read the data values for the page
-			btk = (BTreeKeyPage) bTreeMain.getIO().getBTreePageFromPool(((BTNode) bTNode.getChildNoread(index)).getPageId());
-			btk.bTNode = (BTNode<Comparable, Object>) bTNode.getChild(index);
-			if( DEBUG ) {
-				System.out.println("KeyPageInterface.getPage RETRIEVED index:"+index+" loc:"+GlobalDBIO.valueOf(((BTNode)bTNode.getChildNoread(index)).getPageId())+" page:"+bTNode.getChildNoread(index));
-			}
-		}
-
-		// see if other pages have same value
-		if(DEBUG) {
-			for(int i = 0; i < bTNode.getNumKeys(); i++) {
-				if( i == index )
-					continue;
-				if (bTNode.getChildNoread(i) != null && ((BTNode)bTNode.getChildNoread(i)).getPageId() != -1L && bTNode.getChildNoread(i) == bTNode.getChildNoread(index)) {
-					throw new IOException("Duplicate child page encountered");
-				}
-			}
-		}
-		return btk;
+		return ((BTNode)ni).getPage();
 	}
 
 	/**
@@ -551,7 +505,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUG) {
 			System.out.println("KeyPageInterface.getKey Entering KeyPageInterface to retrieve target index "+index);
 		}
-		bTNode.initKeyValueArray(index);
 		if(bTNode.getKeyValueArray(index).getmKey() == null && !bTNode.getKeyValueArray(index).getKeyOptr().isEmptyPointer() && !bTNode.getKeyValueArray(index).getKeyUpdated()) {
 			// eligible to retrieve page
 			if( DEBUG ) {
@@ -582,7 +535,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUG) {
 			System.out.println("KeyPageInterface.getKey Entering KeyPageInterface to retrieve target index "+index);
 		}
-		bTNode.initKeyValueArray(index);
 		if(bTNode.getKeyValueArray(index).getmValue() == null && !bTNode.getKeyValueArray(index).getValueOptr().isEmptyPointer() && !bTNode.getKeyValueArray(index).getValueUpdated() ){
 			// eligible to retrieve page
 			if( DEBUG ) {
