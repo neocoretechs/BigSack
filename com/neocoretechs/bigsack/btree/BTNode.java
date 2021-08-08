@@ -29,7 +29,6 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     private boolean mIsLeaf;
     //private int mCurrentKeyNum;
     protected BTreeNavigator<K,V> bTree;
-    private KeyValue<K, V> mKeys[] = new KeyValue[BTreeKeyPage.MAXKEYS];
     private NodeInterface<K,V> mChildren[] = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
     Long childPages[] = new Long[BTreeKeyPage.MAXKEYS+1];
 
@@ -86,7 +85,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		page.setNode(this);
 		// set everything to updated, forcing a load to the page
 		for(int i = 0; i < getNumKeys(); i++) {
-			mKeys[i].setKeyUpdated(true);
+			getKeyValueArray(i).setKeyUpdated(true);
 		}
 		((BTreeKeyPage)page).putPage();
 	}
@@ -134,23 +133,14 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 	public void setAsNewRoot() {
 		pageId = 0L;
 		mIsLeaf = true;
+		for(int i = 0; i < getNumKeys(); i++)
+			setKeyValueArray(i, null);
 		setNumKeys(0);
-	    mKeys = new KeyValue[BTreeKeyPage.MAXKEYS];
 	    mChildren = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
 	    childPages = new Long[BTreeKeyPage.MAXKEYS+1];
 	    setUpdated(true);
 	}
 	
-    @Override
-	public KeyValue<K, V> getKeyValueArray(int index) {
-        // pre-create blank keys to receive key Ids so we can assign the page pointers and offsets
-        // for subsequent retrieval
-    	//if(mKeys[0] == null)
-    	if(getNumKeys() == 0)
-    		return null;
-    	return mKeys[index];
-    }
-    
     
     @Override
 	public NodeInterface<K, V> getChild(int index) {
@@ -253,8 +243,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		sb.append("\r\n");
 		
 		sb.append("Key/Value Array:\r\n");
-		String[] sout = new String[mKeys.length];
-		for (int i = 0; i < mKeys.length /*keyArray.length*/; i++) {
+		String[] sout = new String[getNumKeys()];
+		for (int i = 0; i < getNumKeys() /*keyArray.length*/; i++) {
 			KeyValue<K,V> keyval = getKeyValueArray(i);
 			if(keyval != null) {
 				try {
@@ -277,7 +267,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		if(allEntriesDefault) {
 			sb.append("ALL ENTRIES DEFAULT\r\n");
 		} else {	
-			for (int i = 0; i < mKeys.length /*keyArray.length*/; i++) {
+			for (int i = 0; i < getNumKeys() /*keyArray.length*/; i++) {
 				if(sout[i] != null) {
 					sb.append(i+"=");
 					sb.append(getKeyValueArray(i));

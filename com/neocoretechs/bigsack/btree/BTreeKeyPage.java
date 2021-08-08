@@ -76,11 +76,11 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 */
 public class BTreeKeyPage implements KeyPageInterface {
 	private static final boolean DEBUG = true;
-	private static final boolean DEBUGPUTKEY = false;
+	private static final boolean DEBUGPUTKEY = true;
 	private static final boolean DEBUGREMOVE = true;
 	private static final boolean DEBUGSETNUMKEYS = false;
-	private static final boolean DEBUGGETDATA = false;
-	private static final boolean DEBUGPUTDATA = false;
+	private static final boolean DEBUGGETDATA = true;
+	private static final boolean DEBUGPUTDATA = true;
 	public static final int BTREEKEYSIZE = 28; // total size per key/value 2 Optr for key/value + child node page to the left
 	public static final int BTREEDATASIZE = 17; // extra data in key/value page, long number of keys, long last child right node page ID, one byte for leaf
 	public static int TOTALKEYS = 
@@ -436,9 +436,15 @@ public class BTreeKeyPage implements KeyPageInterface {
 				if( DEBUG ) 
 					System.out.printf("%s.putPage %d value Optr skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			}
-			bs.writeLong(((BTNode)(bTNode.getChild(i))).getPageId());
+			if(bTNode.getChild(i) == null)
+				bs.writeLong(-1L);
+			else
+				bs.writeLong(((BTNode)(bTNode.getChild(i))).getPageId());
 		}
-		bs.writeLong(((BTNode)(bTNode.getChild(getNumKeys()))).getPageId());
+		if(bTNode.getChild(getNumKeys()) == null)
+			bs.writeLong(-1L);
+		else
+			bs.writeLong(((BTNode)(bTNode.getChild(getNumKeys()))).getPageId());
 		bs.flush();
 		bs.close();
 		if( DEBUG ) {

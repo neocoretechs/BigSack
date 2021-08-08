@@ -770,7 +770,7 @@ public class BTreeNavigator<K extends Comparable, V> {
                     }
 
                     if (isRebalanceNeeded && (mRoot != null)) {
-                        rebalanceTree(mRoot, parentNode, parentNode.getKeyValueArray(0).getmKey());
+                        rebalanceTree(mRoot, parentNode, (K) parentNode.getKeyValueArray(0).getmKey());
                     }
                 }
             }
