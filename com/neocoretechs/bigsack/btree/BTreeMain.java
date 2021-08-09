@@ -84,7 +84,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 
 	private KeyPageInterface root;
 	BTreeNavigator bTreeNavigator;
-	@SuppressWarnings("rawtypes")
 	long numKeys = 0;
 	
 	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();

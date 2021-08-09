@@ -124,26 +124,23 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     }
     
     /**
-     * Rare case where we delete everything and establish a new root.
+     * Establish a new root.
      * Free all previous references by re-initializing arrays, set pageId to 0.
+     * @throws IOException 
      */
-	public void setAsNewRoot() {
+	public void setAsNewRoot() throws IOException {
+		KeyPageInterface oldPage = page;
 		pageId = 0L;
-		mIsLeaf = true;
-		for(int i = 0; i < getNumKeys(); i++)
-			setKeyValueArray(i, null);
-		setNumKeys(0);
-	    mChildren = new NodeInterface[BTreeKeyPage.MAXKEYS+1];
-	    childPages = new Long[BTreeKeyPage.MAXKEYS+1];
+		page = (KeyPageInterface) keyValueMain.getRoot()[0];
+		page.setNumKeys(getNumKeys());
+		keyValueMain.createRootNode(this);
 	    setUpdated(true);
+	    page.putPage();
+	    oldPage.getBlockAccessIndex().resetBlock(true);
 	}
 	
-    
     @Override
 	public NodeInterface<K, V> getChild(int index) {
-    	if(index >= getNumKeys()) {
-    		return null;
-    	}
     	BTreeKeyPage kpi;
 		try {
 			if(mChildren[index] == null && childPages[index] != null && childPages[index] != -1L) {
@@ -169,9 +166,9 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 	
 	@Override
 	public void setChild(int index, NodeInterface bTNode) {
-    	if(index > getNumKeys()) {
-    		setNumKeys(index);
-    	}
+    	//if(index > getNumKeys()) {
+    	//	setNumKeys(index);
+    	//}
     	mChildren[index] = (BTNode<K, V>) bTNode;
     	childPages[index] = mChildren[index].getPageId();
     	setUpdated(true);
