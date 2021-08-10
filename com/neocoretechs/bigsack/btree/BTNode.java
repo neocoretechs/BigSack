@@ -22,7 +22,8 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class BTNode<K extends Comparable, V> extends HTNode {
-	public static boolean DEBUG = true;
+	public static boolean DEBUG = false;
+	public static boolean DEBUGCHILD = false;
     public final static int MIN_DEGREE          =   (BTreeKeyPage.MAXKEYS/2)+1;
     public final static int LOWER_BOUND_KEYNUM  =   MIN_DEGREE - 1;
     public final static int UPPER_BOUND_KEYNUM  =   BTreeKeyPage.MAXKEYS;
@@ -129,14 +130,18 @@ public class BTNode<K extends Comparable, V> extends HTNode {
      * @throws IOException 
      */
 	public void setAsNewRoot() throws IOException {
-		KeyPageInterface oldPage = page;
-		pageId = 0L;
-		page = (KeyPageInterface) keyValueMain.getRoot()[0];
-		page.setNumKeys(getNumKeys());
+		((KeyPageInterface) keyValueMain.getRoot()[0]).setNode(this);
+		((KeyPageInterface) keyValueMain.getRoot()[0]).setNumKeys(this.getNumKeys());
+		this.pageId = 0L;
+		this.tablespace = 0;
+		this.page = ((KeyPageInterface) keyValueMain.getRoot()[0]);
 		keyValueMain.createRootNode(this);
 	    setUpdated(true);
-	    page.putPage();
-	    oldPage.getBlockAccessIndex().resetBlock(true);
+	    for(int i = 0; i < getNumKeys(); i++) {
+	    	getKeyValueArray(i).setKeyUpdated(true);
+	    	getKeyValueArray(i).setValueUpdated(true);
+	    }
+	    this.page.putPage();
 	}
 	
     @Override
@@ -144,7 +149,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     	BTreeKeyPage kpi;
 		try {
 			if(mChildren[index] == null && childPages[index] != null && childPages[index] != -1L) {
-				if(DEBUG)
+				if(DEBUGCHILD)
 					System.out.printf("%s.getChild(%d) for childPage %d%n", this.getClass().getName(), index, childPages[index]);
 				BlockAccessIndex bai = keyValueMain.getIO().findOrAddBlock(childPages[index]);
 				kpi = new BTreeKeyPage(keyValueMain, bai, true);
@@ -154,7 +159,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-		if(DEBUG)
+		if(DEBUGCHILD)
 			System.out.printf("%s.getChild(%d) for childPage %d returning %s%n", this.getClass().getName(), index, childPages[index], mChildren[index]);
     	return mChildren[index];
     }
@@ -165,12 +170,18 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 	}
 	
 	@Override
+	/**
+	 * Set child node. If the node is null set childPages[index] to -1 else set it to the pageId of the new child node.
+	 */
 	public void setChild(int index, NodeInterface bTNode) {
     	//if(index > getNumKeys()) {
     	//	setNumKeys(index);
     	//}
     	mChildren[index] = (BTNode<K, V>) bTNode;
-    	childPages[index] = mChildren[index].getPageId();
+    	if(bTNode == null)
+    		childPages[index] = -1L;
+    	else
+    		childPages[index] = mChildren[index].getPageId();
     	setUpdated(true);
     }
 	

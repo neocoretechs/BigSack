@@ -22,8 +22,8 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
  * Description: BTree implementation
  */
 public class BTreeNavigator<K extends Comparable, V> {
-	private static final boolean DEBUGINSERT = true;
-	private static final boolean DEBUGSPLIT = true;
+	private static final boolean DEBUGINSERT = false;
+	private static final boolean DEBUGSPLIT = false;
     public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
     public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
 
@@ -142,10 +142,7 @@ public class BTreeNavigator<K extends Comparable, V> {
          	if(DEBUGINSERT)
         		System.out.printf("%s.insert root is full, splitting key=%s value=%s%n", this.getClass().getName(), key, value);
             // The root is full, split it
-            BTNode<K, V> btNode = (BTNode<K, V>) createNode(false);
-            btNode.setChild(0, getRootNode());
-            btNode.setAsNewRoot();
-            splitNode((BTNode) getRootNode(), 0, (BTNode) btNode.getChild(0));
+            splitNode((BTNode) getRootNode());
         }
 
         return insertKeyAtNode((BTNode) getRootNode(), key, value) ? 1 : 0;
@@ -193,7 +190,7 @@ public class BTreeNavigator<K extends Comparable, V> {
                 }
             }
           	if(DEBUGINSERT)
-        		System.out.printf("%s.insertKeyAtNode root is leaf, key not present, current keys=%d key=%s value=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value);
+        		System.out.printf("%s.insertKeyAtNode root is leaf, key perhaps not present, current keys=%d key=%s value=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value);
             i = currentKeyNum - 1;
             KeyValue<K, V> existingKeyVal = rootNode.getKeyValueArray(i);
             while ((i > -1) && (key.compareTo(existingKeyVal.getmKey()) < 0)) {
@@ -214,7 +211,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             return false;
         }
        	if(DEBUGINSERT)
-    		System.out.printf("%s.insertKeyAtNode root is non-leaf, key not present, current keys=%d key=%s value=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value);
+    		System.out.printf("%s.insertKeyAtNode root is non-leaf, key perhaps not present, current keys=%d key=%s value=%s rootNode=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value, rootNode);
         // This is an internal node (i.e: not a leaf node)
         // So let find the child node where the key is supposed to belong
         i = 0;
@@ -230,9 +227,12 @@ public class BTreeNavigator<K extends Comparable, V> {
                 break;
             }
         }
-
+     	if(DEBUGINSERT)
+    		System.out.printf("%s.insertKeyAtNode root is non-leaf, key perhaps not present, searched for position, current keys=%d key=%s value=%s insert position=%d currentKey=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value,i, currentKey);
         if ((i < numberOfKeys) && (key.compareTo(currentKey.getmKey()) == 0)) {
             // The key already existed so replace its value and done with it
+        	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode root is non-leaf, key was found, replace found key current keys=%d key=%s value=%s insert position=%d currentKey=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value,i, currentKey);
             currentKey.setmValue(value);
             rootNode.getKeyValueArray(i).setValueUpdated(true);
             rootNode.getPage().putPage();
@@ -242,14 +242,18 @@ public class BTreeNavigator<K extends Comparable, V> {
 
         BTNode<K, V> btNode;
         if (key.compareTo(currentKey.getmKey()) > 0) {
+        	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode root is non-leaf, key > currentKey key getting right child, current keys=%d key=%s value=%s right child position=%d currentKey=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value,i, currentKey);
             btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, i);
             i = i + 1;
-        }
-        else {
+        } else {
             if ((i - 1 >= 0) && (key.compareTo(rootNode.getKeyValueArray(i - 1).getmKey()) > 0)) {
+              	if(DEBUGINSERT)
+            		System.out.printf("%s.insertKeyAtNode root is non-leaf, key > currentKey key getting right child, current keys=%d key=%s value=%s right child position=%d currentKey=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value,(i-1), currentKey);
                 btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, i - 1);
-            }
-            else {
+            } else {
+              	if(DEBUGINSERT)
+            		System.out.printf("%s.insertKeyAtNode root is non-leaf, key > currentKey key getting left child, current keys=%d key=%s value=%s right child position=%d currentKey=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value,i, currentKey);
                 btNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(rootNode, i);
             }
         }
@@ -260,11 +264,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             // then insert key starting at the root node after splitting node
            	if(DEBUGINSERT)
         		System.out.printf("%s.insertKeyAtNode moving to split node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
-            splitNode(rootNode, i, btNode);
-          	if(DEBUGINSERT)
-        		System.out.printf("%s.insertKeyAtNode moving to recursively insert after root split in node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
-            insertKeyAtNode(rootNode, key, value);
-            return false;
+            splitNode(btNode);
         }
       	if(DEBUGINSERT)
     		System.out.printf("%s.insertKeyAtNode moving to recursively insert in node %s current keys=%d key=%s value=%s%n", this.getClass().getName(), btNode, btNode.getNumKeys(), key, value);
@@ -274,65 +274,66 @@ public class BTreeNavigator<K extends Comparable, V> {
     /**
      * Split a child node with a presumed parent.
      * @param parentNode The new parent of the previously full key
-     * @param nodeIdx
+     * @param nodeIdx Position into which to insert LOWER_BOUND_KEYNUM from btNode into parentNode
      * @param btNode The previous, full key
      * @throws IOException
      */
-    private void splitNode(BTNode parentNode, int nodeIdx, BTNode btNode) throws IOException {
+    private void splitNode(BTNode parentNode) throws IOException {
+        // create 2 new node with the same leaf status as the previous full node
+        BTNode<K, V> leftNode = (BTNode<K, V>) createNode(parentNode.getIsLeaf());
+        BTNode<K, V> rightNode = (BTNode<K, V>) createNode(parentNode.getIsLeaf());
         int i;
        	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode parentNode %s, index %d target=%s%n", this.getClass().getName(), parentNode, nodeIdx, btNode);
-        // create a new node with the same leaf status as the previous full node
-        BTNode<K, V> newNode = (BTNode<K, V>) createNode(btNode.getIsLeaf());
-    	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode new node created. parentNode %s, index %d target=%s%n", this.getClass().getName(), parentNode, nodeIdx, btNode);
+    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), parentNode);
         // Since the node is full,
-        // new node must share LOWER_BOUND_KEYNUM (aka t - 1) keys from the node
-        newNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
-        // Copy right half of the keys from the node to the new node
+        // new nodes must share LOWER_BOUND_KEYNUM (aka t - 1) keys from the node
+        leftNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
+        rightNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
+        // Copy right half of the keys from the node to the new nodes
       	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode copy right half keys. parentNode %s, index %d target=%s%n", this.getClass().getName(), parentNode, nodeIdx, btNode);
+    		System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
         for (i = 0; i < BTNode.LOWER_BOUND_KEYNUM; ++i) {
-            newNode.setKeyValueArray(i, btNode.getKeyValueArray(i + BTNode.MIN_DEGREE));
-            btNode.setKeyValueArray(i + BTNode.MIN_DEGREE, null);
+        	leftNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
+            parentNode.setKeyValueArray(i, null);
+        }
+        for(i = BTNode.MIN_DEGREE; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
+            rightNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
+            parentNode.setKeyValueArray(i, null);
         }
         // If the node is an internal node (not a leaf),
         // copy the child pointers at the right half
      	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode copy right children. newNode %s, index %d target=%s%n", this.getClass().getName(), newNode, nodeIdx, btNode);
-        if (!btNode.getIsLeaf()) {
-            for (i = 0; i < BTNode.MIN_DEGREE; ++i) {
-                newNode.setChild(i, (BTNode<K, V>) btNode.getChild(i + BTNode.MIN_DEGREE));
-                btNode.setChild(i + BTNode.MIN_DEGREE, null);
+    		System.out.printf("%s.splitNode copy children. parentNode %s%n", this.getClass().getName(), parentNode);
+        if (!parentNode.getIsLeaf()) {
+            for (i = 0; i <= BTNode.LOWER_BOUND_KEYNUM; ++i) {
+            	leftNode.setChild(i, parentNode.getChild(i));
+                parentNode.setChild(i, null);
+            }
+            for(i = BTNode.MIN_DEGREE; i <= BTNode.UPPER_BOUND_KEYNUM; i++) {
+                rightNode.setChild(i, parentNode.getChild(i));
+                parentNode.setChild(i, null);
             }
         }
-        // The node should have LOWER_BOUND_KEYNUM (aka min degree - 1) keys at this point.
-        // We will move its right-most key to its parent node later.
-        btNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
+      	if(DEBUGSPLIT)
+    		System.out.printf("%s.splitNode setup parent. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
+        // The node should have 1 key at this point.
+        // move its middle key to position 0 and set left and right child pointers to new node.
+        parentNode.setKeyValueArray(0, parentNode.getKeyValueArray(BTNode.LOWER_BOUND_KEYNUM));
+        parentNode.setKeyValueArray(BTNode.LOWER_BOUND_KEYNUM, null);
+        parentNode.getKeyValueArray(0).setKeyUpdated(true);
+        parentNode.getKeyValueArray(0).setValueUpdated(true);
+        parentNode.setChild(0, leftNode);
+        parentNode.setChild(1, rightNode);
+        parentNode.setNumKeys(1);
+        parentNode.getPage().setNumKeys(1);
+        leftNode.setUpdated(true);
+        rightNode.setUpdated(true);
+        parentNode.setUpdated(true);
+        leftNode.getPage().putPage();
+        rightNode.getPage().putPage();
+        parentNode.getPage().putPage();
      	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode shift parent children. newNode %s, index %d target=%s%n", this.getClass().getName(), newNode, nodeIdx, btNode);
-        // Do the right shift for relevant child pointers of the parent node
-        // so that we can put the new node in as its new child pointer
-        for (i = parentNode.getNumKeys(); i > nodeIdx; --i) {
-            parentNode.setChild(i + 1, (BTNode) parentNode.getChild(i));
-            parentNode.setChild(i, null);
-        }
-        parentNode.setChild(nodeIdx + 1, newNode);
-        // Right shift all the keys of the parent node to the right side of the node index as well
-        // so that we will have a slot into which to move the median key from the split node
-     	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode copy shift parent keys. parentNode %s, index %d target=%s%n", this.getClass().getName(), parentNode, nodeIdx, btNode);
-        for (i = parentNode.getNumKeys() - 1; i >= nodeIdx; --i) {
-            parentNode.setKeyValueArray(i + 1, parentNode.getKeyValueArray(i));
-            parentNode.setKeyValueArray(i, null);
-        }
-     	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode insert new key. parentNode %s, index %d target=%s%n", this.getClass().getName(), parentNode, nodeIdx, btNode);
-        parentNode.setKeyValueArray(nodeIdx, btNode.getKeyValueArray(BTNode.LOWER_BOUND_KEYNUM));
-        btNode.setKeyValueArray(BTNode.LOWER_BOUND_KEYNUM, null);
-        parentNode.setNumKeys(parentNode.getNumKeys() + 1);
-       	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode exit. parentNode %s, index %d target=%s%n", this.getClass().getName(), parentNode, nodeIdx, btNode);
+    		System.out.printf("%s.splitNode exit. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
     }
 
     //

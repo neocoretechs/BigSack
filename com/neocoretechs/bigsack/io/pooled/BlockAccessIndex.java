@@ -228,7 +228,6 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 * @throws IOException
 	 */
 	public synchronized void setBlockNumber(long bnum) throws IOException {
-		assert (bnum != -1L) : "****Attempt to set block number invalid";
 	
 		//if( GlobalDBIO.valueOf(bnum).equals("Tablespace_1_114688"))
 		//	System.out.println("BlockAccessIndex.setBlockNum. Tablespace_1_114688");

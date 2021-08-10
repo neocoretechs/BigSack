@@ -73,12 +73,12 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 * @author Jonathan Groff Copyright (C) NeoCoreTechs 2014,2015,2017,2021
 */
 public class BTreeKeyPage implements KeyPageInterface {
-	private static final boolean DEBUG = true;
-	private static final boolean DEBUGPUTKEY = true;
-	private static final boolean DEBUGREMOVE = true;
+	private static final boolean DEBUG = false;
+	private static final boolean DEBUGPUTKEY = false;
+	private static final boolean DEBUGREMOVE = false;
 	private static final boolean DEBUGSETNUMKEYS = false;
-	private static final boolean DEBUGGETDATA = true;
-	private static final boolean DEBUGPUTDATA = true;
+	private static final boolean DEBUGGETDATA = false;
+	private static final boolean DEBUGPUTDATA = false;
 	public static final int BTREEKEYSIZE = 28; // total size per key/value 2 Optr for key/value + child node page to the left
 	public static final int BTREEDATASIZE = 17; // extra data in key/value page, long number of keys, long last child right node page ID, one byte for leaf
 	public static int TOTALKEYS = 

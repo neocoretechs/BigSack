@@ -29,7 +29,7 @@ public class BatteryBigSack2 {
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0; // controls range of testing
-	static int max = 1000;
+	static int max = 100000;
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -69,6 +69,7 @@ public class BatteryBigSack2 {
 		//battery2A(session, argv);
 		
 		 System.out.println("TEST BATTERY 2 COMPLETE.");
+		 System.exit(0);
 		
 	}
 	/**
