@@ -10,6 +10,7 @@ import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -124,26 +125,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 			System.out.printf("%s ctor1 exit BlockAccessIndex:%s for MAXKEYS=%d%n",this.getClass().getName(), lbai, MAXKEYS);
 	}
 
-
-	/**
-	 * Initialize the key page NON-TRANSIENT arrays, the part that actually gets written to backing store.
-	 
-	public synchronized void setupKeyArrays() {
-		// Pre-allocate the arrays that hold persistent data
-		setKeyIdArray(new Optr[MAXKEYS]);
-		pageIdArray= new long[MAXKEYS + 1];
-		dataIdArray= new Optr[MAXKEYS];
-		for (int i = 0; i <= MAXKEYS; i++) {
-			pageIdArray[i] = -1L;
-			if( i != MAXKEYS ) {
-				getKeyIdArray()[i] = Optr.emptyPointer;
-				getKeyUpdatedArray()[i] = false;
-				dataIdArray[i] = Optr.emptyPointer;
-				dataUpdatedArray[i] = false;
-			}
-		}
-	}
-	*/
 	@Override
 	public synchronized long getPageId() {
 		return lbai.getBlockNum();
@@ -728,26 +709,20 @@ public class BTreeKeyPage implements KeyPageInterface {
 		this.lbai = bai;
 		bTNode = new BTNode(((BTreeMain)bTreeMain).bTreeNavigator, 0L, true);
 	}
-	@Override
-	public KeyValue<Comparable, Object> readBlockAndGetKV(DataInputStream dis, NodeInterface node) throws IOException {
-		long block = dis.readLong();
-		short offset = dis.readShort();
-		Optr keyPtr = new Optr(block, offset);
-		block = dis.readLong();
-		offset = dis.readShort();
-		Optr dataPtr = new Optr(block, offset);
-		KeyValue<Comparable, Object> kv = new KeyValue<Comparable, Object>(node);
-		kv.setKeyOptr(keyPtr);
-		kv.setValueOptr(dataPtr);
-		kv.setKeyUpdated(false);
-		kv.setValueUpdated(false);
-		return kv;
-	}
+
 	@Override
 	public void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl) {
-		// TODO Auto-generated method stub
-		
+		for(int i = 0; i < this.bTNode.getNumKeys(); i++) {
+			KeyValue<Comparable,Object> kv = this.bTNode.getKeyValueArray(i);
+			try {
+				if(iterImpl.item(kv.getmKey(), kv.getmValue()))
+					return;
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}	
 	}
+	
 	@Override
 	public int retrieveEntriesInOrder(Supplier<KeyValue<Comparable, Object>> b, int count, int limit) {
 		// TODO Auto-generated method stub

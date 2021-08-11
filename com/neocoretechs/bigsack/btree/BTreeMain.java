@@ -64,7 +64,7 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
  *                 /   \
  *     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
  *
-* @author Groff Copyright (C) NeoCoreTechs 2015,2017
+* @author Groff Copyright (C) NeoCoreTechs 2015,2017,2021
 */
 public final class BTreeMain implements KeyValueMainInterface {
 	private static boolean DEBUG = false; // General debug, overrides other levels
@@ -168,16 +168,16 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 */
 	@Override
 	public synchronized long count() throws IOException {
-		//System.out.println(found);
+		numKeys = 0;
 		long tim = System.currentTimeMillis();
 		KVIteratorIF iterImpl = new KVIteratorIF() {
 			@Override
 			public boolean item(Comparable key, Object value) {
 				++numKeys;
-				return true;
+				return false;
 			}
 		};
-		bTreeNavigator.list(iterImpl);
+		bTreeNavigator.retrieveEntriesInOrder((BTNode)((BTreeRootKeyPage)root).bTNode, iterImpl, 0);
 		if( DEBUG || DEBUGCOUNT )
 			System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		// deallocate outstanding blocks in all tablespaces
@@ -207,30 +207,11 @@ public final class BTreeMain implements KeyValueMainInterface {
 	@Override
 	@SuppressWarnings("rawtypes")
 	public synchronized Object seekObject(Object targetObject) throws IOException {	
-		//TreeSearchResult tsr = search(targetKey);
-		//if (tsr.atKey) {
-		//	setCurrent(tsr);
-		//	return getCurrentObject();
-		//} else {
-		//	return null;
-		//}
-		//rewind();
-		//if( currentPage != null ) {
-			//setCurrent();
-			// are we looking for first element?
-			//if(currentObject.equals(targetObject))
-				//return currentObject;
-			//while (gotoNextKey() == 0) {
-				//System.out.println(currentObject);
-				//if(currentObject.equals(targetObject))
-					//return currentObject;
-			//}
-		//}
-		bTreeNavigator.search((Comparable) targetObject);
+		Object o = bTreeNavigator.get(targetObject);
 		// deallocate outstanding blocks in all tablespaces
 		sdbio.deallocOutstanding();
 		//clearStack();
-		return null;
+		return o;
 	}
 	/**
 	* Seek the key, if we dont find it, leave the tree at it position closest greater than element.

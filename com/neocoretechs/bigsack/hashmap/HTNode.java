@@ -142,7 +142,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
     	//if(mKeys[0] == null)
     	if(numKeys == 0 || index >= numKeys)
     		return null;
-    	return mKeys[index];//mKeys[index];
+    	return mKeys[index];
     }
     
     @Override

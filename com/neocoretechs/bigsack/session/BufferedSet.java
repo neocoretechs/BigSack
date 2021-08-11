@@ -96,8 +96,6 @@ public abstract class BufferedSet implements SetInterface {
 		synchronized (session.getMutexObject()) {
 				Object kvp = session.getValue(tkey);
 				session.Commit();
-				if (kvp == null)
-					return null;
 				return kvp;
 		}
 	}

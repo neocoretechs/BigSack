@@ -44,9 +44,11 @@ public class BatteryBigSack2 {
 		BufferedTreeMap session = BigSackAdapter.getBigSackTreeMap(key.getClass());
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
-		battery1(session, argv);
+		//battery1(session, argv);
 		// get and verify min to max
 		//battery1A(session, argv);
+		 // get by value min to max
+		battery1A0(session, argv);
 		// count
 		//battery1A1(session, argv);
 		// first last
@@ -101,10 +103,27 @@ public class BatteryBigSack2 {
 			Object o = session.get(key + String.format(uniqKeyFmt, i));
 			if( !(val+String.format(uniqKeyFmt, i)).equals(o) ) {
 				 System.out.println("BATTERY1A FAIL "+o);
-				throw new Exception("B1A Fail on get with "+o);
+				throw new Exception("B1A Fail on get "+i+" with "+o);
 			}
 		}
 		 System.out.println("BATTERY1A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+	}
+	/**
+	 * Get by value
+	 * @param session
+	 * @param argv
+	 * @throws Exception
+	 */
+	public static void battery1A0(BufferedTreeMap session, String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
+		for(int i = min; i < max; i++) {
+			Object o = session.getValue(val + String.format(uniqKeyFmt, i));
+			if( !(val+String.format(uniqKeyFmt, i)).equals(o) ) {
+				 System.out.println("BATTERY1A0 FAIL "+o);
+				throw new Exception("B1A0 Fail on get "+i+" with "+o);
+			}
+		}
+		 System.out.println("BATTERY1A0 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * Does a simple count of elements, compare to max

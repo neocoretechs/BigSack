@@ -24,10 +24,10 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 public class BTreeNavigator<K extends Comparable, V> {
 	private static final boolean DEBUGINSERT = false;
 	private static final boolean DEBUGSPLIT = false;
+	private static final boolean DEBUGTREE = true;
     public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
     public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
 
-    private long  mSize = 0L;
     private BTNode<K, V> mIntermediateInternalNode = null;
     private int mNodeIdx = 0;
     private final Stack<StackInfo> mStackTracer = new Stack<StackInfo>();
@@ -48,19 +48,6 @@ public class BTreeNavigator<K extends Comparable, V> {
     	return (NodeInterface<K, V>) ((BTreeRootKeyPage)bTreeMain.getRoot()[0]).bTNode;
     }
 
-    //
-    // The total number of nodes in the tree
-    //
-    public long size() {
-        return mSize;
-    }
-
-    /**
-     * Clear all tree entries
-     */
-    public void clear() {
-        mSize = 0L;
-    }
 
     public KeyValueMainInterface getKeyValueMain() {
     	return bTreeMain;
@@ -137,7 +124,6 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException
      */
     public int insert(K key, V value) throws IOException {
-        ++mSize;
         if (getRootNode().getNumKeys() == BTNode.UPPER_BOUND_KEYNUM) {
          	if(DEBUGINSERT)
         		System.out.printf("%s.insert root is full, splitting key=%s value=%s%n", this.getClass().getName(), key, value);
@@ -185,7 +171,6 @@ public class BTreeNavigator<K extends Comparable, V> {
                     rootNode.getKeyValueArray(i).setmValue(value);
                     rootNode.getKeyValueArray(0).setValueUpdated(true);
                     rootNode.getPage().putPage();
-                    --mSize;
                     return true;
                 }
             }
@@ -236,7 +221,6 @@ public class BTreeNavigator<K extends Comparable, V> {
             currentKey.setmValue(value);
             rootNode.getKeyValueArray(i).setValueUpdated(true);
             rootNode.getPage().putPage();
-            --mSize;
             return true;
         }
 
@@ -509,7 +493,6 @@ public class BTreeNavigator<K extends Comparable, V> {
         return true;
     }
 
-
     //
     // Do the right sibling merge
     // Return true if it should continue further
@@ -571,109 +554,114 @@ public class BTreeNavigator<K extends Comparable, V> {
         return -1;
     }
 
-
-    //
-    // List all the items in the tree
-    //
-    public void list(KVIteratorIF<K, V> iterImpl) throws IOException {
-        if (mSize < 1) {
-            return;
-        }
-
-        if (iterImpl == null) {
-            return;
-        }
-
-        listEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl);
+    private BTNode<K, V> seekRightTree(BTNode<K, V> treeNode, int index) {
+    	if(treeNode.getNumKeys() == 0)
+    		return null;
+		BTNode<K, V> parentNode = treeNode;
+		do {
+    		BTNode<K, V> childNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(parentNode, index);
+    		mStackTracer.add(new StackInfo(parentNode,childNode,index));
+    		if(childNode != null)
+    			index = childNode.getNumKeys();
+    		else
+    			index = parentNode.getNumKeys();
+    		parentNode = childNode;
+    	} while(parentNode != null && !parentNode.getIsLeaf());
+    	return treeNode;
     }
-
+    
+    private BTNode<K, V> seekLeftTree(BTNode<K, V> treeNode, int index) {
+		if(DEBUGTREE)
+			System.out.printf("%s.seekLeftTree(%s, %d)%n",this.getClass().getName(), treeNode, index);
+		BTNode<K, V> parentNode = treeNode;
+		do {
+    		BTNode<K, V> childNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(parentNode, index);
+    		mStackTracer.add(new StackInfo(parentNode,childNode,index));
+    		if(DEBUGTREE)
+    			System.out.printf("%s.seekLeftTree pushed parent=%s child=%s index=%d%n",this.getClass().getName(), parentNode, childNode, index);
+    		index = 0;
+    		parentNode = childNode;
+    	} while(parentNode != null && !parentNode.getIsLeaf());
+    	return treeNode;
+    }
+    
     public KeyValue get(Object object) throws IOException {
     	KVIteratorIF iterImpl = new KVIteratorIF() {
 			@Override
 			public boolean item(Comparable key, Object value) {
+				if(DEBUGTREE)
+					System.out.printf("%s.item(%s, %s) target=%s%n",this.getClass().getName(), key, value, object);
 				if(value.equals(object))
 					return true;
 				return false;
 			}		
     	};
-    	return retrieveEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl);
+       	mStackTracer.clear();
+    	return retrieveEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl, 0);
     }
-    //
-    // Recursively loop to list out the keys and their values
-    // Return true if it should continues listing out futher
-    // Return false if it is done
-    //
-    private boolean listEntriesInOrder(BTNode<K, V> treeNode, KVIteratorIF<K, V> iterImpl) throws IOException {
-        if ((treeNode == null) ||
-            (treeNode.getNumKeys() == 0)) {
-            return false;
-        }
 
+    public KeyValue<K, V> retrieveEntriesInOrder(BTNode<K, V> treeNode, KVIteratorIF<K, V> iterImpl, int index) throws IOException {
+    	treeNode = seekLeftTree(treeNode, index);
         boolean bStatus;
-        KeyValue<K, V> keyVal;
-        int currentKeyNum = treeNode.getNumKeys();
-        for (int i = 0; i < currentKeyNum; ++i) {
-            listEntriesInOrder((BTNode<K, V>) BTNode.getLeftChildAtIndex(treeNode, i), iterImpl);
-
-            keyVal = treeNode.getKeyValueArray(i);
-            bStatus = iterImpl.item(keyVal.getmKey(), keyVal.getmValue());
-            if (!bStatus) {
-                return false;
-            }
-
-            if (i == currentKeyNum - 1) {
-                listEntriesInOrder((BTNode<K, V>) BTNode.getRightChildAtIndex(treeNode, i), iterImpl);
-            }
+        KeyValue<K, V> keyVal = null;
+        while(!mStackTracer.isEmpty()) {
+        	StackInfo stack = mStackTracer.pop();
+			if(DEBUGTREE)
+				System.out.printf("%s.retrieveEntriesInOrder(%s, %d) popped=%s%n",this.getClass().getName(), treeNode, index, stack);
+        	BTNode tNode = stack.mNode;
+        	if(tNode == null)// then parent is leaf if mNode null
+        		tNode = stack.mParent;
+        	// process this node regardless, we have taken care of subtree and then descend left on next node or right at end
+        	int numKeys = tNode.getNumKeys();
+        	for (int i = 0; i < numKeys; ++i) {
+        		keyVal = tNode.getKeyValueArray(i);
+        		bStatus = iterImpl.item(keyVal.getmKey(), keyVal.getmValue());
+        		if (bStatus) {
+        			return keyVal;
+        		}
+        		if(!tNode.getIsLeaf()) { 
+        			int newIdx = stack.mNodeIdx + 1;
+        			if(newIdx == numKeys) {
+        				if(BTNode.getRightChildAtIndex(tNode, newIdx) == null)
+        					continue;
+        				retrieveEntriesInOrder((BTNode<K, V>) BTNode.getRightChildAtIndex(tNode, newIdx), iterImpl, newIdx);
+        			} else {
+        				if(BTNode.getLeftChildAtIndex(tNode, newIdx) == null)
+        					continue;
+        				retrieveEntriesInOrder((BTNode<K, V>) BTNode.getLeftChildAtIndex(tNode, newIdx), iterImpl, newIdx);
+        			}
+        		}
+        	}
         }
-
-        return true;
+        return keyVal;
     }
 
-    private KeyValue<K, V> retrieveEntriesInOrder(BTNode<K, V> treeNode, KVIteratorIF<K, V> iterImpl) throws IOException {
-        if ((treeNode == null) ||
-            (treeNode.getNumKeys() == 0)) {
-            return null;
-        }
-        boolean bStatus;
-        KeyValue<K, V> keyVal;
-        int currentKeyNum = treeNode.getNumKeys();
-        for (int i = 0; i < currentKeyNum; ++i) {
-            retrieveEntriesInOrder((BTNode<K, V>) BTNode.getLeftChildAtIndex(treeNode, i), iterImpl);
-            keyVal = treeNode.getKeyValueArray(i);
-            bStatus = iterImpl.item(keyVal.getmKey(), keyVal.getmValue());
-            if (bStatus) {
-                return keyVal;
-            }
-
-            if (i == currentKeyNum - 1) {
-                retrieveEntriesInOrder((BTNode<K, V>) BTNode.getRightChildAtIndex(treeNode, i), iterImpl);
-            }
-        }
-
-        return null;
-    }
-
-    //
-    // Delete a key from the tree
-    // Return value if it finds the key and delete it
-    // Return null if it cannot find the key
-    //
+    /**
+     * 
+     * @param key
+     * @return The deleted value or null if not found
+     * @throws IOException
+     */
     public V delete(K key) throws IOException {
         mIntermediateInternalNode = null;
         KeyValue<K, V> keyVal = deleteKey(null, (BTNode)getRootNode(), key, 0);
         if (keyVal == null) {
             return null;
         }
-        --mSize;
         bTreeMain.delete(keyVal.getValueOptr(), keyVal.getmValue());
         bTreeMain.delete(keyVal.getKeyOptr(), key);
         return keyVal.getmValue();
     }
 
-
-    //
-    // Delete a key from a tree node
-    //
+    /**
+     * Delete the given key.
+     * @param parentNode
+     * @param btNode
+     * @param key
+     * @param nodeIdx
+     * @return The Kev/Value entry of deleted key
+     * @throws IOException
+     */
     private KeyValue<K, V> deleteKey(BTNode<K, V> parentNode, BTNode<K, V> btNode, K key, int nodeIdx) throws IOException {
         int i;
         int nIdx;
@@ -1087,11 +1075,20 @@ public class BTreeNavigator<K extends Comparable, V> {
         public BTNode<K, V> mParent = null;
         public BTNode<K, V> mNode = null;
         public int mNodeIdx = -1;
-
+        /**
+         * Construct an entry for stack trace
+         * @param parent
+         * @param node
+         * @param nodeIdx
+         */
         public StackInfo(BTNode<K, V> parent, BTNode<K, V> node, int nodeIdx) {
             mParent = parent;
             mNode = node;
             mNodeIdx = nodeIdx;
+        }
+        @Override
+        public String toString() {
+        	return String.format("StackInfo parent=%s node=%s index=%d%n", mParent, mNode, mNodeIdx);
         }
     }
 }

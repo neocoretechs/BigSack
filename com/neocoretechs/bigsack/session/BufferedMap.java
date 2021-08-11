@@ -112,8 +112,6 @@ public abstract class BufferedMap implements OrderedKVMapInterface {
 		synchronized (session.getMutexObject()) {
 				Object kvp = session.getValue(tkey);
 				session.Commit();
-				if (kvp == null)
-					return null;
 				return kvp;
 		}
 	}

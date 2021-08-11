@@ -113,7 +113,6 @@ public interface KeyPageInterface extends RootKeyPageInterface {
 	 */
 	void setNode(NodeInterface btnode);
 
-	KeyValue<Comparable, Object> readBlockAndGetKV(DataInputStream dis, NodeInterface node) throws IOException;
 	/**
 	 * Initialize the key page NON-TRANSIENT arrays, the part that actually gets written to backing store.
 	

@@ -7,13 +7,11 @@ import java.util.function.Supplier;
 import java.util.stream.Stream.Builder;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.keyvaluepages.ChildRootKeyPageInterface;
+
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -21,7 +19,6 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
-import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 
 /*
 * Copyright (c) 2003,2014,2021 NeoCoreTechs
@@ -57,7 +54,6 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 * as input and output streams connected to pages in the backing store.<p/>
 * The 'transient' keyword designations in the class fields are an artifact leftover from serialization, retained to 
 * illustrate the items that are not persisted via block streams.
-*
 *
 * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
@@ -103,27 +99,6 @@ public final class HMapKeyPage implements KeyPageInterface {
 			System.out.printf("%s ctor1 exit BlockAccessIndex:%s%n",this.getClass().getName(), lbai);
 	}
 	
-
-
-	/**
-	 * Initialize the key page NON-TRANSIENT arrays, the part that actually gets written to backing store.
-	 
-	public synchronized void setupKeyArrays() {
-		// Pre-allocate the arrays that hold persistent data
-		setKeyIdArray(new Optr[MAXKEYS]);
-		pageIdArray= new long[MAXKEYS + 1];
-		dataIdArray= new Optr[MAXKEYS];
-		for (int i = 0; i <= MAXKEYS; i++) {
-			pageIdArray[i] = -1L;
-			if( i != MAXKEYS ) {
-				getKeyIdArray()[i] = Optr.emptyPointer;
-				getKeyUpdatedArray()[i] = false;
-				dataIdArray[i] = Optr.emptyPointer;
-				dataUpdatedArray[i] = false;
-			}
-		}
-	}
-	*/
 	public synchronized long getPageId() {
 		return lbai.getBlockNum();
 	}
@@ -739,22 +714,6 @@ public final class HMapKeyPage implements KeyPageInterface {
 	}
 	
 	@Override
-	public KeyValue<Comparable, Object> readBlockAndGetKV(DataInputStream dis, NodeInterface node) throws IOException {
-		long block = dis.readLong();
-		short offset = dis.readShort();
-		Optr keyPtr = new Optr(block, offset);
-		block = dis.readLong();
-		offset = dis.readShort();
-		Optr dataPtr = new Optr(block, offset);
-		KeyValue<Comparable, Object> kv = new KeyValue<Comparable, Object>(node);
-		kv.setKeyOptr(keyPtr);
-		kv.setValueOptr(dataPtr);
-		kv.setKeyUpdated(false);
-		kv.setValueUpdated(false);
-		return kv;
-	}
-
-	@Override
 	public void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl) {
 		HMapKeyPage nPage = this;//((HMapKeyPage)nextPage);
 		while(nPage != null ) {
@@ -770,7 +729,6 @@ public final class HMapKeyPage implements KeyPageInterface {
 			nPage = (HMapKeyPage) nPage.nextPage;
 		}	
 	}
-
 
 	public int retrieveEntriesInOrder(Builder<KeyValue<Comparable, Object>> b, int count, int limit) {
 		HMapKeyPage nPage = this;//((HMapKeyPage)nextPage);
