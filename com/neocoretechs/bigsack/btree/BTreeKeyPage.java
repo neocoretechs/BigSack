@@ -728,9 +728,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 		// TODO Auto-generated method stub
 		return 0;
 	}
-	
 
-
-
+	public NodeInterface getNodeInterface() {
+		return bTNode;
+	}
 
 }

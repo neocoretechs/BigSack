@@ -36,6 +36,7 @@ public class BatteryBigSack2 {
 	* Analysis test fixture, pass supplemental method payloads on cmdl.
 	*/
 	public static void main(String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
 		if (argv.length < 1) {
 			 System.out.println("usage: java BatteryBigSack2 <database>");
 			System.exit(1);
@@ -44,11 +45,11 @@ public class BatteryBigSack2 {
 		BufferedTreeMap session = BigSackAdapter.getBigSackTreeMap(key.getClass());
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
-		//battery1(session, argv);
+		battery1(session, argv);
 		// get and verify min to max
 		//battery1A(session, argv);
 		 // get by value min to max
-		battery1A0(session, argv);
+		//battery1A0(session, argv);
 		// count
 		//battery1A1(session, argv);
 		// first last
@@ -70,7 +71,7 @@ public class BatteryBigSack2 {
 		//battery2(session, argv);
 		//battery2A(session, argv);
 		
-		 System.out.println("TEST BATTERY 2 COMPLETE.");
+		 System.out.println("TEST BATTERY COMPLETE. "+(System.currentTimeMillis()-tims)+" ms.");
 		 System.exit(0);
 		
 	}

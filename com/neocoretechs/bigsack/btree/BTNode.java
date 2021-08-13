@@ -150,17 +150,16 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		try {
 			if(mChildren[index] == null && childPages[index] != null && childPages[index] != -1L) {
 				if(DEBUGCHILD)
-					System.out.printf("%s.getChild(%d) for childPage %d%n", this.getClass().getName(), index, childPages[index]);
+					System.out.printf("%s.getChild(%d) for childPage %s%n", this.getClass().getName(), index, childPages[index] != null ? GlobalDBIO.valueOf(childPages[index]) : "null");
 				BlockAccessIndex bai = keyValueMain.getIO().findOrAddBlock(childPages[index]);
 				kpi = new BTreeKeyPage(keyValueMain, bai, true);
 				mChildren[index] = (NodeInterface<K, V>) kpi.bTNode;
-				childPages[index] = bai.getBlockNum();
 			}
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
 		if(DEBUGCHILD)
-			System.out.printf("%s.getChild(%d) for childPage %d returning %s%n", this.getClass().getName(), index, childPages[index], mChildren[index]);
+			System.out.printf("%s.getChild(%d) for childPage %s returning %s%n", this.getClass().getName(), index, childPages[index] != null ? GlobalDBIO.valueOf(childPages[index]):"null", mChildren[index]);
     	return mChildren[index];
     }
     
@@ -284,8 +283,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 			}
 		}
 		sb.append("BTree Child Page Array:\r\n");
-		String[] sout2 = new String[getNumKeys()];
-		for (int i = 0 ; i < getNumKeys() /*pageArray.length*/; i++) {
+		String[] sout2 = new String[getNumKeys()+1];
+		for (int i = 0 ; i <= getNumKeys() /*pageArray.length*/; i++) {
 				if(getChild(i) != null) {
 					sout2[i] = getChild(i).toString()+"\r\n";
 				} else {
@@ -298,7 +297,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		if(allChildrenEmpty) {
 			sb.append("ALL CHILDREN EMPTY\r\n");
 		} else {
-			for (int i = 0 ; i < getNumKeys() /*pageArray.length*/; i++) {
+			for (int i = 0 ; i <= getNumKeys() /*pageArray.length*/; i++) {
 				if(sout2[i] != null) {
 					sb.append(i+"=");
 					sb.append(sout2[i]);

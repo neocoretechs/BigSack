@@ -38,6 +38,7 @@ public class BatteryHashMap1 {
 	* Analysis test fixture
 	*/
 	public static void main(String[] argv) throws Exception {
+		long tims = System.currentTimeMillis();
 		if (argv.length < 2) {
 			 System.out.println("usage: java BatteryHashMap1 <database> payload_size");
 			System.exit(1);
@@ -55,7 +56,7 @@ public class BatteryHashMap1 {
 		//battery1E(session, argv);
 		battery3(session, argv);
 		BigSackAdapter.commitTransaction(bigtestx.class);
-		System.out.println("TEST BATTERY BATTERYHASHMAP1 COMPLETE.");
+		System.out.println("TEST BATTERY BATTERYHASHMAP1 COMPLETE. "+(System.currentTimeMillis()-tims)+" ms.");
 		System.exit(0);
 		
 	}
