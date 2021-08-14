@@ -237,9 +237,10 @@ public class BTreeNavigator<K extends Comparable, V> {
      	    		break;
      		}		
      	}
-     	// result: special case if we reached end and compare was 1, go right, otherwise always go left
+     	// result: special case if key is greater than all others, go right, otherwise always go left
+     	// this is because index represents left child and index+1 indicates right child and our node is stored in ascending order
         BTNode<K, V> btNode;
-        if(i == numberOfKeys && cmpRes == 1) {
+        if(cmpRes != -1) {
         	if(DEBUGINSERT)
         		System.out.printf("%s.insertKeyAtNode root is non-leaf, key > currentKey key getting right child, current keys=%d key=%s value=%s right child position=%d currentKey=%s%n", this.getClass().getName(), rootNode.getNumKeys(), key, value,i, currentKey);
             btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, i-1);
@@ -284,8 +285,8 @@ public class BTreeNavigator<K extends Comparable, V> {
         leftNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
         rightNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
         // Copy right half of the keys from the node to the new nodes
-      	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
+      	//if(DEBUGSPLIT)
+    	//	System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
         for (i = 0; i < BTNode.LOWER_BOUND_KEYNUM; ++i) {
         	leftNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
             parentNode.setKeyValueArray(i, null);
@@ -294,8 +295,8 @@ public class BTreeNavigator<K extends Comparable, V> {
             rightNode.setKeyValueArray(i-BTNode.MIN_DEGREE, parentNode.getKeyValueArray(i));
             parentNode.setKeyValueArray(i, null);
         }
-      	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode setup parent. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
+      	//if(DEBUGSPLIT)
+    	//	System.out.printf("%s.splitNode setup parent. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
         // The node should have 1 key at this point.
         // move its middle key to position 0 and set left and right child pointers to new node.
         parentNode.setKeyValueArray(0, parentNode.getKeyValueArray(BTNode.LOWER_BOUND_KEYNUM));
@@ -318,7 +319,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         rightNode.getPage().putPage();
         parentNode.getPage().putPage(); // parent might be flushed from buffer pool, so do a put
      	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode exit. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
+    		System.out.printf("%s.splitNode exit. parentNodeNode %s%n", this.getClass().getName(), parentNode);
     }
     
     private void mergeParent() throws IOException {
