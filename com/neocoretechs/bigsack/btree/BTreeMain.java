@@ -16,6 +16,9 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
+import com.neocoretechs.bigsack.session.BigSackAdapter;
+import com.neocoretechs.bigsack.session.BufferedTreeSet;
+
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -120,10 +123,10 @@ public final class BTreeMain implements KeyValueMainInterface {
 	@Override
 	public RootKeyPageInterface createRootNode() throws IOException {
 		this.root = sdbio.getBTreeRootPageFromPool();
-		((BTNode)((BTreeKeyPage)(this.root)).bTNode).setmIsLeaf(true);
+		if(this.root.getNumKeys() == 0)
+			((BTNode)(((BTreeKeyPage)this.root).bTNode)).setmIsLeaf(true);
 		if( DEBUG )
 			System.out.printf("%s Root KeyPageInterface: %s%n",this.getClass().getName(),root);	
-		//return (BTNode<Comparable, Object>) bTree.getRootNode();
 		return this.root;
 	}
 	
@@ -692,7 +695,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		return tse;
 	}
 
-
 	/**
 	* Seeks to rightmost key in current subtree
 	*/
@@ -787,18 +789,18 @@ public final class BTreeMain implements KeyValueMainInterface {
     synchronized void printBTree(KeyPageInterface node) throws IOException {
             if (node != null) {
                     if (((BTreeKeyPage) node).getmIsLeafNode()) {
-                    	System.out.print("Leaf node:");
+                    	System.out.print("Leaf node numkeys:"+node.getNumKeys());
                             for (int i = 0; i < node.getNumKeys(); i++) {
-                                    System.out.print("INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                                    System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
                             }
                             System.out.println("\n");
                     } else {
-                    	System.out.print("NonLeaf node:");
+                    	System.out.print("NonLeaf node:"+node.getNumKeys());
                             int i;
                             for (i = 0; i < node.getNumKeys(); i++) {
                             	KeyPageInterface btk = (KeyPageInterface) node.getPage(i);
                                 printBTree(btk);
-                                System.out.print("INDEX:"+i+" node:"+ node.getKey(i) + ", ");
+                                System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+ node.getKey(i) + ", ");
                             }
                             // get last far right node
                             printBTree((KeyPageInterface) node.getPage(i));
@@ -873,7 +875,12 @@ public final class BTreeMain implements KeyValueMainInterface {
    		return sdbio.deserializeObject(valueLoc);
    	}
    	 
-
+   	public static void main(String[] args) throws Exception {
+    	BigSackAdapter.setTableSpaceDir(args[0]);
+		BufferedTreeSet bts = BigSackAdapter.getBigSackTreeSet(Class.forName(args[1]));
+		KeyValueMainInterface bTree = bts.getKVStore();
+		((BTreeMain)bTree).printBTree((BTreeKeyPage) bTree.getRoot()[0]);
+   	}
 
 }
 

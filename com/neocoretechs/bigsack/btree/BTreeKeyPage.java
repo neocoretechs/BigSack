@@ -180,7 +180,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	@Override
 	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
 		getKeyValueArray(index).setKeyOptr(optr);
-		bTNode.getKeyValueArray(index).setKeyUpdated(update);
+		getKeyValueArray(index).keyState = KeyValue.synchStates.mustRead;
 		((BTNode)bTNode).setUpdated(update);
 	}
 	
@@ -196,7 +196,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	@Override
 	public synchronized void setDataIdArray(int index, Optr optr, boolean update) {
 		getKeyValueArray(index).setValueOptr(optr);
-		getKeyValueArray(index).setValueUpdated(update);
+		getKeyValueArray(index).valueState = KeyValue.synchStates.mustRead;
 		((BTNode)bTNode).setUpdated(update);
 	}
 	
@@ -372,11 +372,16 @@ public class BTreeKeyPage implements KeyPageInterface {
 		// Write the object serialized keys out to deep store, we want to do this out of band of writing key page
 		for(int i = 0; i < getNumKeys(); i++) {
 			if( getKeyValueArray(i) != null ) {
-				if(getKeyValueArray(i).getKeyUpdated()) {
+				if(getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace) { // if mustReplace was to match value
 					// put the key to a block via serialization and assign KeyIdArray the position of stored key
 					putKey(i, currentPayloadBlocks);
 				}
-				if(getKeyValueArray(i).getValueUpdated()) {
+				if(getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace) {
+					if(getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace) {
+						// delete old entry
+						if( bTNode.getKeyValueArray(i).getValueOptr() != null && !bTNode.getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer))
+							bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(i).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(i).getmValue()).length);
+					}
 					putData(i, currentPayloadBlocks);
 				}
 			}
@@ -389,10 +394,10 @@ public class BTreeKeyPage implements KeyPageInterface {
 		bs.writeLong(getNumKeys());
 		bs.writeByte(getmIsLeafNode() ? 1 : 0);
 		for(int i = 0; i < getNumKeys(); i++) {
-			if(getKeyValueArray(i) != null && getKeyValueArray(i).getKeyUpdated() ) { // if set, key was processed by putKey[i]
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace ) { // if set, key was processed by putKey[i]
 				bs.writeLong(getKeyValueArray(i).getKeyOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getKeyOptr().getOffset());
-				getKeyValueArray(i).setKeyUpdated(false);
+				getKeyValueArray(i).keyState = KeyValue.synchStates.upToDate;
 				if( DEBUG ) 
 					System.out.printf("%s.putPage %d Optr key:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			} else { // skip 
@@ -401,10 +406,10 @@ public class BTreeKeyPage implements KeyPageInterface {
 					System.out.printf("%s.putPage %d Optr key skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			}
 			// data array
-			if(getKeyValueArray(i) != null && getKeyValueArray(i).getValueUpdated()) {
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace) {
 				bs.writeLong(getKeyValueArray(i).getValueOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getValueOptr().getOffset());
-				getKeyValueArray(i).setValueUpdated(false);
+				getKeyValueArray(i).valueState = KeyValue.synchStates.upToDate;
 				if( DEBUG ) 
 					System.out.printf("%s.putPage %d Optr value:%s%n",this.getClass().getName(),i,getKeyValueArray(i));	
 			} else {
@@ -444,6 +449,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 			getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
 			if( DEBUGPUTDATA )
 					System.out.println("KeyPageInterface.putData ADDING NULL value for key index "+index);
+			getKeyValueArray(index).valueState = KeyValue.synchStates.upToDate;
 			return false;
 		}
 		// pack the page into this tablespace and within blocks the same tablespace as key
@@ -486,7 +492,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUG) {
 			System.out.println("KeyPageInterface.getKey Entering KeyPageInterface to retrieve target index "+index);
 		}
-		if(bTNode.getKeyValueArray(index).getmKey() == null && !bTNode.getKeyValueArray(index).getKeyOptr().isEmptyPointer() && !bTNode.getKeyValueArray(index).getKeyUpdated()) {
+		if(bTNode.getKeyValueArray(index).getmKey() == null && !bTNode.getKeyValueArray(index).getKeyOptr().isEmptyPointer() && bTNode.getKeyValueArray(index).keyState == KeyValue.synchStates.mustRead) {
 			// eligible to retrieve page
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getKey about to retrieve index:"+index+" loc:"+bTNode.getKeyValueArray(index).getKeyOptr());
@@ -496,7 +502,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 				System.out.println("KeyPageInterface.getKey retrieved index:"+index+" loc:"+bTNode.getKeyValueArray(index).getKeyOptr()+" retrieved:"+bTNode.getKeyValueArray(index).getmKey());
 				for(int i = 0; i < getNumKeys(); i++)System.out.println(i+"="+bTNode.getKeyValueArray(index).getmKey());
 			}
-			bTNode.getKeyValueArray(index).setKeyUpdated(false);
+			bTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.upToDate;
 		}
 		return bTNode.getKeyValueArray(index).getmKey();
 	}
@@ -516,7 +522,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if(DEBUG) {
 			System.out.println("KeyPageInterface.getKey Entering KeyPageInterface to retrieve target index "+index);
 		}
-		if(bTNode.getKeyValueArray(index).getmValue() == null && !bTNode.getKeyValueArray(index).getValueOptr().isEmptyPointer() && !bTNode.getKeyValueArray(index).getValueUpdated() ){
+		if(bTNode.getKeyValueArray(index).getmValue() == null && !bTNode.getKeyValueArray(index).getValueOptr().isEmptyPointer() && bTNode.getKeyValueArray(index).valueState == KeyValue.synchStates.mustRead ){
 			// eligible to retrieve page
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getData about to retrieve index:"+index+" loc:"+bTNode.getKeyValueArray(index).getValueOptr());
@@ -526,7 +532,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 				System.out.println("KeyPageInterface.getData retrieved index:"+index+" loc:"+bTNode.getKeyValueArray(index).getValueOptr()+" retrieved:"+bTNode.getKeyValueArray(index).getmValue());
 				for(int i = 0; i < getNumKeys(); i++)System.out.println(i+"="+bTNode.getKeyValueArray(index).getmValue());
 			}
-			bTNode.getKeyValueArray(index).setValueUpdated(false);
+			bTNode.getKeyValueArray(index).valueState = KeyValue.synchStates.upToDate;
 		}
 		return bTNode.getKeyValueArray(index).getmValue();
 	}

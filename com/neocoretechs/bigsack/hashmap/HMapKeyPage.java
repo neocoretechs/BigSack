@@ -166,7 +166,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
 		hTNode.initKeyValueArray(index);
 		getKeyValueArray(index).setKeyOptr(optr);
-		hTNode.getKeyValueArray(index).setKeyUpdated(update);
+		hTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.mustWrite;
 		((HTNode)hTNode).setUpdated(update);
 	}
 	
@@ -180,7 +180,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 */
 	public synchronized void setDataIdArray(int index, Optr optr, boolean update) {
 		getKeyValueArray(index).setValueOptr(optr);
-		getKeyValueArray(index).setValueUpdated(update);
+		getKeyValueArray(index).valueState = KeyValue.synchStates.mustWrite;
 		((HTNode)hTNode).setUpdated(update);
 	}
 	
@@ -333,11 +333,11 @@ public final class HMapKeyPage implements KeyPageInterface {
 		// Write the object serialized keys out to deep store, we want to do this out of band of writing key page
 		for(int i = 0; i < getNumKeys(); i++) {
 			if( getKeyValueArray(i) != null ) {
-				if(getKeyValueArray(i).getKeyUpdated()) {
+				if(getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace) {
 					// put the key to a block via serialization and assign KeyIdArray the position of stored key
 					putKey(i, currentPayloadBlocks);
 				}
-				if(getKeyValueArray(i).getValueUpdated()) {
+				if(getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite ||getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace) {
 					putData(i, currentPayloadBlocks);
 				}
 			}
@@ -349,10 +349,10 @@ public final class HMapKeyPage implements KeyPageInterface {
 		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(lbai);
 		bs.writeLong(numKeys);
 		for(int i = 0; i < numKeys; i++) {
-			if(getKeyValueArray(i) != null && getKeyValueArray(i).getKeyUpdated() ) { // if set, key was processed by putKey[i]
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace ) { // if set, key was processed by putKey[i]
 				bs.writeLong(getKeyValueArray(i).getKeyOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getKeyOptr().getOffset());
-				getKeyValueArray(i).setKeyUpdated(false);
+				getKeyValueArray(i).keyState = KeyValue.synchStates.upToDate;
 				if( DEBUG ) 
 					System.out.printf("%s.putPage %d Optr key:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			} else { // skip 
@@ -361,10 +361,10 @@ public final class HMapKeyPage implements KeyPageInterface {
 					System.out.printf("%s.putPage %d Optr key skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			}
 			// data array
-			if(getKeyValueArray(i) != null && getKeyValueArray(i).getValueUpdated()) {
+			if(getKeyValueArray(i) != null && getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite ||getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace ) {
 				bs.writeLong(getKeyValueArray(i).getValueOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getValueOptr().getOffset());
-				getKeyValueArray(i).setValueUpdated(false);
+				getKeyValueArray(i).valueState = KeyValue.synchStates.upToDate;
 				if( DEBUG ) 
 					System.out.printf("%s.putPage %d Optr value:%s%n",this.getClass().getName(),i,getKeyValueArray(i));	
 			} else {
@@ -516,12 +516,12 @@ public final class HMapKeyPage implements KeyPageInterface {
 					hTNode.getNumKeys(),
 					hTNode.getKeyValueArray(index).getmKey(),
 					hTNode.getKeyValueArray(index).getKeyOptr(),
-					hTNode.getKeyValueArray(index).getKeyUpdated());
+					hTNode.getKeyValueArray(index).keyState);
 		}
 		if(hTNode.getNumKeys() < index+1)
 			return null;
 		hTNode.initKeyValueArray(index);
-		if(hTNode.getKeyValueArray(index).getmKey() == null && !hTNode.getKeyValueArray(index).getKeyOptr().isEmptyPointer() && !hTNode.getKeyValueArray(index).getKeyUpdated()) {
+		if(hTNode.getKeyValueArray(index).getmKey() == null && !hTNode.getKeyValueArray(index).getKeyOptr().isEmptyPointer() && hTNode.getKeyValueArray(index).keyState == KeyValue.synchStates.mustRead) {
 			// eligible to retrieve page
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getKey about to retrieve index:"+index+" loc:"+hTNode.getKeyValueArray(index).getKeyOptr());
@@ -531,7 +531,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 				System.out.println("KeyPageInterface.getKey retrieved index:"+index+" loc:"+hTNode.getKeyValueArray(index).getKeyOptr()+" retrieved:"+hTNode.getKeyValueArray(index).getmKey());
 				for(int i = 0; i < getNumKeys(); i++)System.out.println(i+"="+hTNode.getKeyValueArray(index).getmKey());
 			}
-			hTNode.getKeyValueArray(index).setKeyUpdated(false);
+			hTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.upToDate;
 		}
 		return hTNode.getKeyValueArray(index).getmKey();
 	}
@@ -553,7 +553,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		if(hTNode.getNumKeys() < index+1)
 			return null;
 		hTNode.initKeyValueArray(index);
-		if(hTNode.getKeyValueArray(index).getmValue() == null && !hTNode.getKeyValueArray(index).getValueOptr().isEmptyPointer() && !hTNode.getKeyValueArray(index).getValueUpdated() ){
+		if(hTNode.getKeyValueArray(index).getmValue() == null && !hTNode.getKeyValueArray(index).getValueOptr().isEmptyPointer() && hTNode.getKeyValueArray(index).valueState == KeyValue.synchStates.mustRead ){
 			// eligible to retrieve page
 			if( DEBUG ) {
 				System.out.println("KeyPageInterface.getData about to retrieve index:"+index+" loc:"+hTNode.getKeyValueArray(index).getValueOptr());
@@ -563,7 +563,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 				System.out.println("KeyPageInterface.getData retrieved index:"+index+" loc:"+hTNode.getKeyValueArray(index).getValueOptr()+" retrieved:"+hTNode.getKeyValueArray(index).getmValue());
 				for(int i = 0; i < getNumKeys(); i++)System.out.println(i+"="+hTNode.getKeyValueArray(index).getmValue());
 			}
-			hTNode.getKeyValueArray(index).setValueUpdated(false);
+			hTNode.getKeyValueArray(index).valueState = KeyValue.synchStates.upToDate;
 		}
 		return hTNode.getKeyValueArray(index).getmValue();
 	}

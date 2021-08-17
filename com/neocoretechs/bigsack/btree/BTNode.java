@@ -37,16 +37,16 @@ public class BTNode<K extends Comparable, V> extends HTNode {
     public BTNode(BTreeNavigator<K,V> bTree, Long pageId, boolean mIsLeaf) throws IOException {
     	super(bTree.getKeyValueMain(), pageId);
     	this.bTree = bTree;
-        this.mIsLeaf = mIsLeaf;
         //mCurrentKeyNum = 0;
         setPage(new BTreeRootKeyPage(bTree.getKeyValueMain(), bTree.getKeyValueMain().getIO().findOrAddBlock(pageId), true));
+        setmIsLeaf(mIsLeaf);
     }
     
     public BTNode(BTreeNavigator<K,V> bTree, KeyPageInterface page, boolean mIsLeaf) throws IOException {
     	super(page.getKeyValueMain(), page.getPageId());
        	this.bTree = bTree;
        	this.page = page;
-        this.mIsLeaf = mIsLeaf;
+        setmIsLeaf(mIsLeaf);
     }
     
     /**
@@ -87,7 +87,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		page.setNode(this);
 		// set everything to updated, forcing a load to the page
 		for(int i = 0; i < getNumKeys(); i++) {
-			getKeyValueArray(i).setKeyUpdated(true);
+			getKeyValueArray(i).keyState = KeyValue.synchStates.mustWrite;
+			getKeyValueArray(i).valueState = KeyValue.synchStates.mustWrite;
 		}
 		((BTreeKeyPage)page).putPage();
 	}
@@ -138,8 +139,8 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		keyValueMain.createRootNode(this);
 	    setUpdated(true);
 	    for(int i = 0; i < getNumKeys(); i++) {
-	    	getKeyValueArray(i).setKeyUpdated(true);
-	    	getKeyValueArray(i).setValueUpdated(true);
+	    	getKeyValueArray(i).keyState = KeyValue.synchStates.mustWrite;
+	    	getKeyValueArray(i).valueState = KeyValue.synchStates.mustWrite;
 	    }
 	    this.page.putPage();
 	}
@@ -255,8 +256,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 			KeyValue<K,V> keyval = getKeyValueArray(i);
 			if(keyval != null) {
 				try {
-					if((keyval.getmKey() != null || keyval.getKeyUpdated() || !keyval.getKeyOptr().equals(Optr.emptyPointer)) ||
-						(keyval.getmValue() != null || keyval.getValueUpdated() || !keyval.getValueOptr().equals(Optr.emptyPointer))) {
+					if(keyval.getmKey() != null) {
 						sout[i] = getKeyValueArray(i).toString()+"\r\n";
 					} else {
 						sout[i] = null;
@@ -277,16 +277,15 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 			for (int i = 0; i < getNumKeys() /*keyArray.length*/; i++) {
 				if(sout[i] != null) {
 					sb.append(i+"=");
-					sb.append(getKeyValueArray(i));
-					sb.append("\r\n");
+					sb.append(sout[i]);
 				}
 			}
 		}
 		sb.append("BTree Child Page Array:\r\n");
 		String[] sout2 = new String[getNumKeys()+1];
 		for (int i = 0 ; i <= getNumKeys() /*pageArray.length*/; i++) {
-				if(getChild(i) != null) {
-					sout2[i] = getChild(i).toString()+"\r\n";
+				if(childPages[i] != null) {
+					sout2[i] = childPages[i] == -1L ? "Empty" : GlobalDBIO.valueOf(childPages[i])+"\r\n";
 				} else {
 					sout2[i] = null;
 				}

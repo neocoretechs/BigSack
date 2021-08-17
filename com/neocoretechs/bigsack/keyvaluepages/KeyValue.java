@@ -5,11 +5,21 @@ import java.io.IOException;
 import com.neocoretechs.bigsack.io.Optr;
 
 /**
- * Class KeyValue
+ * Class representing a key/value pair with associated state and deep store pointers.<p/>
+ * Attempt to maintain state is only used where patently obvious, in getKey and getValue, where key or value is null, pointer is not empty
+ * and state is mustRead. The default state of a new entry is mustRead, as the assumption is the deep store page will populate the pointer fields.
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class KeyValue<K extends Comparable, V> {
-	private boolean keyUpdated = false;
-	private boolean valueUpdated = false;
+	public enum synchStates {
+		mustRead,
+		mustWrite,
+		mustReplace,
+		mustDelete,
+		upToDate
+	}
+	public synchStates keyState = synchStates.mustRead;
+	public synchStates valueState = synchStates.mustRead;
 	private K mKey;
     private V mValue;
     private Optr keyOptr = Optr.emptyPointer;
@@ -30,13 +40,10 @@ public class KeyValue<K extends Comparable, V> {
         mValue = value;
     }
     
-    public void setNewNode(NodeInterface<K,V> newNode) {
-    	this.node = newNode;
-    }
-    
     public K getmKey() throws IOException {
-    	if(!keyUpdated && mKey == null && !keyOptr.equals(Optr.emptyPointer)) {
+    	if(keyState == synchStates.mustRead && mKey == null && !keyOptr.equals(Optr.emptyPointer)) {
     		mKey = (K) node.getKeyValueMain().getKey(keyOptr);
+    		keyState = synchStates.upToDate;
     	}
 		return mKey;
 	}
@@ -46,7 +53,7 @@ public class KeyValue<K extends Comparable, V> {
 	}
 
 	public V getmValue() throws IOException {
-	   	if(!valueUpdated && mValue == null && !valueOptr.equals(Optr.emptyPointer)) {
+	   	if(valueState == synchStates.mustRead && mValue == null && !valueOptr.equals(Optr.emptyPointer)) {
     		mValue = (V) node.getKeyValueMain().getValue(keyOptr);
     	}
 		return mValue;
@@ -72,22 +79,8 @@ public class KeyValue<K extends Comparable, V> {
 		this.valueOptr = valueId;
 	}
     
-    public boolean getKeyUpdated() {
-    	return keyUpdated;
-    }
-    
-    public void setKeyUpdated(boolean isUpdated) {
-    	keyUpdated = isUpdated;
-    }
-    public boolean getValueUpdated() {
-    	return valueUpdated;
-    }
-    
-    public void setValueUpdated(boolean isUpdated) {
-    	valueUpdated = isUpdated;
-    }
     @Override
     public String toString() {
-    	return String.format("Key=%s%n Value=%s%nKeyId=%s ValueId=%s keyUpdated=%b valueUpdated=%b%n", (mKey == null ? "null" : mKey), (mValue == null ? "null" : mValue), keyOptr, valueOptr, keyUpdated, valueUpdated);
+    	return String.format("Key=%s%n Value=%s%nKeyId=%s ValueId=%s keyUpdated=%s valueUpdated=%s%n", (mKey == null ? "null" : mKey), (mValue == null ? "null" : mValue), keyOptr, valueOptr, keyState, valueState);
     }
 }

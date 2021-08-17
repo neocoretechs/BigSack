@@ -83,10 +83,10 @@ public class BatteryBigSack2 {
 	 */
 	public static void battery1(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		for(int i = min; i < max; i++) {
+		for(int i = max; i > min; i--) {
 			session.put(key + String.format(uniqKeyFmt, i), val+String.format(uniqKeyFmt, i));
 			if(i%(max/100) == 0) {
-				System.out.println("Added "+i+" in "+(System.currentTimeMillis()-tims)+"ms.");
+				System.out.println("Current index "+i+" 100 added in "+(System.currentTimeMillis()-tims)+"ms.");
 				tims = System.currentTimeMillis();
 			}
 		}

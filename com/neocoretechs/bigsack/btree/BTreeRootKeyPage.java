@@ -13,11 +13,10 @@ import com.neocoretechs.bigsack.keyvaluepages.RootKeyPageInterface;
  *
  */
 public class BTreeRootKeyPage extends BTreeKeyPage implements RootKeyPageInterface {
-	
+	public static boolean DEBUG = false;
 	public BTreeRootKeyPage(KeyValueMainInterface bTree, BlockAccessIndex lbai, boolean read) throws IOException {
 		super(bTree, lbai, read);
 	}
-
 
 	/**
 	 * Calls {@link BTreeMain}.createRootNode and sets bTNode here to returned value.
@@ -28,8 +27,8 @@ public class BTreeRootKeyPage extends BTreeKeyPage implements RootKeyPageInterfa
 	public void setRootNode(BlockAccessIndex bai) throws IOException {
 		this.lbai = bai;
 		bTNode = new BTNode(((BTreeMain)bTreeMain).bTreeNavigator, 0L, true);
+		if(DEBUG)
+			System.out.printf("%s.setRootNode block=%s, node=%s%n", this.getClass().getName(),bai,bTNode);
 	}
 	
-
-
 }

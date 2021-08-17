@@ -16,8 +16,9 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
 /**
- * Class HTNode. In this context it represents the collision space of k/v pairs with the same hashkey value.
- * @author Jontahan Groff Copyright (C) NeoCoreTechs 2021
+ * Class HTNode. In this context it represents the collision space of k/v pairs with the same hashkey value.<p/>
+ * It is up to the user to determine the state of the updated flags externally, no attempt is made within to do so.
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	public static boolean DEBUG = false;
@@ -77,7 +78,8 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 		page.setNode(this);
 		// set everything to updated, forcing a load to the page
 		for(int i = 0; i < numKeys; i++) {
-			mKeys[i].setKeyUpdated(true);
+			mKeys[i].keyState = KeyValue.synchStates.mustWrite;
+			mKeys[i].valueState = KeyValue.synchStates.mustWrite;
 		}
 		((HMapKeyPage)page).putPage();
 	}
@@ -187,9 +189,12 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	public void setNumKeys(int numKeys) {
         this.numKeys = numKeys;
     } 
-	 //
-    // List all the items in the tree
-    //
+    
+	/**
+	 * Invoke the proper iterator as we go through the keys in this node
+	 * @param iterImpl
+	 * @throws IOException
+	 */
     public void list(KVIteratorIF<K, V> iterImpl) throws IOException {
         if (getmCurrentKeyNum() < 1) {
             return;
@@ -212,8 +217,8 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
     	return retrieveEntriesInOrder(this, iterImpl);
     }
     //
-    // Recursively loop to list out the keys and their values
-    // Return true if it should continues listing out futher
+    // loop to list out the keys and their values
+    // Return true if it should continue listing further
     // Return false if it is done
     //
     private boolean listEntriesInOrder(HTNode<K, V> treeNode, KVIteratorIF<K, V> iterImpl) throws IOException {
@@ -221,13 +226,11 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
             (treeNode.getmCurrentKeyNum() == 0)) {
             return false;
         }
-
         boolean bStatus;
         KeyValue<K, V> keyVal;
         int currentKeyNum = treeNode.getmCurrentKeyNum();
         for (int i = 0; i < currentKeyNum; ++i) {
             //listEntriesInOrder((HTNode<K, V>) HTNode.getChildNodeAtIndex(treeNode, i), iterImpl);
-
             keyVal = treeNode.getKeyValueArray(i);
             if(keyVal == null)
             	return false;
@@ -235,10 +238,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
             if (!bStatus) {
                 return false;
             }
-
-  
         }
-
         return true;
     }
 
@@ -260,7 +260,6 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
                 return keyVal;
             }
         }
-
         return null;
     }
  

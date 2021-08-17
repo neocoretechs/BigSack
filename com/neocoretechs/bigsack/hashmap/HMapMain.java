@@ -384,8 +384,8 @@ public final class HMapMain implements KeyValueMainInterface {
     	int insertPos = nKeys;
     	++nKeys;
     	KeyValue kv = new KeyValue(key, value, ((HMapKeyPage)sourcePage).hTNode);
-    	kv.setKeyUpdated(true);
-    	kv.setValueUpdated(true);
+    	kv.keyState = KeyValue.synchStates.mustWrite;
+    	kv.valueState = KeyValue.synchStates.mustWrite;
     	sourcePage.setNumKeys(nKeys);
     	((HMapKeyPage)sourcePage).hTNode.setKeyValueArray(insertPos, kv);
     	sourcePage.putPage();
@@ -417,7 +417,7 @@ public final class HMapMain implements KeyValueMainInterface {
     		keyValue.setValueOptr(Optr.emptyPointer);
     	}
     	((HMapKeyPage) ksr.page).putDataToArray(value,ksr.insertPoint);
-    	keyValue.setValueUpdated(true);
+    	keyValue.valueState = KeyValue.synchStates.mustWrite;
     	ksr.page.putPage();
     }
     
