@@ -33,8 +33,10 @@ public interface KeyPageInterface extends RootKeyPageInterface {
 	 * Set the key Id array, and set the keyUpdatedArray for the key and the general updated flag
 	 * @param index
 	 * @param optr
+	 * @param update status of the node to updated
+	 * @param keyState status of the key/value entry in relation to backing store
 	 */
-	void setKeyIdArray(int index, Optr optr, boolean update);
+	void setKeyIdArray(int index, Optr optr, boolean update, KeyValue.synchStates keyState);
 	/**
 	 * Get the pointer to the key/value record based on the index to the collection of record pointers housed on this page.
 	 * @param index the index to the pointer on this page
@@ -46,8 +48,10 @@ public interface KeyPageInterface extends RootKeyPageInterface {
 	 * Set the Data Id array, and set the dataUpdatedArray for the key and the general updated flag
 	 * @param index
 	 * @param optr The Vblock and offset within that block of the first data item for the key/value value associated data if any
+	 * @param update status of the node to updated
+	 * @param keyState status of the key/value entry in relation to backing store
 	 */
-	void setDataIdArray(int index, Optr optr, boolean update);
+	void setDataIdArray(int index, Optr optr, boolean update, KeyValue.synchStates valueState);
 
 	Optr getDataId(int index);
 	
@@ -112,26 +116,6 @@ public interface KeyPageInterface extends RootKeyPageInterface {
 	 * @param btnode
 	 */
 	void setNode(NodeInterface btnode);
-
-	/**
-	 * Initialize the key page NON-TRANSIENT arrays, the part that actually gets written to backing store.
-	
-	public synchronized void setupKeyArrays() {
-		// Pre-allocate the arrays that hold persistent data
-		setKeyIdArray(new Optr[MAXKEYS]);
-		pageIdArray= new long[MAXKEYS + 1];
-		dataIdArray= new Optr[MAXKEYS];
-		for (int i = 0; i <= MAXKEYS; i++) {
-			pageIdArray[i] = -1L;
-			if( i != MAXKEYS ) {
-				getKeyIdArray()[i] = Optr.emptyPointer;
-				getKeyUpdatedArray()[i] = false;
-				dataIdArray[i] = Optr.emptyPointer;
-				dataUpdatedArray[i] = false;
-			}
-		}
-	}
-	*/
 
 	void retrieveEntriesInOrder(KVIteratorIF<Comparable, Object> iterImpl);
 

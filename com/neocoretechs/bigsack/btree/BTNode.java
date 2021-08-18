@@ -246,8 +246,6 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 		sb.append(getNumKeys());
 		sb.append(" Leaf:");
 		sb.append(mIsLeaf);
-		sb.append(" Children:");
-		sb.append(mChildren.length);
 		sb.append("\r\n");
 		
 		sb.append("Key/Value Array:\r\n");

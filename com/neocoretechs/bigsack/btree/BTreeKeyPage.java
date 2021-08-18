@@ -158,6 +158,10 @@ public class BTreeKeyPage implements KeyPageInterface {
 			//	System.out.println("block of key "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of key "+i+":"+shblk);
 			//}
 			bTNode.getKeyValueArray(i).setKeyOptr(new Optr(sblk, shblk));
+			if(bTNode.getKeyValueArray(i).getKeyOptr().getBlock() == 0 || bTNode.getKeyValueArray(i).getKeyOptr().getBlock() == -1)
+				throw new IOException("Bad page read key index "+i+" page:"+this.toString());
+			// set status to mustRead to resolve pointers to data
+			bTNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustRead;
 			//
 			sblk = dis.readLong();
 			shblk = dis.readShort();
@@ -165,6 +169,10 @@ public class BTreeKeyPage implements KeyPageInterface {
 			//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
 			//}
 			bTNode.getKeyValueArray(i).setValueOptr(new Optr(sblk, shblk));
+			if(getKeyValueArray(i).getValueOptr().getBlock() == 0 || getKeyValueArray(i).getValueOptr().getBlock() == -1)
+				throw new IOException("Bad page read value index "+i+" page:"+this.toString());
+			// set status to mustRead to resolve pointers to data
+			bTNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustRead;
 			// page Id
 			((BTNode)bTNode).childPages[i] = dis.readLong();
 		}
@@ -178,9 +186,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @param optr
 	 */
 	@Override
-	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
+	public synchronized void setKeyIdArray(int index, Optr optr, boolean update, KeyValue.synchStates keyState) {
 		getKeyValueArray(index).setKeyOptr(optr);
-		getKeyValueArray(index).keyState = KeyValue.synchStates.mustRead;
+		getKeyValueArray(index).keyState = keyState;
 		((BTNode)bTNode).setUpdated(update);
 	}
 	
@@ -194,9 +202,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @param optr The Vblock and offset within that block of the first data item for the key/value value associated data if any
 	 */
 	@Override
-	public synchronized void setDataIdArray(int index, Optr optr, boolean update) {
+	public synchronized void setDataIdArray(int index, Optr optr, boolean update, KeyValue.synchStates valueState) {
 		getKeyValueArray(index).setValueOptr(optr);
-		getKeyValueArray(index).valueState = KeyValue.synchStates.mustRead;
+		getKeyValueArray(index).valueState = valueState;
 		((BTNode)bTNode).setUpdated(update);
 	}
 	
@@ -328,6 +336,30 @@ public class BTreeKeyPage implements KeyPageInterface {
 	}
 	
 	/**
+	 * This method puts the values associated with a key/value pair, if using maps vs sets.
+	 * Deletion of previous data has to occur before we get here, as we only have a payload to write, not an old one to remove.
+	 * @param index Index of KeyPageInterface key and data value array
+	 * @param values The list of unique blocks that already contain entries for more efficient clustering. We will try to place new entry in one.
+	 * @throws IOException
+	 */
+	@Override
+	public synchronized boolean putData(int index, ArrayList<Long> values) throws IOException {
+		if( getKeyValueArray(index).getmValue() == null ) {
+			if( DEBUGPUTDATA )
+					System.out.println("KeyPageInterface.putData ADDING NULL value for key index "+index);
+			return false;
+		}
+		// pack the page into this tablespace and within blocks the same tablespace as key
+		// the new insert position will attempt to find a block with space relative to established positions
+		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmValue());
+		getKeyValueArray(index).setValueOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(values, pb.length));		
+		if( DEBUGPUTDATA )
+			System.out.println("KeyPageInterface.putData ADDING NON NULL value "+getKeyValueArray(index)+" for key index "+index+" at "+
+				getKeyValueArray(index).getValueOptr());
+		lbai.getSdbio().add_object(getKeyValueArray(index).getValueOptr(), pb, pb.length);
+		return true;
+	}
+	/**
 	 * Create a unique list of blocks that have already been populated with values from this node in order to possibly
 	 * cluster new entries more efficiently.
 	 * @return The list of unique blocks containing entries for this node.
@@ -340,12 +372,16 @@ public class BTreeKeyPage implements KeyPageInterface {
 				if(getKeyValueArray(i).getKeyOptr() != null && 
 					!blocks.contains(getKeyValueArray(i).getKeyOptr().getBlock()) &&
 					!getKeyValueArray(i).getKeyOptr().equals(Optr.emptyPointer) ) {
+					if(getKeyValueArray(i).getKeyOptr().getBlock() == 0 || getKeyValueArray(i).getKeyOptr().getBlock() == -1)
+						throw new RuntimeException("Bad aggregate payload block key index "+i+" page:"+this.toString());
 						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
 				}
 				if(getKeyValueArray(i).getValueOptr() != null && 
 					!blocks.contains(getKeyValueArray(i).getValueOptr().getBlock()) &&
 					!getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer) ) {
-						blocks.add(getKeyValueArray(i).getKeyOptr().getBlock());
+					if(getKeyValueArray(i).getValueOptr().getBlock() == 0 || getKeyValueArray(i).getValueOptr().getBlock() == -1)
+						throw new RuntimeException("Bad aggregate payload block value index "+i+" page:"+this.toString());
+						blocks.add(getKeyValueArray(i).getValueOptr().getBlock());
 				}
 			}
 		}
@@ -394,7 +430,12 @@ public class BTreeKeyPage implements KeyPageInterface {
 		bs.writeLong(getNumKeys());
 		bs.writeByte(getmIsLeafNode() ? 1 : 0);
 		for(int i = 0; i < getNumKeys(); i++) {
-			if(getKeyValueArray(i) != null && getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace ) { // if set, key was processed by putKey[i]
+			if(getKeyValueArray(i) != null && 
+					getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || 
+					getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace ||
+					getKeyValueArray(i).keyState == KeyValue.synchStates.mustUpdate) { // if set, key was processed by putKey[i]
+				if(getKeyValueArray(i).getKeyOptr().getBlock() == 0 || getKeyValueArray(i).getKeyOptr().getBlock() == -1)
+					throw new IOException("Bad page write key index "+i+" page:"+this.toString());
 				bs.writeLong(getKeyValueArray(i).getKeyOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getKeyOptr().getOffset());
 				getKeyValueArray(i).keyState = KeyValue.synchStates.upToDate;
@@ -406,7 +447,12 @@ public class BTreeKeyPage implements KeyPageInterface {
 					System.out.printf("%s.putPage %d Optr key skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			}
 			// data array
-			if(getKeyValueArray(i) != null && getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace) {
+			if(getKeyValueArray(i) != null && 
+					getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite || 
+					getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace ||
+					getKeyValueArray(i).valueState == KeyValue.synchStates.mustUpdate) {
+				if(getKeyValueArray(i).getValueOptr().getBlock() == 0 || getKeyValueArray(i).getValueOptr().getBlock() == -1)
+					throw new IOException("Bad page write value index "+i+" page:"+this.toString());
 				bs.writeLong(getKeyValueArray(i).getValueOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getValueOptr().getOffset());
 				getKeyValueArray(i).valueState = KeyValue.synchStates.upToDate;
@@ -433,35 +479,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 			System.out.println("KeyPageInterface.putPage Added Keypage @"+GlobalDBIO.valueOf(getBlockAccessIndex().getBlockNum())+" block for keypage:"+this+" page:"+this);
 		}	
 	}
-	
-	/**
-	 * At KeyPageInterface putPage time, we resolve the lazy elements to actual VBlock,offset
-	 * This method puts the values associated with a key/value pair, if using maps vs sets.
-	 * Deletion of previous data has to occur before we get here, as we only have a payload to write, not an old one to remove.
-	 * @param index Index of KeyPageInterface key and data value array
-	 * @param values The list of unique blocks that already contain entries for more efficient clustering. We will try to place new entry in one.
-	 * @throws IOException
-	 */
-	@Override
-	public synchronized boolean putData(int index, ArrayList<Long> values) throws IOException {
-		if( getKeyValueArray(index).getmValue() == null ) {
-			//|| bTreeKeyPage.getKeyValueArray()[index].getValueOptr().equals(Optr.emptyPointer)) {
-			getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
-			if( DEBUGPUTDATA )
-					System.out.println("KeyPageInterface.putData ADDING NULL value for key index "+index);
-			getKeyValueArray(index).valueState = KeyValue.synchStates.upToDate;
-			return false;
-		}
-		// pack the page into this tablespace and within blocks the same tablespace as key
-		// the new insert position will attempt to find a block with space relative to established positions
-		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmValue());
-		getKeyValueArray(index).setValueOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(values, pb.length));		
-		if( DEBUGPUTDATA )
-			System.out.println("KeyPageInterface.putData ADDING NON NULL value "+getKeyValueArray(index)+" for key index "+index+" at "+
-				getKeyValueArray(index).getValueOptr());
-		lbai.getSdbio().add_object(getKeyValueArray(index).getValueOptr(), pb, pb.length);
-		return true;
-	}
+
 	/**
 	* Retrieve a page based on an index to this page containing a page.
 	* @param index The index to the page array on this page that contains the virtual record to deserialize.
@@ -548,8 +566,24 @@ public class BTreeKeyPage implements KeyPageInterface {
 		bTNode.initKeyValueArray(index);
 		bTNode.getKeyValueArray(index).setmKey(key);
 		bTNode.getKeyValueArray(index).setKeyOptr(Optr.emptyPointer);
+		bTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.mustWrite;
 		setUpdated(true);
 	}
+	
+	/**
+	 * Set the dataArray[index] to 'data'. Set the dataidArray[index] to empty pointer,
+	 * set the dataUpdatedArray[index] to true, set data updated true;
+	 * @param data
+	 * @param index
+	 */
+	synchronized void putDataToArray(Object data, int index) {
+		bTNode.initKeyValueArray(index);
+		bTNode.getKeyValueArray(index).setmValue(data);
+		bTNode.getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
+		bTNode.getKeyValueArray(index).valueState = KeyValue.synchStates.mustWrite;
+		setUpdated(true);
+	}
+	
 	/**
 	 * Copy a key from another page to a key index on this one, preserving the pointer.
 	 * Using souceKey, put this.keyArray[targetIndex] = sourceKey.keyArray[sourceIndex] and
@@ -564,6 +598,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		bTNode.initKeyValueArray(targetIndex);
 		bTNode.getKeyValueArray(targetIndex).setmKey(sourceKey.getKey(sourceIndex)); // get the key from pointer from source if not already
 		bTNode.getKeyValueArray(targetIndex).setKeyOptr(sourceKey.getKeyId(sourceIndex));
+		bTNode.getKeyValueArray(targetIndex).keyState = sourceKey.bTNode.getKeyValueArray(sourceIndex).keyState;
 		setUpdated(true);
 	}
 	
@@ -571,6 +606,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		bTNode.initKeyValueArray(targetIndex);
 		bTNode.getKeyValueArray(targetIndex).setmValue(sourceKey.getData(sourceIndex)); // get the key from pointer from source if not already
 		bTNode.getKeyValueArray(targetIndex).setValueOptr(sourceKey.getDataId(sourceIndex));
+		bTNode.getKeyValueArray(targetIndex).valueState = sourceKey.bTNode.getKeyValueArray(sourceIndex).valueState;
 		setUpdated(true);
 	}
 	
@@ -579,18 +615,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 		copyDataToArray(sourceKey, sourceIndex, targetIndex);
 	}
 
-	/**
-	 * Set the dataArray[index] to 'data'. Set the dataidArray[index] to empty pointer,
-	 * set the dataUpdatedArray[index] to true, set data updated true;
-	 * @param data
-	 * @param index
-	 */
-	synchronized void putDataToArray(Object data, int index) {
-		bTNode.initKeyValueArray(index);
-		bTNode.getKeyValueArray(index).setmValue(data);
-		bTNode.getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
-		setUpdated(true);
-	}
 	/**
 	 * Set the keyArray and dataArray to null for this index. Set the keyIdArray and dataIdArray to empty locations.
 	 * Set the updated flag for the key and data fields, then set updated for the record.

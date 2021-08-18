@@ -153,7 +153,6 @@ public class BTreeNavigator<K extends Comparable, V> {
                 rootNode.getPage().setNumKeys(rootNode.getNumKeys()); // set the page with new number of keys
                 rootNode.setUpdated(true);
                 rootNode.getPage().putPage();
-                //rootNode.setNumKeys(rootNode.getNumKeys() + 1);
                 return false;
             }
            	if(DEBUGINSERT)
@@ -165,7 +164,7 @@ public class BTreeNavigator<K extends Comparable, V> {
                 if (key.compareTo(rootNode.getKeyValueArray(i).getmKey()) == 0) {
                     // Find existing key, overwrite its value only
                     rootNode.getKeyValueArray(i).setmValue(value);
-                    rootNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustReplace;
+                    rootNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustReplace;
                     rootNode.setUpdated(true);
                     rootNode.getPage().putPage();
                     return true;
@@ -217,6 +216,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      	    	currentKey.setmValue(value);
      	    	currentKey.valueState = KeyValue.synchStates.mustReplace;
      	    	rootNode.setUpdated(true);
+     	    	rootNode.getPage().setUpdated(true);
      	    	rootNode.getPage().putPage();
      	    	return true;
      	    } else {
@@ -235,12 +235,12 @@ public class BTreeNavigator<K extends Comparable, V> {
         BTNode<K, V> btNode;
         if(foundSlot) {
          	if(DEBUGINSERT)
-            	System.out.printf("%s.insertKeyAtNode root %s is non-leaf, key > currentKey key getting left child, current keys=%d key=%s value=%s child position=%d currentKey=%s%n", this.getClass().getName(),GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value,i, currentKey);
+            	System.out.printf("%s.insertKeyAtNode root %s is non-leaf, slot found getting left child, current keys=%d key=%s value=%s child position=%d currentKey=%s%n", this.getClass().getName(),GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value,i, currentKey);
             btNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(rootNode, i);      
         } else {
           	if(DEBUGINSERT)
-        		System.out.printf("%s.insertKeyAtNode root %s is non-leaf, key > currentKey key getting right child, current keys=%d key=%s value=%s child position=%d currentKey=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value,i, currentKey);
-            btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, i);
+        		System.out.printf("%s.insertKeyAtNode root %s is non-leaf, slot not found key getting right child, current keys=%d key=%s value=%s child position=%d currentKey=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value,i, currentKey);
+            btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, numberOfKeys-1);
         }
         mStackTracer.push(new StackInfo(rootNode, btNode, i));
         if(btNode.getNumKeys() == BTNode.UPPER_BOUND_KEYNUM) {
@@ -281,10 +281,14 @@ public class BTreeNavigator<K extends Comparable, V> {
     	//	System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
         for (i = 0; i < BTNode.LOWER_BOUND_KEYNUM; ++i) {
         	leftNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
+        	leftNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate; // transfer Optr
+        	leftNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustUpdate; // transfer Optr
             parentNode.setKeyValueArray(i, null);
         }
         for(i = BTNode.MIN_DEGREE; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
             rightNode.setKeyValueArray(i-BTNode.MIN_DEGREE, parentNode.getKeyValueArray(i));
+        	rightNode.getKeyValueArray(i-BTNode.MIN_DEGREE).keyState = KeyValue.synchStates.mustUpdate; // transfer Optr
+        	rightNode.getKeyValueArray(i-BTNode.MIN_DEGREE).valueState = KeyValue.synchStates.mustUpdate; // transfer Optr
             parentNode.setKeyValueArray(i, null);
         }
       	//if(DEBUGSPLIT)
@@ -293,8 +297,8 @@ public class BTreeNavigator<K extends Comparable, V> {
         // move its middle key to position 0 and set left and right child pointers to new node.
         parentNode.setKeyValueArray(0, parentNode.getKeyValueArray(BTNode.LOWER_BOUND_KEYNUM));
         parentNode.setKeyValueArray(BTNode.LOWER_BOUND_KEYNUM, null);
-        parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustWrite;
-        parentNode.getKeyValueArray(0).valueState = KeyValue.synchStates.mustWrite;
+        parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+        parentNode.getKeyValueArray(0).valueState = KeyValue.synchStates.mustUpdate;
         parentNode.setChild(0, leftNode);
         parentNode.childPages[0] = leftNode.getPageId();
         parentNode.setChild(1, rightNode);
@@ -305,7 +309,9 @@ public class BTreeNavigator<K extends Comparable, V> {
         leftNode.setUpdated(true);
         rightNode.setUpdated(true);
         parentNode.setUpdated(true);
+        leftNode.getPage().setNumKeys(leftNode.getNumKeys());
         leftNode.getPage().putPage();
+        rightNode.getPage().setNumKeys(rightNode.getNumKeys());
         rightNode.getPage().putPage();
         parentNode.getPage().putPage(); // parent might be flushed from buffer pool, so do a put
      	if(DEBUGSPLIT)
@@ -345,12 +351,14 @@ public class BTreeNavigator<K extends Comparable, V> {
         rootNode.getKeyValueArray(newInsertPosition).keyState = KeyValue.synchStates.mustWrite;
         rootNode.getKeyValueArray(newInsertPosition).valueState = KeyValue.synchStates.mustWrite;
         rootNode.setUpdated(true);
+        rootNode.getPage().setNumKeys(rootNode.getNumKeys());
         rootNode.getPage().putPage();
       	if(DEBUGINSERT)
     		System.out.printf("%s.mergeParent merged node %s current keys=%d new insert=%d%n", this.getClass().getName(), rootNode, numberOfKeys, newInsertPosition);
         // set the old node to free, previous reference to it should be gone
         si.mNode.getPage().getBlockAccessIndex().resetBlock(true);
         si.mNode.setNumKeys(0);
+        si.mNode.getPage().setNumKeys(0);
         si.mNode.getPage().setNode(null);
         // number of keys is automatically increased by placement via setKeyValueArray
     }

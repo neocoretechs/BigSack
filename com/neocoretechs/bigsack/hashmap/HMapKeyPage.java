@@ -158,29 +158,36 @@ public final class HMapKeyPage implements KeyPageInterface {
 		}
 	}
 	
+	@Override
 	/**
 	 * Set the key Id array, and set the keyUpdatedArray for the key and the general updated flag
 	 * @param index
 	 * @param optr
+	 * @param update status of the node to updated
+	 * @param keyState status of the key/value entry in relation to backing store
 	 */
-	public synchronized void setKeyIdArray(int index, Optr optr, boolean update) {
+	public synchronized void setKeyIdArray(int index, Optr optr, boolean update, KeyValue.synchStates keyState) {
 		hTNode.initKeyValueArray(index);
 		getKeyValueArray(index).setKeyOptr(optr);
-		hTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.mustWrite;
+		hTNode.getKeyValueArray(index).keyState = keyState;
 		((HTNode)hTNode).setUpdated(update);
 	}
 	
 	public synchronized Optr getKeyId(int index) {
 		return getKeyValueArray(index).getKeyOptr();
 	}
+	
+	@Override
 	/**
 	 * Set the Data Id array, and set the dataUpdatedArray for the key and the general updated flag
 	 * @param index
 	 * @param optr The Vblock and offset within that block of the first data item for the key/value value associated data if any
+	 * @param update status of the node to updated
+	 * @param keyState status of the key/value entry in relation to backing store
 	 */
-	public synchronized void setDataIdArray(int index, Optr optr, boolean update) {
+	public synchronized void setDataIdArray(int index, Optr optr, boolean update, KeyValue.synchStates valueState) {
 		getKeyValueArray(index).setValueOptr(optr);
-		getKeyValueArray(index).valueState = KeyValue.synchStates.mustWrite;
+		getKeyValueArray(index).valueState = valueState;
 		((HTNode)hTNode).setUpdated(update);
 	}
 	

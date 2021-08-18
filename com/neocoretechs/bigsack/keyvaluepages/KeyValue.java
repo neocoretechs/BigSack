@@ -16,6 +16,7 @@ public class KeyValue<K extends Comparable, V> {
 		mustWrite,
 		mustReplace,
 		mustDelete,
+		mustUpdate,
 		upToDate
 	}
 	public synchStates keyState = synchStates.mustRead;
@@ -42,7 +43,10 @@ public class KeyValue<K extends Comparable, V> {
     
     public K getmKey() throws IOException {
     	if(keyState == synchStates.mustRead && mKey == null && !keyOptr.equals(Optr.emptyPointer)) {
-    		mKey = (K) node.getKeyValueMain().getKey(keyOptr);
+    		if(keyOptr.getBlock() == 0 || keyOptr.getBlock() == -1)
+    			mKey = (K) ("***INVALID ZERO KEY POINTER "+keyOptr.toString()+"****");
+    		else
+    			mKey = (K) node.getKeyValueMain().getKey(keyOptr);
     		keyState = synchStates.upToDate;
     	}
 		return mKey;
@@ -54,7 +58,10 @@ public class KeyValue<K extends Comparable, V> {
 
 	public V getmValue() throws IOException {
 	   	if(valueState == synchStates.mustRead && mValue == null && !valueOptr.equals(Optr.emptyPointer)) {
-    		mValue = (V) node.getKeyValueMain().getValue(keyOptr);
+	  		if(valueOptr.getBlock() == 0 || valueOptr.getBlock() == -1)
+    			mValue = (V)( "***INVALID ZERO KEY POINTER "+valueOptr.toString()+"****");
+    		else
+    			mValue = (V) node.getKeyValueMain().getValue(valueOptr);
     	}
 		return mValue;
 	}
