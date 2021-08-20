@@ -33,6 +33,7 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
 public class MappedBlockBuffer extends AbstractMap {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
+	private static final boolean DEBUGCOMMIT = false;
 	private GlobalDBIO globalIO;
 	private IoInterface ioWorker;
 	private int tablespace;
@@ -187,7 +188,7 @@ public class MappedBlockBuffer extends AbstractMap {
 			throw new RuntimeException("Key:"+key+" does not match corresponding block:"+(BlockAccessIndex)value);
 		 // Here we put the key, value pair into the HashMap using a SoftValue object.
 		 processQueue(); // throw out garbage collected values first
-		 ((BlockAccessIndex)value).startExpired();
+		 //((BlockAccessIndex)value).startExpired();
 		 return usedBlockList.put((Long) key, new SoftValue(value, key, queue));
 	}
 	/**
@@ -196,7 +197,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	public Object put(BlockAccessIndex value) {
 		Long key = new Long(value.getBlockNum());
 		processQueue(); // throw out garbage collected values first
-		value.startExpired();
+		//value.startExpired();
 		return usedBlockList.put(key, new SoftValue(value, key, queue));
 	}
 	/**
@@ -295,7 +296,7 @@ public class MappedBlockBuffer extends AbstractMap {
 			if(DEBUG)
 				System.out.printf("%s.getBlock for block %s found in used block cache%n", this.getClass().getName(),bai);
 		}
-		bai.startExpired();
+		//bai.startExpired();
 		return bai;
 	}
 	
@@ -347,18 +348,17 @@ public class MappedBlockBuffer extends AbstractMap {
 					throw new IOException("****COMMIT BUFFER access "+bai.getAccesses()+" for buffer "+bai);
 				if(bai.getBlk().isIncore() && bai.getBlk().isInlog())
 					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+bai);
-				if(DEBUG)
-					System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),bai);
-				if (bai.getAccesses() < 2) {
-					if(bai.getBlk().isIncore() && !bai.getBlk().isInlog()) {
-						// will set incore, inlog, and push to raw store via applyChange of Loggable
-						if( DEBUG )
-							System.out.printf("%s.commitBufferFlush of block:%s%n",this.getClass().getName(),bai);
-						rlm.writeLog(bai);
-					}
-					bai.decrementAccesses();
-					bai.setByteindex((short) 0);
+				//if(DEBUGCOMMIT)
+				//	System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),bai);
+				if(bai.getBlk().isIncore() && !bai.getBlk().isInlog()) {
+					// will set incore, inlog, and push to raw store via applyChange of Loggable
+					if( DEBUGCOMMIT )
+						System.out.printf("%s.commitBufferFlush of block:%s%n",this.getClass().getName(),bai);
+					rlm.writeLog(bai);
 				}
+				if( bai.getAccesses() == 1 )
+					bai.decrementAccesses();
+				bai.setByteindex((short) 0);
 		}
 	}
 	

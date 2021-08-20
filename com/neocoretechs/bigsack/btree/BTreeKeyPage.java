@@ -464,15 +464,15 @@ public class BTreeKeyPage implements KeyPageInterface {
 				if( DEBUG ) 
 					System.out.printf("%s.putPage %d value Optr skipped:%s%n",this.getClass().getName(),i,getKeyValueArray(i));
 			}
-			if(bTNode.getChild(i) == null)
+			if(((BTNode)bTNode).childPages[i] == null)
 				bs.writeLong(-1L);
 			else
-				bs.writeLong(((BTNode)(bTNode.getChild(i))).getPageId());
+				bs.writeLong(((BTNode)(bTNode)).childPages[i]);
 		}
-		if(bTNode.getChild(getNumKeys()) == null)
+		if(((BTNode)bTNode).childPages[getNumKeys()] == null)
 			bs.writeLong(-1L);
 		else
-			bs.writeLong(((BTNode)(bTNode.getChild(getNumKeys()))).getPageId());
+			bs.writeLong(((BTNode)(bTNode)).childPages[getNumKeys()]);
 		bs.flush();
 		bs.close();
 		if( DEBUG ) {
@@ -641,12 +641,12 @@ public class BTreeKeyPage implements KeyPageInterface {
 
 	@Override
 	public synchronized boolean isUpdated() {
-		return ((BTNode)bTNode).getUpdated();
+		return lbai.isUpdated();
 	}
 
 	@Override
 	public synchronized void setUpdated(boolean updated) {
-		((BTNode)bTNode).setUpdated(updated);
+		lbai.setUpdated();
 	}       
 
     /**
@@ -717,8 +717,6 @@ public class BTreeKeyPage implements KeyPageInterface {
 			System.out.printf("Setting num keys=%d MAX=%d leaf:%b page:%s%n", numKeys, MAXKEYS, ((BTNode)bTNode).getIsLeaf(), GlobalDBIO.valueOf(lbai.getBlockNum()));
 		this.numKeys = numKeys;
 		setUpdated(true);
-		//bTNode.setNumKeys(numKeys);
-		//((BTNode)bTNode).setUpdated(true);
 	}
 	
 	/**

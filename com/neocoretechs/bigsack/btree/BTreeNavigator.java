@@ -23,8 +23,8 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 public class BTreeNavigator<K extends Comparable, V> {
 	private static final boolean DEBUG = false;
 	private static final boolean DEBUGINSERT = true;
-	private static final boolean DEBUGSPLIT = false;
-	private static final boolean DEBUGMERGE = false;
+	private static final boolean DEBUGSPLIT = true;
+	private static final boolean DEBUGMERGE = true;
 	private static final boolean DEBUGTREE = true;
     public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
     public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
@@ -145,7 +145,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         if (rootNode.getIsLeaf()) {
             if (rootNode.getNumKeys() == 0) {
              	if(DEBUGINSERT)
-            		System.out.printf("%s.insertKeyAtNode root %s is leaf, current keys=0 key=%s value=%s%n", this.getClass().getName(),GlobalDBIO.valueOf(rootNode.getPageId()), key, value);
+            		System.out.printf("%s.insertKeyAtNode root %s is EMPTY leaf, current keys=0 key=%s value=%s%n", this.getClass().getName(),GlobalDBIO.valueOf(rootNode.getPageId()), key, value);
                 // Empty root
                 rootNode.setKeyValueArray(0, new KeyValue<K, V>(key, value, rootNode));
                 rootNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustWrite;
@@ -155,8 +155,6 @@ public class BTreeNavigator<K extends Comparable, V> {
                 rootNode.getPage().putPage();
                 return false;
             }
-           	if(DEBUGINSERT)
-        		System.out.printf("%s.insertKeyAtNode root %s is leaf, current keys=%d key=%s value=%s%n", this.getClass().getName(),GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value);
             // Verify if the specified key doesn't exist in the node
             for (i = 0; i < rootNode.getNumKeys(); ++i) {
               	//if(DEBUGINSERT)
@@ -167,11 +165,11 @@ public class BTreeNavigator<K extends Comparable, V> {
                     rootNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustReplace;
                     rootNode.setUpdated(true);
                     rootNode.getPage().putPage();
+                   	if(DEBUGINSERT)
+                		System.out.printf("%s.insertKeyAtNode root %s is leaf, KEY EXISTS, current keys=%d key=%s value=%s%n", this.getClass().getName(),GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value);
                     return true;
                 }
             }
-          	if(DEBUGINSERT)
-        		System.out.printf("%s.insertKeyAtNode root %s is leaf, key perhaps not present, current keys=%d key=%s value=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value);
             int numberOfKeys = rootNode.getNumKeys();
             i = numberOfKeys - 1;
             KeyValue<K, V> existingKeyVal = rootNode.getKeyValueArray(i);
@@ -191,12 +189,12 @@ public class BTreeNavigator<K extends Comparable, V> {
             rootNode.getPage().setNumKeys(rootNode.getNumKeys()); // update the page with new number of keys
             rootNode.setUpdated(true);
             rootNode.getPage().putPage();
+           	if(DEBUGINSERT)
+        		System.out.printf("%s.insertKeyAtNode root %s is leaf, key inserted at position %d, current keys=%d key=%s value=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()),i, rootNode.getNumKeys(), key, value);
             // number of keys is automatically increased by placement via setKeyValueArray
             return false;
         }
         // root is non-leaf here
-       	if(DEBUGINSERT)
-    		System.out.printf("%s.insertKeyAtNode root %s is non-leaf, key perhaps not present, current keys=%d key=%s value=%s rootNode=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value, GlobalDBIO.valueOf(rootNode.getPageId()));
         // This is an internal node (i.e: not a leaf node)
         // So let find the child node where the key is supposed to belong
         i = 0;
@@ -240,7 +238,8 @@ public class BTreeNavigator<K extends Comparable, V> {
         } else {
           	if(DEBUGINSERT)
         		System.out.printf("%s.insertKeyAtNode root %s is non-leaf, slot not found key getting right child, current keys=%d key=%s value=%s child position=%d currentKey=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), key, value,i, currentKey);
-            btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, numberOfKeys-1);
+            btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, numberOfKeys-1); // this shifts the index by 1
+            i = numberOfKeys; // from right node we are just adding the new one to the end
         }
         mStackTracer.push(new StackInfo(rootNode, btNode, i));
         if(btNode.getNumKeys() == BTNode.UPPER_BOUND_KEYNUM) {
@@ -249,8 +248,8 @@ public class BTreeNavigator<K extends Comparable, V> {
            	if(DEBUGINSERT)
         		System.out.printf("%s.insertKeyAtNode moving to split node %s of parent %s current keys=%d key=%s value=%s%n", this.getClass().getName(), GlobalDBIO.valueOf(btNode.getPageId()), GlobalDBIO.valueOf(rootNode.getPageId()), btNode.getNumKeys(), key, value);
             splitNode(btNode);
-          	if(rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM)
-          		mergeParent();
+          	//if(rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM)
+          		//mergeParent(foundSlot);
           	 return insertKeyAtNode(rootNode, key, value);
         }
         if(DEBUGINSERT)
@@ -271,7 +270,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         BTNode<K, V> rightNode = (BTNode<K, V>) createNode(parentNode.getIsLeaf());
         int i;
        	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), parentNode);
+    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
         // Since the node is full,
         // new nodes must share LOWER_BOUND_KEYNUM (aka t - 1) keys from the node
         leftNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
@@ -315,46 +314,54 @@ public class BTreeNavigator<K extends Comparable, V> {
         rightNode.getPage().putPage();
         parentNode.getPage().putPage(); // parent might be flushed from buffer pool, so do a put
      	if(DEBUGSPLIT)
-    		System.out.printf("%s.splitNode exit. parentNodeNode %s%n", this.getClass().getName(), parentNode);
+    		System.out.printf("%s.splitNode exit. parentNodeNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
     }
-    
-    private void mergeParent() throws IOException {
+    /**
+     * Merge the split node with the parent to maintain balance, if and only if parent is not full
+     * @param foundSlot If we came from left node from parent, then we have to shift nodes to insert new sibling, otherwise add to end
+     * @throws IOException
+     */
+    private void mergeParent(boolean foundSlot) throws IOException {
     	StackInfo si = mStackTracer.pop();
     	BTNode rootNode = si.mParent;
         int numberOfKeys = rootNode.getNumKeys();
         int i = numberOfKeys - 1;
         int newInsertPosition = si.mNodeIdx;
     	if(DEBUGMERGE)
-    		System.out.printf("%s.mergeParent merging node %s current keys=%d%n", this.getClass().getName(), rootNode, numberOfKeys);
-        KeyValue<K, V> existingKeyVal = rootNode.getKeyValueArray(i);
-        Long existingChildPage = rootNode.childPages[i];
-        NodeInterface existingChild = rootNode.getChild(i);
-        // set last node right to new offset
-        rootNode.childPages[numberOfKeys+1] = rootNode.childPages[numberOfKeys];
-        rootNode.setChild(numberOfKeys+1, rootNode.getChild(numberOfKeys));
-        //
-        // move the keys to the right to make room for new key at proper position
-        for(; i > newInsertPosition; i--) {
-            rootNode.setKeyValueArray(i + 1, existingKeyVal);
-            rootNode.childPages[i + 1] = existingChildPage;
-            rootNode.setChild(i + 1, existingChild);
-            existingKeyVal = rootNode.getKeyValueArray(i);
-            existingChildPage = rootNode.childPages[i];
-            existingChild = rootNode.getChild(i);
-        }
-        // now insert new node at proper position
+    		System.out.printf("%s.mergeParent merging node %s current keys=%d%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), numberOfKeys);
+    	if(foundSlot) { // we came here from left node , otherwise we skip all the right movement and place new node at end
+    		KeyValue<K, V> existingKeyVal = rootNode.getKeyValueArray(i);
+    		Long existingChildPage = rootNode.childPages[i];
+    		NodeInterface existingChild = rootNode.getChildNoread(i);
+    		// set last node right to new offset
+    		rootNode.childPages[numberOfKeys+1] = rootNode.childPages[numberOfKeys];
+    		rootNode.setChild(numberOfKeys+1, rootNode.getChildNoread(numberOfKeys));
+    		//
+    		// move the keys to the right to make room for new key at proper position
+    		for(; i > newInsertPosition; i--) {
+    			rootNode.setKeyValueArray(i + 1, existingKeyVal);
+    			rootNode.childPages[i + 1] = existingChildPage;
+    			rootNode.setChild(i + 1, existingChild);
+    			rootNode.getKeyValueArray(i + 1).keyState = KeyValue.synchStates.mustUpdate;
+    			rootNode.getKeyValueArray(i + 1).valueState = KeyValue.synchStates.mustUpdate;
+    			existingKeyVal = rootNode.getKeyValueArray(i);
+    			existingChildPage = rootNode.childPages[i];
+    			existingChild = rootNode.getChildNoread(i);
+    		}
+    	}
+    	// now insert new node at proper position, which is at new end if we came from right node, otherwise its in the new shifted sequence
         rootNode.setKeyValueArray(newInsertPosition, si.mNode.getKeyValueArray(0));
         rootNode.setChild(newInsertPosition, si.mNode.getChildNoread(0));
         rootNode.setChild(newInsertPosition+1, si.mNode.getChildNoread(1));
         rootNode.childPages[newInsertPosition] = si.mNode.childPages[0];
         rootNode.childPages[newInsertPosition+1] = si.mNode.childPages[1];
-        rootNode.getKeyValueArray(newInsertPosition).keyState = KeyValue.synchStates.mustWrite;
-        rootNode.getKeyValueArray(newInsertPosition).valueState = KeyValue.synchStates.mustWrite;
+        rootNode.getKeyValueArray(newInsertPosition).keyState = KeyValue.synchStates.mustUpdate;
+        rootNode.getKeyValueArray(newInsertPosition).valueState = KeyValue.synchStates.mustUpdate;
         rootNode.setUpdated(true);
         rootNode.getPage().setNumKeys(rootNode.getNumKeys());
         rootNode.getPage().putPage();
-      	if(DEBUGINSERT)
-    		System.out.printf("%s.mergeParent merged node %s current keys=%d new insert=%d%n", this.getClass().getName(), rootNode, numberOfKeys, newInsertPosition);
+      	if(DEBUGMERGE)
+    		System.out.printf("%s.mergeParent merged node %s current keys=%d new insert=%d%n", this.getClass().getName(), GlobalDBIO.valueOf(rootNode.getPageId()), rootNode.getNumKeys(), newInsertPosition);
         // set the old node to free, previous reference to it should be gone
         si.mNode.getPage().getBlockAccessIndex().resetBlock(true);
         si.mNode.setNumKeys(0);

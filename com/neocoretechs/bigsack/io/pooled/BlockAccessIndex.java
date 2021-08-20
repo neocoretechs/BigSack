@@ -63,8 +63,8 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	private transient int accesses = 0;
 	private long blockNum = -1L;
 	protected short byteindex = -1;
-	public static long expiryTimeDelta = 60000;
-	transient private long expiryTime; // ms cache expiration time
+	//public static long expiryTimeDelta = 60000;
+	//transient private long expiryTime; // ms cache expiration time
 	//private transient ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 	transient private GlobalDBIO sdbio;
 	/**
@@ -75,13 +75,13 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	 */
 	protected BlockAccessIndex(GlobalDBIO sdbio, boolean init) throws IOException {
 		this.setSdbio(sdbio);
-		startExpired();
+		//startExpired();
 		if(init) init();
 	}
 	/** This constructor used for setting search templates */
 	protected BlockAccessIndex(GlobalDBIO sdbio) {
 		this.setSdbio(sdbio);
-		startExpired();
+		//startExpired();
 	}
 	/**
 	 * Constructor for free block accumulation
@@ -93,7 +93,7 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		this.setSdbio(sdbio);
 		this.blockNum = blockNum;
 		this.blk = blk;
-		startExpired();
+		//startExpired();
 	}
     /**
      * Check cache expiration for SoftReference cache.<p/>
@@ -101,19 +101,21 @@ public final class BlockAccessIndex implements Comparable, Serializable {
      * If the block is in core (updated) and not in undo log, create a log entry before we expire this block.<p/>
      * If we write a log entry, inlog is set true and incore is set false.
      * @return true if expired and can be removed from cache
-     */
+     
     public boolean isExpired() {
         if(System.currentTimeMillis() > expiryTime && !blk.isIncore() && accesses == 0 && blockNum != 0L) { // dont expire tablespace 0, block 0
         	return true;
         }
         return false;
     }
+    */
     /**
      * When we move from free block list to active block list, start the timer for block flush
-     */
+     *
     public void startExpired() {
     	expiryTime = System.currentTimeMillis() + expiryTimeDelta;
     }
+    */
 	/** This method can be used for ThreadLocal post-init after using default ctor 
 	 * @throws IOException if block superceded a block under write or latched 
 	 * */
@@ -185,8 +187,8 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		if (accesses > 0 ) {
 			--accesses;
 		}
-		if( accesses == 0)
-			expiryTime = System.currentTimeMillis() + expiryTimeDelta;
+		//if( accesses == 0)
+		//	expiryTime = System.currentTimeMillis() + expiryTimeDelta;
 		//if( accesses == 0 && lock.isWriteLocked()) {
 		//	if( DEBUG )
 		//		System.out.println("BlockAccessIndex.decrementAccesses:"+lock+" "+Thread.currentThread()+" holds this lock:"+lock.isWriteLockedByCurrentThread()+" locks:"+lock.getWriteHoldCount()+" queue:"+lock.getQueueLength());
@@ -210,10 +212,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		db.append(accesses);
 		db.append(" byteindex:");
 		db.append(byteindex);
-		db.append(" Expires:");
-		db.append(new Date(expiryTime));
-		db.append(" is Expired:");
-		db.append(isExpired());
+		//db.append(" Expires:");
+		//db.append(new Date(expiryTime));
+		//db.append(" is Expired:");
+		//db.append(isExpired());
 		db.append(".");
 		return db.toString();
 	}
@@ -303,7 +305,6 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 		return byteindex;
 	}
 
-	
 	/**
 	 * Get the stream from the buffer pool for the blockNum in 'this'.
 	 * @return The DataInputStream to read from buffer pool block.
@@ -337,6 +338,5 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	public void setSdbio(GlobalDBIO sdbio) {
 		this.sdbio = sdbio;
 	}
-
 	
 }
