@@ -4,8 +4,11 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Stack;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.Optr;
+import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -35,9 +38,20 @@ public class BTreeNavigator<K extends Comparable, V> {
     private KeyValueMainInterface bTreeMain;
     // search results
     private KeySearchResult tsr;
+    // node split thread infrastructure
+	private CyclicBarrier nodeSplitSynch = new CyclicBarrier(3);
+	private LeftNodeSplitThread leftNodeSplitThread;
+	private RightNodeSplitThread rightNodeSplitThread;
 
     public BTreeNavigator(KeyValueMainInterface bMain) {
     	this.bTreeMain = bMain;
+		// Append the worker name to thread pool identifiers, if there, dont overwrite existing thread group
+		ThreadPoolManager.init(new String[]{String.format("%s%s", "LEFTNODESPLITWORKER",bMain.getIO().getDBName()),
+											String.format("%s%s", "RIGHTNODESPLITWORKER",bMain.getIO().getDBName())}, false);
+		leftNodeSplitThread = new LeftNodeSplitThread(nodeSplitSynch, this);
+		rightNodeSplitThread = new RightNodeSplitThread(nodeSplitSynch, this);
+		ThreadPoolManager.getInstance().spin(leftNodeSplitThread,String.format("%s%s", "LEFTNODESPLITWORKER",bMain.getIO().getDBName()));
+		ThreadPoolManager.getInstance().spin(rightNodeSplitThread,String.format("%s%s", "RIGHTNODESPLITWORKER",bMain.getIO().getDBName()));
     }
     /**
      * Gets the root node from KeyValueMainInterface. We have only one root for a btree.
@@ -57,7 +71,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @return
      * @throws IOException 
      */
-    private NodeInterface<K, V> createNode(boolean isLeaf) throws IOException {
+    protected NodeInterface<K, V> createNode(boolean isLeaf) throws IOException {
         KeyPageInterface kpi = ((BTreeMain)bTreeMain).sdbio.getBTreePageFromPool(-1L);
         NodeInterface ni = (NodeInterface<K, V>) ((BTreeKeyPage)kpi).bTNode;
         ((BTNode)ni).setmIsLeaf(isLeaf);
@@ -239,7 +253,8 @@ public class BTreeNavigator<K extends Comparable, V> {
         }
         mStackTracer.push(new StackInfo(rootNode, btNode, newInsertPosition));
         // see if we can merge the node we are going to descend into
-     	if(btNode.getNumKeys() == 1 && rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM) {
+        // it cant be leaf or we wind up with null child pointers
+     	if(!btNode.getIsLeaf() && btNode.getNumKeys() == 1 && rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM) {
      		mergeParent(foundSlot);
      		btNode = rootNode; // we now re-scan with newly added child node
      	}
@@ -257,13 +272,22 @@ public class BTreeNavigator<K extends Comparable, V> {
      */
     private void splitNode(BTNode parentNode) throws IOException {
         // create 2 new node with the same leaf status as the previous full node
-        BTNode<K, V> leftNode = (BTNode<K, V>) createNode(parentNode.getIsLeaf());
-        BTNode<K, V> rightNode = (BTNode<K, V>) createNode(parentNode.getIsLeaf());
-        int i;
+    	leftNodeSplitThread.startSplit(parentNode);
+    	rightNodeSplitThread.startSplit(parentNode);
+    	try {
+			nodeSplitSynch.await();
+		} catch (InterruptedException | BrokenBarrierException e) {
+			e.printStackTrace();
+			return;
+		}
+        BTNode<K, V> leftNode = leftNodeSplitThread.getResult();//(BTNode<K, V>) createNode(parentNode.getIsLeaf());
+        BTNode<K, V> rightNode = rightNodeSplitThread.getResult();//(BTNode<K, V>) createNode(parentNode.getIsLeaf());
        	if(DEBUGSPLIT)
     		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
         // Since the node is full,
         // new nodes must share LOWER_BOUND_KEYNUM (aka t - 1) keys from the node
+       	/* single thread code
+       	int i;
         leftNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
         rightNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
         // Copy right half of the keys from the node to the new nodes
@@ -271,16 +295,26 @@ public class BTreeNavigator<K extends Comparable, V> {
     	//	System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
         for (i = 0; i < BTNode.LOWER_BOUND_KEYNUM; ++i) {
         	leftNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
+        	leftNode.childPages[i] = parentNode.childPages[i];
+        	leftNode.setChild(i, parentNode.getChildNoread(i));
         	leftNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate; // transfer Optr
         	leftNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustUpdate; // transfer Optr
             parentNode.setKeyValueArray(i, null);
+            parentNode.setChild(i, null);
         }
         for(i = BTNode.MIN_DEGREE; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
             rightNode.setKeyValueArray(i-BTNode.MIN_DEGREE, parentNode.getKeyValueArray(i));
+            rightNode.childPages[i-BTNode.MIN_DEGREE] = parentNode.childPages[i];
+            rightNode.setChild(i-BTNode.MIN_DEGREE, parentNode.getChildNoread(i));
         	rightNode.getKeyValueArray(i-BTNode.MIN_DEGREE).keyState = KeyValue.synchStates.mustUpdate; // transfer Optr
         	rightNode.getKeyValueArray(i-BTNode.MIN_DEGREE).valueState = KeyValue.synchStates.mustUpdate; // transfer Optr
             parentNode.setKeyValueArray(i, null);
+            parentNode.setChild(i, null);
         }
+        rightNode.childPages[BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE] = parentNode.childPages[BTNode.UPPER_BOUND_KEYNUM];
+        rightNode.setChild(BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE, parentNode.getChildNoread(BTNode.UPPER_BOUND_KEYNUM));
+        parentNode.setChild(BTNode.UPPER_BOUND_KEYNUM, null);
+        */
       	//if(DEBUGSPLIT)
     	//	System.out.printf("%s.splitNode setup parent. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
         // The node should have 1 key at this point.

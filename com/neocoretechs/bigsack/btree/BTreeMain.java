@@ -91,22 +91,14 @@ public final class BTreeMain implements KeyValueMainInterface {
 	
 	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
 	
-	private CyclicBarrier nodeSplitSynch = new CyclicBarrier(3);
-	private NodeSplitThread leftNodeSplitThread, rightNodeSplitThread;
 	GlobalDBIO sdbio;
 	static int T = (BTreeKeyPage.MAXKEYS/2)+1;
 
 	public BTreeMain(GlobalDBIO globalDBIO) throws IOException {
+		this.sdbio = globalDBIO;
 		this.bTreeNavigator = new BTreeNavigator<Comparable, Object>(this);
 		if(DEBUG)
 			System.out.printf("%s ctor %s%n",this.getClass().getName(), this.bTreeNavigator);
-		this.sdbio = globalDBIO;
-		// Append the worker name to thread pool identifiers, if there, dont overwrite existing thread group
-		ThreadPoolManager.init(new String[]{"NODESPLITWORKER"}, false);
-		leftNodeSplitThread = new NodeSplitThread(nodeSplitSynch);
-		rightNodeSplitThread = new NodeSplitThread(nodeSplitSynch);
-		ThreadPoolManager.getInstance().spin(leftNodeSplitThread,"NODESPLITWORKER");
-		ThreadPoolManager.getInstance().spin(rightNodeSplitThread,"NODESPLITWORKER");
 		// Consistency check test, also needed to get number of keys
 		// Performs full tree/table scan, tallys record count
 		if( ALERT )
