@@ -323,7 +323,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         parentNode.setKeyValueArray(BTNode.LOWER_BOUND_KEYNUM, null);
         parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
         parentNode.getKeyValueArray(0).valueState = KeyValue.synchStates.mustUpdate;
-        parentNode.setChild(0, leftNode);
+        parentNode.setChild(0, leftNode); // make sure to set child pages after setChild
         parentNode.childPages[0] = leftNode.getPageId();
         parentNode.setChild(1, rightNode);
         parentNode.childPages[1] = rightNode.getPageId();
@@ -361,8 +361,8 @@ public class BTreeNavigator<K extends Comparable, V> {
     		rootNode.setChild(numberOfKeys + 1, rootNode.getChildNoread(numberOfKeys));
     		for(; i >= newInsertPosition; i--) {
     			rootNode.setKeyValueArray(i + 1, rootNode.getKeyValueArray(i));
-    			rootNode.childPages[i + 1] = rootNode.childPages[i];
     			rootNode.setChild(i + 1, rootNode.getChildNoread(i));
+      			rootNode.childPages[i + 1] = rootNode.childPages[i]; // make sure to setChild then set the childPages as setChild may compensate for unretrieved node
     			rootNode.getKeyValueArray(i + 1).keyState = KeyValue.synchStates.mustUpdate;
     			rootNode.getKeyValueArray(i + 1).valueState = KeyValue.synchStates.mustUpdate;
     		}
@@ -751,10 +751,12 @@ public class BTreeNavigator<K extends Comparable, V> {
                 // Remove it from the node
                 for (i = nIdx; i < btNode.getNumKeys() - 1; ++i) {
                     btNode.setKeyValueArray(i, btNode.getKeyValueArray(i + 1));
+                    btNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate;
                 }
                 btNode.setKeyValueArray(i, null);
+                btNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate;
                 btNode.setNumKeys(btNode.getNumKeys() - 1);
-
+                btNode.getPage().setUpdated(true);
                 if (btNode.getNumKeys() == 0) {
                     // btNode is actually the root node
                     btNode.setAsNewRoot();

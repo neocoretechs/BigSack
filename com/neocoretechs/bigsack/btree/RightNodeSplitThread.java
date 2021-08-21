@@ -68,15 +68,15 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 			        for(i = BTNode.MIN_DEGREE; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
 			        	int j = i-BTNode.MIN_DEGREE;
 			            rightNode.setKeyValueArray(j, parentNode.getKeyValueArray(i));
-			            rightNode.childPages[j] = parentNode.childPages[i];
 			            rightNode.setChild(j, parentNode.getChildNoread(i));
+			            rightNode.childPages[j] = parentNode.childPages[i]; // make sure to set child pages after setChild in case instance is null
 			        	rightNode.getKeyValueArray(j).keyState = KeyValue.synchStates.mustUpdate; // transfer Optr
 			        	rightNode.getKeyValueArray(j).valueState = KeyValue.synchStates.mustUpdate; // transfer Optr
 			            parentNode.setKeyValueArray(i, null);
 			            parentNode.setChild(i, null);
 			        }
-			        rightNode.childPages[BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE] = parentNode.childPages[BTNode.UPPER_BOUND_KEYNUM];
 			        rightNode.setChild(BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE, parentNode.getChildNoread(BTNode.UPPER_BOUND_KEYNUM));
+			        rightNode.childPages[BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE] = parentNode.childPages[BTNode.UPPER_BOUND_KEYNUM];
 			        parentNode.setChild(BTNode.UPPER_BOUND_KEYNUM, null);
 				synch.await();
 				trigger = new CountDownLatch(1);

@@ -800,7 +800,30 @@ public final class BTreeMain implements KeyValueMainInterface {
                     }                       
             }
     }
-       
+     
+    synchronized void printBTreeDescending(KeyPageInterface node) throws IOException {
+        if (node != null) {
+                if (((BTreeKeyPage) node).getmIsLeafNode()) {
+                	System.out.print("Leaf node numkeys:"+node.getNumKeys());
+                        for (int i = node.getNumKeys()-1; i >= 0; i--) {
+                                System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                        }
+                        System.out.println("\n");
+                } else {
+                	System.out.print("NonLeaf node:"+node.getNumKeys());
+                        int i;
+                        for (i = node.getNumKeys(); i > 0; i--) {
+                        	KeyPageInterface btk = (KeyPageInterface) node.getPage(i);
+                            printBTreeDescending(btk);
+                            System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+ node.getKey(i-1) + ", ");
+                        }
+                        // get last left node
+                        printBTreeDescending((KeyPageInterface) node.getPage(0));
+                        System.out.println("\n");
+                }                       
+        }
+    }
+    
     synchronized void validate() throws Exception {
             ArrayList<Comparable> array = getKeys(getRoot()[0]);
             for (int i = 0; i < array.size() - 1; i++) {            
@@ -871,7 +894,7 @@ public final class BTreeMain implements KeyValueMainInterface {
     	BigSackAdapter.setTableSpaceDir(args[0]);
 		BufferedTreeSet bts = BigSackAdapter.getBigSackTreeSet(Class.forName(args[1]));
 		KeyValueMainInterface bTree = bts.getKVStore();
-		((BTreeMain)bTree).printBTree((BTreeKeyPage) bTree.getRoot()[0]);
+		((BTreeMain)bTree).printBTreeDescending((BTreeKeyPage) bTree.getRoot()[0]);
    	}
 
 }

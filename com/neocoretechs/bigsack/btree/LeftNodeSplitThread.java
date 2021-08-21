@@ -67,8 +67,8 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 			    	//	System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
 			        for (i = 0; i < BTNode.LOWER_BOUND_KEYNUM; ++i) {
 			        	leftNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
-			        	leftNode.childPages[i] = parentNode.childPages[i];
 			        	leftNode.setChild(i, parentNode.getChildNoread(i));
+			        	leftNode.childPages[i] = parentNode.childPages[i]; // make sure to set childPages after setChild in case child is null
 			        	leftNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate; // transfer Optr
 			        	leftNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustUpdate; // transfer Optr
 			            parentNode.setKeyValueArray(i, null);
