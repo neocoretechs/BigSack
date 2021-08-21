@@ -254,7 +254,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         mStackTracer.push(new StackInfo(rootNode, btNode, newInsertPosition));
         // see if we can merge the node we are going to descend into
         // it cant be leaf or we wind up with null child pointers
-     	if(!btNode.getIsLeaf() && btNode.getNumKeys() == 1 && rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM) {
+     	if(!btNode.getIsLeaf() && btNode.getNumKeys() == 1 && rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM-1) {
      		mergeParent(foundSlot);
      		btNode = rootNode; // we now re-scan with newly added child node
      	}

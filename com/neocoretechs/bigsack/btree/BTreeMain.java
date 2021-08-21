@@ -2,10 +2,8 @@ package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Stack;
-import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.io.Optr;
-import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
@@ -514,14 +512,10 @@ public final class BTreeMain implements KeyValueMainInterface {
 	@Override
 	public synchronized KeyValue toEnd() throws IOException {
 		rewind();
-		TraversalStackElement tse = seekRightTree(root, root.getNumKeys());
-		KeyValue next = null;
-		while (true) {
-			TraversalStackElement tsex = gotoNextKey(tse);
-			if(tsex == null)
-				break;
-			tse = tsex;
-		}
+		TraversalStackElement tse = new TraversalStackElement(root, root.getNumKeys(), 0);
+		tse = seekRightTree(tse);
+		if(tse == null)
+			return null;
 		return ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
 	}
 	/**
@@ -592,7 +586,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* We are finished when we are at the root and can no longer traverse right. this is because we popped all the way up,
 	* and there are no more subtrees to traverse.
 	* Note that we dont deal with keys at all here, just child pointers.
-	* @return 0 if ok, != 0 if error
+	* @return Element from stack previously pushed with seek
 	* @exception IOException If read fails
 	*/
 	@Override
@@ -602,40 +596,63 @@ public final class BTreeMain implements KeyValueMainInterface {
 		}
 		int currentIndex = tse.index+1;
 		// If we are at a key, then advance the index
-		if (currentIndex < tse.keyPage.getNumKeys()) {
+		if(((BTNode)((BTreeKeyPage)tse.keyPage).bTNode).getIsLeaf() ) {
+			if( currentIndex < tse.keyPage.getNumKeys()) {
+				tse.index = currentIndex; // use advanced index
+				tse.child = currentIndex; // left
+				return tse;
+			}
+			if(stack.isEmpty())
+				return null; // root was leaf, and we are done
+			return pop(); // go to zero of parent
+		}
+		// not leaf, and we got element 0 of leaf with above pop, work the leaf until end then go right, left
+		if(currentIndex < tse.keyPage.getNumKeys()) { // increment, go left or right at end
 			tse.index = currentIndex; // use advanced index
 			tse.child = currentIndex; // left
-			return tse;
-		} else {
-			// get index to right and seek the left subtree of that
-			return seekLeftTree(new TraversalStackElement(tse.keyPage, currentIndex, currentIndex));
+			return seekLeftTree(tse);
 		}
+		TraversalStackElement tsex = null;
+		// if its root increment and go left
+		if(stack.isEmpty()) {
+			if(tse.index == tse.keyPage.getNumKeys())
+				return null; // done at far right of root
+		}
+		KeyPageInterface kpi = (KeyPageInterface) tse.keyPage.getPage(currentIndex); // get last right
+		tsex = new TraversalStackElement(kpi, currentIndex, 0); // make a root last right stack element
+		push(tsex);
+		return seekLeftTree(tsex); // then seek left of root last right
+		// at this point we are either at the node above the last one retrieved or all the way left
 	}
 
 	/**
 	* Go to location of previous key in tree
-	* @return 0 if ok, <>0 if error
+	* @return 
 	* @exception IOException If read fails
 	*/
 	@Override
 	public synchronized TraversalStackElement gotoPrevKey(TraversalStackElement tse) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
-			System.out.println("BTreeMain.gotoNextKey "/*page:"+currentPage+*/+" index "+tse);
+			System.out.println("BTreeMain.gotoPrevKey "/*page:"+currentPage+*/+" index "+tse);
 		}
-		// If we are at a key, then reduce the index
-	
-		
-		return popUntilValid(false);
+		int currentIndex = tse.index-1;
+		// If we are at a key, then advance the index
+		if (currentIndex > 0) {
+			tse.index = currentIndex; // use advanced index
+			tse.child = currentIndex; // left
+			return tse;
+		}
+		return pop();
 	}
 	/**
 	 * Pop the stack until we reach a valid spot in traversal.
-	 * The currentPage, currentChild are used, setCurrent() is called on exit;
 	 * @param next Pop 'previous', or 'next' key. true for 'next'
 	 * @return EOF If we reach root and cannot traverse right
 	 * @throws IOException
 	 */
 	private synchronized TraversalStackElement popUntilValid(boolean next) throws IOException {
-		while( pop() != null ) {
+		TraversalStackElement tse = null;
+		while( (tse = pop()) != null ) {
 			if(DEBUG || DEBUGSEARCH) {
 				System.out.println("BTreeMain.popUntilValid POP index:");
 			}
@@ -643,13 +660,9 @@ public final class BTreeMain implements KeyValueMainInterface {
 			// If we pop, and we are at the end of key range, and our key is not valid, pop
 
 		}
-		// should be at position where we return key from which we previously descended
-		// pop sets current indexes
-		//setCurrent();
-		//return 0;
 		//
 		// popped to the top and have to stop
-		return null;
+		return tse;
 	}
 
 	/**
@@ -673,34 +686,52 @@ public final class BTreeMain implements KeyValueMainInterface {
 	/**
 	* Seeks to leftmost key in current subtree. Takes the currentChild and currentIndex from currentPage and uses the
 	* child at currentChild to descend the subtree and gravitate left.
+	* @return bottom leaf node, not pushed to stack
 	*/
 	private synchronized TraversalStackElement seekLeftTree(TraversalStackElement tse) throws IOException {
-		KeyPageInterface tPage = (KeyPageInterface) tse.keyPage.getPage(tse.index);
-		TraversalStackElement tsex = null;
-		while (tPage != null) {
-			tse = new TraversalStackElement(tPage, 0, 0);
-			push(tse);
-			if( DEBUG || DEBUGSEARCH)
-				System.out.println("BTreeMain.seekLeftTree PUSH using "+tse);
-			tPage = (KeyPageInterface) tPage.getPage(0);
-		}
-		return tse;
+		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
+        if (((BTreeKeyPage) node).getmIsLeafNode()) {
+        	if(DEBUG)
+            	System.out.printf("%s Leaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+                    //for (int i = 0; i < node.getNumKeys(); i++) {
+                    //        System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                    //}
+                    //System.out.println("\n");
+            tse.index = 0;
+        } else {
+            if(DEBUG)
+            	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+            KeyPageInterface btk = (KeyPageInterface) node.getPage(0);
+            TraversalStackElement tsex = new TraversalStackElement(node, 0, 0);
+            push(tsex);
+            seekLeftTree(new TraversalStackElement(btk, 0, 0));
+        }                       
+        return tse;
 	}
 
 	/**
 	* Seeks to rightmost key in current subtree
+	* @return the bottom leaf node, not pushed to stack
 	*/
-	private synchronized TraversalStackElement seekRightTree(RootKeyPageInterface currentPage, int currentChild) throws IOException {
-		KeyPageInterface tPage = (KeyPageInterface) currentPage.getPage(currentChild);
-		TraversalStackElement tse = null;
-		while (tPage != null) {
-			tse = new TraversalStackElement(currentPage, currentPage.getNumKeys()-1, currentPage.getNumKeys());
-			push(tse);
-			if( DEBUG || DEBUGSEARCH)
-				System.out.println("BTreeMain.seekRightTree PUSH using "+tse);
-			tPage = (KeyPageInterface) currentPage.getPage(currentPage.getNumKeys());
-		}
-		return tse;
+	private synchronized TraversalStackElement seekRightTree(TraversalStackElement tse) throws IOException {
+		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
+        if (((BTreeKeyPage) node).getmIsLeafNode()) {
+        	if(DEBUG)
+            	System.out.printf("%s Leaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+                    //for (int i = 0; i < node.getNumKeys(); i++) {
+                    //        System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                    //}
+                    //System.out.println("\n");
+            tse.index = node.getNumKeys()-1;
+        } else {
+            if(DEBUG)
+            	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+            KeyPageInterface btk = (KeyPageInterface) node.getPage(node.getNumKeys());
+            TraversalStackElement tsex = new TraversalStackElement(node, node.getNumKeys(), node.getNumKeys());
+            push(tsex);
+            seekRightTree(new TraversalStackElement(btk, node.getNumKeys(), node.getNumKeys()));
+        }                       
+        return tse;
 	}
 
 	/** 
