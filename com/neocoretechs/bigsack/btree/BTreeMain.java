@@ -90,7 +90,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
 	
 	GlobalDBIO sdbio;
-	static int T = (BTreeKeyPage.MAXKEYS/2)+1;
 
 	public BTreeMain(GlobalDBIO globalDBIO) throws IOException {
 		this.sdbio = globalDBIO;
@@ -122,7 +121,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	
 	public void test() throws IOException {
 		if( TEST ) {
-			System.out.printf("MAXKEYS=%d T=%d%n", BTreeKeyPage.MAXKEYS,T);
+			System.out.printf("MAXKEYS=%d%n", BTreeKeyPage.MAXKEYS);
 			// Attempt to retrieve last good key count
 			long numKeys = 0;
 			long tim = System.currentTimeMillis();
@@ -264,72 +263,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		return result;
 	}
 
-	
-	/**
-	 * Traverse the tree and insert object for key if we find the key.
-	 * At each page descent, check the index and compare, if equal put data to array at the spot
-	 * and return true. If we are a leaf node and find no match return false;
-	 * If we are not leaf node and find no match, get child at key less than this. Find to where the
-	 * KEY is LESS THAN the contents of the key array.
-	 * @param key The key to search for
-	 * @param object the object data to update, if null, ignore data put and return true. If OVERWRITE flag false, also ignore
-	 * @return The index of the insertion point if < 0 else if >= 0 the found index point
-	 * @throws IOException
-	 */
-    private synchronized KeySearchResult update(KeyPageInterface sourcePage, Comparable key, Object object) throws IOException {
-    	int i = 0;
-        while (sourcePage != null) {
-                i = 0;
-                while (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) > 0) {
-                        i++;
-                }
-                if (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) == 0) {
-                	// If its a set instead of map the the value data comes back null, else we
-                	// deserialize, check to make sure we dont needlessly delete a value to replace it with its equal.
-                	Object keyValue = sourcePage.getData(i);
-                	if( keyValue != null ) {
-                		if(object != null ) {
-                			if( !object.equals(keyValue) ) {	
-                				// dataArray at index not null and dataIdArray Optr at index not empty for delete to fire.
-                				// So if you are using Sets vs Maps it should not happen.
-                				if( OVERWRITE ) {
-                     				if( DEBUG || DEBUGOVERWRITE )
-                     					System.out.println("Preparing to OVERWRITE value "+object+" for key "+key+" index["+i+"]");
-                    				((BTreeNavigator) sourcePage).delete(i);
-                					((BTreeKeyPage) sourcePage).putDataToArray(object,i);
-                					if( DEBUG || DEBUGOVERWRITE )
-                     					System.out.println("OVERWRITE value "+object+" for key "+key+" index["+i+"] page:"+sourcePage);
-                				} else {
-                					if(ALERT)
-                						System.out.println("OVERWRITE flag set to false, so attempt to update existing value is ignored for key "+key);
-                				}
-                			}
-                			// wont put the data if here, object = keyValue, both not null
-                		} else {
-                			((BTreeKeyPage) sourcePage).putDataToArray(object,i);
-                		}
-                		// If we had a value already, and it wasnt null and not equal to previous we put the new data
-                		// If it was null or the value equal to previous we bypassed and are here
-                	} else {
-                		((BTreeKeyPage) sourcePage).putDataToArray(object,i);
-                	}
-                	return new KeySearchResult(sourcePage, i, true);
-                }
-                if (((BTreeKeyPage) sourcePage).getmIsLeafNode()) {
-                	if( DEBUG )
-                		System.out.println("BTreeMain.update set to return index :"+i+" for "+sourcePage);
-                        return new KeySearchResult((KeyPageInterface) sourcePage, i, false);
-                } else {
-                	KeyPageInterface targetPage  = (KeyPageInterface) sourcePage.getPage(i);// get the page at the index of the given page
-                	if( targetPage == null )
-                		break;
-                	sourcePage = targetPage;
-                }
-        }
-     	if( DEBUG )
-    		System.out.println("BTreeMain.update set to return index :"+i+" on fallthrough for "+sourcePage);
-        return new KeySearchResult((KeyPageInterface) sourcePage, i, false);
-    }
     
     /**
      * Sets up the return KeyPageInterface similar to 'reposition' but this public method initializes root node etc.
@@ -344,50 +277,8 @@ public final class BTreeMain implements KeyValueMainInterface {
      */
     @Override
 	public synchronized KeySearchResult locate(Comparable key) throws IOException {
-        KeyPageInterface rootNode = getRoot()[0];
-        return reposition(rootNode, key);
-    }
-
-	/**
-	 * Same as update without the actual updating.
-	 * Traverse the tree for the given key.
-	 * At each page descent, check the index and compare, if equal put data to array at the spot
-	 * and return true. If we are a leaf node and find no match return false;
-	 * If we are not leaf node and find no match, get child at key less than this. Find to where the
-	 * KEY is LESS THAN the contents of the key array.
-	 * @param key The key to search for
-	 * @param object the object data to update, if null, ignore data put and return true. If OVERWRITE flag false, also ignore
-	 * @return The index of the insertion point if < 0 else if >= 0 the found index point
-	 * @throws IOException
-	 */
-    synchronized KeySearchResult reposition(KeyPageInterface node, Comparable key) throws IOException {
-    	int i = 0;
-    	KeyPageInterface sourcePage = node;
-        while (sourcePage != null) {
-                i = 0;
-                while (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) > 0) {
-                        i++;
-                }
-                if (i < sourcePage.getNumKeys() && key.compareTo(sourcePage.getKey(i)) == 0) {
-                 	if( DEBUG )
-                		System.out.println("BTreeMain.reposition set to return index :"+i+" after locating key for "+sourcePage);
-                	return new KeySearchResult((KeyPageInterface) sourcePage, i, true);
-                }
-                // Its a leaf node and we fell through, return the index but not 'atKey'
-                if (((BTreeKeyPage) sourcePage).getmIsLeafNode()) {
-                	if( DEBUG )
-                		System.out.println("BTreeMain.reposition set to return index :"+i+" for leaf "+sourcePage);
-                	return new KeySearchResult((KeyPageInterface) sourcePage, i, false);
-                } else {
-                	KeyPageInterface targetPage  = (KeyPageInterface) sourcePage.getPage(i);// get the page at the index of the given page
-                	if( targetPage == null )
-                		break;
-                	sourcePage = targetPage;
-                }
-        }
-      	if( DEBUG )
-    		System.out.println("BTreeMain.reposition set to return index :"+i+" for fallthrough "+sourcePage);
-        return new KeySearchResult((KeyPageInterface) sourcePage, i, false);
+        bTreeNavigator.search(key, true);
+        return bTreeNavigator.getTreeSearchResult();
     }
 
     /**
@@ -486,7 +377,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		return 0;
 	}
 
-
 	/**
 	 * Rewind current position to beginning of tree. Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations.
@@ -518,63 +408,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 			return null;
 		return ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
 	}
-	/**
-	 * Same as reposition but we populate the stack 
-	 * Traverse the tree for the given key.
-	 * At each page descent, check the index and compare, if equal put data to array at the spot
-	 * and return true. If we are a leaf node and find no match return false;
-	 * If we are not leaf node and find no match, get child at key less than this. Find to where the
-	 * KEY is LESS THAN the contents of the key array.
-	 * @param key The key to search for
-	 * @param object the object data to update, if null, ignore data put and return true. If OVERWRITE flag false, also ignore
-	 * @return The index of the insertion point if < 0 else if >= 0 the found index point
-	 * @throws IOException
-	 */
-    private synchronized KeySearchResult repositionStack(KeyPageInterface node, Comparable key) throws IOException {
-    	int i = 0;
-    	KeyPageInterface sourcePage = node;
-    	if( DEBUG || DEBUGSEARCH) {
-    		System.out.println("BTreeMain.repositionStack key:"+key+" node:"+node);
-    	}
-        while (sourcePage != null) {
-                i = 0;
-                while (i < sourcePage.getNumKeys() && sourcePage.getKey(i).compareTo(key) < 0) {
-                        i++;
-                }
-                if (i < sourcePage.getNumKeys() && sourcePage.getKey(i).compareTo(key) == 0) {	
-                 	if( DEBUG || DEBUGSEARCH )
-                		System.out.println("BTreeMain.repositionStack set to return index :"+i+" after locating key for "+sourcePage);
-                	return new KeySearchResult((KeyPageInterface) sourcePage, i, true);
-                }
-                if (((BTreeKeyPage) sourcePage).getmIsLeafNode()) {
-                	// we are at leaf, we pop or return having not found
-                	if( DEBUG || DEBUGSEARCH)
-                		System.out.println("BTreeMain.repositionStack set to return index :"+i+" for leaf "+sourcePage);
-                	// If our key has run off the end of page or will do so, pop to subtree right in parent, we are at leaf still
-                	if( i >= sourcePage.getNumKeys() || sourcePage.getKey(i).compareTo(key) < 0 ) {
-                		TraversalStackElement tse = popUntilValid(true);
-                		return new KeySearchResult((KeyPageInterface) tse.keyPage, tse.index, (tse.child == 0));
-                	}
-                	// didnt run off end or key on page all > key and we are at leaf, key must not exist
-                	//return new TreeSearchResult(sourcePage, i, true);
-             		return new KeySearchResult((KeyPageInterface) sourcePage, i, false);
-                } else {
-                	// non leaf
-                	KeyPageInterface targetPage  = (KeyPageInterface) sourcePage.getPage(i);// get the page at the index of the given page
-                	if( DEBUG || DEBUGSEARCH) {
-                		System.out.println("BTreeMain.repositionStack traverse next page for key:"+key+" page:"+targetPage);
-                	}
-                	if( targetPage == null )
-                		break;
-                	TraversalStackElement tse = new TraversalStackElement((BTreeKeyPage) sourcePage, i, i);
-                	stack.push(tse);
-                	sourcePage = targetPage;
-                }
-        }
-      	if( DEBUG || DEBUGSEARCH)
-    		System.out.println("BTreeMain.repositionStack set to return index :"+i+" for fallthrough "+sourcePage);
-        return new KeySearchResult((KeyPageInterface) sourcePage, i, false);
-    }
+
 	/**
 	* Seek to location of next key in tree. Set current key and current object.
 	* Attempt to advance the child index at the current node. If it advances beyond numKeys, a pop
@@ -644,26 +478,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		}
 		return pop();
 	}
-	/**
-	 * Pop the stack until we reach a valid spot in traversal.
-	 * @param next Pop 'previous', or 'next' key. true for 'next'
-	 * @return EOF If we reach root and cannot traverse right
-	 * @throws IOException
-	 */
-	private synchronized TraversalStackElement popUntilValid(boolean next) throws IOException {
-		TraversalStackElement tse = null;
-		while( (tse = pop()) != null ) {
-			if(DEBUG || DEBUGSEARCH) {
-				System.out.println("BTreeMain.popUntilValid POP index:");
-			}
-			// we know its not a leaf, we popped to it
-			// If we pop, and we are at the end of key range, and our key is not valid, pop
-
-		}
-		//
-		// popped to the top and have to stop
-		return tse;
-	}
 
 	/**
 	 * Utilize reposition to locate key. Set currentPage, currentIndex, currentKey, and currentChild.
@@ -675,8 +489,8 @@ public final class BTreeMain implements KeyValueMainInterface {
 	@Override
 	public synchronized KeySearchResult search(Comparable targetKey) throws IOException {
 		KeySearchResult tsr = null;
-		clearStack();
-        tsr = repositionStack(null, targetKey);        
+		bTreeNavigator.search(targetKey, false);
+        tsr = bTreeNavigator.getTreeSearchResult();       
     	if( DEBUG || DEBUGSEARCH) {
     		System.out.println("BTreeMain.search returning with currentPage:");
     	}

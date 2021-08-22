@@ -1,16 +1,11 @@
 package com.neocoretechs.bigsack.btree;
 
-import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Stack;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 
-import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
-import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
@@ -25,16 +20,16 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
  */
 public class BTreeNavigator<K extends Comparable, V> {
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGINSERT = true;
-	private static final boolean DEBUGSPLIT = true;
-	private static final boolean DEBUGMERGE = true;
-	private static final boolean DEBUGTREE = true;
+	private static final boolean DEBUGINSERT = false;
+	private static final boolean DEBUGSPLIT = false;
+	private static final boolean DEBUGMERGE = false;
+	private static final boolean DEBUGTREE = false;
     public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
     public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
 
     private BTNode<K, V> mIntermediateInternalNode = null;
     private int mNodeIdx = 0;
-    private final Stack<StackInfo> mStackTracer = new Stack<StackInfo>();
+    private final Stack<StackInfo> mStack = new Stack<StackInfo>();
     private KeyValueMainInterface bTreeMain;
     // search results
     private KeySearchResult tsr;
@@ -65,6 +60,10 @@ public class BTreeNavigator<K extends Comparable, V> {
     	return bTreeMain;
     }
 
+    public Stack<StackInfo> getStack() {
+    	return mStack;
+    }
+    
     /**
      * private method to create node. We communicate back to our KeyPageInterface, which talks to 
      * our BlockAccessIndex, and eventually to deep store. Does not preclude creating a new root at some point.
@@ -82,15 +81,21 @@ public class BTreeNavigator<K extends Comparable, V> {
     	return tsr;
     }
     
-    //
-    // Search value for a specified key of the tree
-    //
-    @SuppressWarnings("unchecked")
-	public V search(K key) throws IOException {
+    /**
+     * Search for the given key in the BTree
+     * @param key
+     * @param stack true to populate stack
+     * @return
+     * @throws IOException
+     */
+	public V search(K key, boolean stack) throws IOException {
         BTNode<K, V> currentNode = (BTNode<K, V>) getRootNode();
+        BTNode<K, V> parentNode = null;
         KeyValue<K, V> currentKey;
         int i=0, numberOfKeys;
-
+        if(stack)
+        	mStack.clear();
+        
         while (currentNode != null) {
             numberOfKeys = currentNode.getNumKeys();
             i = 0;
@@ -110,19 +115,17 @@ public class BTreeNavigator<K extends Comparable, V> {
             	tsr = new KeySearchResult(currentNode.getPageId(), i, true);
                 return currentKey.getmValue();
             }
-
-            // We don't need it
-            /*
-            if (currentNode.mIsLeaf) {
-                return null;
-            }
-            */
-
+            if(stack)
+            	parentNode = currentNode;
+            
             if (key.compareTo(currentKey.getmKey()) > 0) {
                 currentNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(currentNode, i);
             } else {
                 currentNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(currentNode, i);
             }
+            
+            if(stack)
+            	mStack.add(new StackInfo(parentNode, currentNode, i));
         }
        	tsr = new KeySearchResult(-1L, i, false);
         return null;
@@ -142,7 +145,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             // The root is full, split it
             splitNode((BTNode) getRootNode());     
         }
-        mStackTracer.clear();
+        mStack.clear();
         return insertKeyAtNode((BTNode) getRootNode(), key, value) ? 1 : 0;
     }
 
@@ -251,7 +254,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             btNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, numberOfKeys-1); // this shifts the index by 1
             newInsertPosition = numberOfKeys; // from right node we are just adding the new one to the end
         }
-        mStackTracer.push(new StackInfo(rootNode, btNode, newInsertPosition));
+        mStack.push(new StackInfo(rootNode, btNode, newInsertPosition));
         // see if we can merge the node we are going to descend into
         // it cant be leaf or we wind up with null child pointers
      	if(!btNode.getIsLeaf() && btNode.getNumKeys() == 1 && rootNode.getNumKeys() < BTNode.UPPER_BOUND_KEYNUM-1) {
@@ -259,7 +262,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      		btNode = rootNode; // we now re-scan with newly added child node
      	}
         if(DEBUGINSERT)
-    		System.out.printf("%s.insertKeyAtNode moving to recursively insert in node %s current keys=%d key=%s value=%s depth=%d%n", this.getClass().getName(), GlobalDBIO.valueOf(btNode.getPageId()), btNode.getNumKeys(), key, value, mStackTracer.size());
+    		System.out.printf("%s.insertKeyAtNode moving to recursively insert in node %s current keys=%d key=%s value=%s depth=%d%n", this.getClass().getName(), GlobalDBIO.valueOf(btNode.getPageId()), btNode.getNumKeys(), key, value, mStack.size());
         return insertKeyAtNode(btNode, key, value);
     }
 
@@ -347,7 +350,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException
      */
     private void mergeParent(boolean foundSlot) throws IOException {
-    	StackInfo si = mStackTracer.pop();
+    	StackInfo si = mStack.pop();
     	BTNode rootNode = si.mParent;
         int numberOfKeys = rootNode.getNumKeys();
         int i = numberOfKeys - 1;
@@ -626,7 +629,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 		BTNode<K, V> parentNode = treeNode;
 		do {
     		BTNode<K, V> childNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(parentNode, index);
-    		mStackTracer.add(new StackInfo(parentNode,childNode,index));
+    		mStack.add(new StackInfo(parentNode,childNode,index));
     		if(childNode != null)
     			index = childNode.getNumKeys();
     		else
@@ -642,7 +645,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 		BTNode<K, V> parentNode = treeNode;
 		do {
     		BTNode<K, V> childNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(parentNode, index);
-    		mStackTracer.add(new StackInfo(parentNode,childNode,index));
+    		mStack.add(new StackInfo(parentNode,childNode,index));
     		if(DEBUGTREE)
     			System.out.printf("%s.seekLeftTree pushed parent=%s child=%s index=%d%n",this.getClass().getName(), parentNode, childNode, index);
     		index = 0;
@@ -662,7 +665,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 				return false;
 			}		
     	};
-       	mStackTracer.clear();
+       	mStack.clear();
     	return retrieveEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl, 0);
     }
 
@@ -670,8 +673,8 @@ public class BTreeNavigator<K extends Comparable, V> {
     	treeNode = seekLeftTree(treeNode, index);
         boolean bStatus;
         KeyValue<K, V> keyVal = null;
-        while(!mStackTracer.isEmpty()) {
-        	StackInfo stack = mStackTracer.pop();
+        while(!mStack.isEmpty()) {
+        	StackInfo stack = mStack.pop();
 			if(DEBUGTREE)
 				System.out.printf("%s.retrieveEntriesInOrder(%s, %d) popped=%s%n",this.getClass().getName(), treeNode, index, stack);
         	BTNode tNode = stack.mNode;
@@ -1072,8 +1075,8 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException 
      */
     private void rebalanceTree(BTNode<K, V> upperNode, NodeInterface<K, V> lowerNode, K key) throws IOException {
-        mStackTracer.clear();
-        mStackTracer.add(new StackInfo(null, upperNode, 0));
+        mStack.clear();
+        mStack.add(new StackInfo(null, upperNode, 0));
 
         //
         // Find the child subtree (node) that contains the key
@@ -1115,14 +1118,14 @@ public class BTreeNavigator<K extends Comparable, V> {
                 break;
             }
 
-            mStackTracer.add(new StackInfo(parentNode, childNode, i));
+            mStack.add(new StackInfo(parentNode, childNode, i));
             parentNode = childNode;
         }
 
         boolean bStatus;
         StackInfo stackInfo;
-        while (!mStackTracer.isEmpty()) {
-            stackInfo = mStackTracer.pop();
+        while (!mStack.isEmpty()) {
+            stackInfo = mStack.pop();
             if ((stackInfo != null) && !stackInfo.mNode.getIsLeaf()) {
                 bStatus = rebalanceTreeAtNode(stackInfo.mParent,
                                               stackInfo.mNode,
