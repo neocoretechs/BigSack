@@ -127,7 +127,7 @@ public class BTreeNavigator<K extends Comparable, V> {
             if(stack)
             	mStack.add(new StackInfo(parentNode, currentNode, i));
         }
-       	tsr = new KeySearchResult(null, i, false);
+       	tsr = new KeySearchResult(parentNode.getPage(), i, false);
         return tsr;
     }
 

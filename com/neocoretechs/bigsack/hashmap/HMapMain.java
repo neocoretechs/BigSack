@@ -80,7 +80,7 @@ public final class HMapMain implements KeyValueMainInterface {
 
 	private GlobalDBIO sdbio;
 	private String[] hMapWorkerNames = new String[DBPhysicalConstants.DTABLESPACES];
-	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
+	private TraversalStackElement rewound;
 	private KeySearchResult lastInsertResult = null;
 	private Object result = null; // result of object seek,etc.
 	private long count = 0L; // result of count
@@ -480,6 +480,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	 */
 	public synchronized KeyValue rewind() throws IOException {
 		iteratorSupport = new HMapNavigator(this);
+		rewound = null;
 		int lastRoot = -1;
 		for(int i = 0; i < root.length; i++) {
 			if(root[i].getNumKeys() > 0)
@@ -490,6 +491,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		if(lastRoot == -1)
 			return null;
 		KeyPageInterface kpi = iteratorSupport.firstPage(root[lastRoot]);
+		rewound = new TraversalStackElement(kpi, 0, 0);
 		if(kpi == null || kpi.getNumKeys() == 0) {
 			if(DEBUG)
 				System.out.printf("%s.rewind returning null from iteratorSupport.firstPage%n",this.getClass().getName());
@@ -502,7 +504,12 @@ public final class HMapMain implements KeyValueMainInterface {
 			System.out.printf("%s.rewind returning %s%n",this.getClass().getName(),kv);
 		return kv;
 	}
-
+    
+    @Override
+    public TraversalStackElement getRewound() {
+    	return rewound;
+    }
+    
     @Override
 	/**
 	 * Set current position to end of tree.Sets up stack with pages and indexes

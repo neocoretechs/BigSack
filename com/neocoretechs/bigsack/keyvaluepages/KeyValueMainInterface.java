@@ -243,4 +243,6 @@ public interface KeyValueMainInterface {
 	void traverseStructure(StructureCallBackListener listener, KeyPageInterface node, long parent, int level)
 			throws IOException;
 
+	TraversalStackElement getRewound();
+
 }

@@ -32,12 +32,13 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 */
 /**
 * Provides a persistent collection iterator 'from' element inclusive, 'to' element exclusive
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public class SubSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
 	Object nextElem, retElem;
+	TraversalStackElement tracker;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public SubSetKVIterator(Comparable fromKey, Comparable toKey, KeyValueMainInterface bTree) throws IOException {
 		super(bTree);
@@ -45,8 +46,9 @@ public class SubSetKVIterator extends AbstractIterator {
 		this.toKey = toKey;
 		synchronized (bTree) {
 			KeySearchResult tsr = bTree.seekKey(fromKey);
-			nextKey = tsr.page.getKey(tsr.insertPoint);
-			nextElem = tsr.page.getData(tsr.insertPoint);
+			tracker = new TraversalStackElement(tsr);
+			nextKey = tsr.getKeyValue().getmKey();
+			nextElem = tsr.getKeyValue().getmValue();
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
 					bTree.clearStack();
@@ -66,12 +68,10 @@ public class SubSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in SubSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if ( !ksr.atKey )
-					throw new ConcurrentModificationException("Next SubSetKVIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					nextElem = current.getmValue();
 					if (nextKey.compareTo(toKey) >= 0) {

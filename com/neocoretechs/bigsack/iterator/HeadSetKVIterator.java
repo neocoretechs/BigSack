@@ -38,12 +38,14 @@ public class HeadSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable toKey, nextKey, retKey;
 	Object nextElem, retElem;
+	TraversalStackElement tracker;
 	@SuppressWarnings("unchecked")
 	public HeadSetKVIterator(@SuppressWarnings("rawtypes") Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
 		super(kvMain);
 		this.toKey = toKey;
 		synchronized (kvMain) {
 			current = kvMain.rewind();
+			tracker = kvMain.getRewound();
 			nextKey = current.getmKey();
 			nextElem = current.getmValue();
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
@@ -66,12 +68,10 @@ public class HeadSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in HeadSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if ( !ksr.atKey )
-					throw new ConcurrentModificationException("Next HeadSetKVIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					nextElem = current.getmValue();
 					if (nextKey.compareTo(toKey) >= 0) {

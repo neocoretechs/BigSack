@@ -32,20 +32,23 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 */
 /**
 * Provides a persistent collection iterator greater or equal to 'from' element
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public class TailSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, nextKey, retKey;
+	TraversalStackElement tracker;
 	Object retElem, nextElem;
 	public TailSetKVIterator(@SuppressWarnings("rawtypes") Comparable fromKey, KeyValueMainInterface bTree)
 		throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
-			current = bTree.rewind();
-			KeySearchResult ksr = bTree.search(fromKey);
-			nextKey = ksr.page.getKey(ksr.insertPoint);
-			nextElem = ksr.page.getData(ksr.insertPoint);
+			KeySearchResult ksr = bTree.seekKey(fromKey);
+			current = ksr.getKeyValue();
+			tracker = new TraversalStackElement(ksr);
+			nextKey = current.getmKey();
+			nextElem = current.getmValue();
 			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
 				nextElem = null; //exclusive
 				nextKey = null;
@@ -65,12 +68,10 @@ public class TailSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in TailSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if (!ksr.atKey)
-					throw new ConcurrentModificationException("Next TailSetKVIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					nextElem = current.getmValue();
 				} else {

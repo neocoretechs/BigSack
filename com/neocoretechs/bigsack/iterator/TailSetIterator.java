@@ -32,19 +32,22 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 */
 /**
 * Provides a persistent collection iterator greater or equal to 'from' element
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public class TailSetIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, nextKey, retKey;
+	TraversalStackElement tracker;
 	private static boolean DEBUG = false;
 	public TailSetIterator(@SuppressWarnings("rawtypes") Comparable fromKey, KeyValueMainInterface bTree)
 		throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
-			current = bTree.rewind();
-			KeySearchResult tsr = bTree.search(fromKey);
-			nextKey = tsr.page.getKey(tsr.insertPoint);
+			KeySearchResult tsr = bTree.seekKey(fromKey);
+			current = tsr.getKeyValue();
+			tracker = new TraversalStackElement(tsr);
+			nextKey = current.getmKey(); // may not have found exact key, but this should give us closest
 			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
 				nextKey = null;
 				bTree.clearStack();
@@ -64,12 +67,10 @@ public class TailSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in TailSetIterator");
 				retKey = nextKey;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if (!ksr.atKey)
-					throw new ConcurrentModificationException("Next TailSetIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 				} else {
 					nextKey = null;

@@ -32,12 +32,13 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 */
 /**
 * Provides a persistent collection iterator 'from' element inclusive, 'to' element exclusive
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public class SubSetIterator extends AbstractIterator {
 	private static boolean DEBUG = false;
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
+	TraversalStackElement tracker;
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public SubSetIterator(Comparable fromKey, Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
 		super(kvMain);
@@ -47,7 +48,8 @@ public class SubSetIterator extends AbstractIterator {
 			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+kvMain);
 		synchronized (kvMain) {
 			KeySearchResult tsr = kvMain.seekKey(fromKey);
-			nextKey = tsr.page.getKey(tsr.insertPoint);
+			tracker = new TraversalStackElement(tsr);
+			nextKey = tsr.getKeyValue().getmKey();
 			if( DEBUG )
 				System.out.println("SubSetIterator.init nextKey:"+nextKey);
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
@@ -82,12 +84,10 @@ public class SubSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetIterator");
 				retKey = nextKey;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if (!ksr.atKey)
-					throw new ConcurrentModificationException("Next SubSetIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					if ( DEBUG )
 						System.out.println("SubSetIterator.next nextKey returned:"+nextKey);

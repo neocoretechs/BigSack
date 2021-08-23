@@ -32,15 +32,17 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 */
 /**
  * keySet iterator for persistent collection
- * @author Groff
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class KeySetIterator extends AbstractIterator  {
 	@SuppressWarnings("rawtypes")
 	Comparable retKey, nextKey;
+	TraversalStackElement tracker;
 	public KeySetIterator(KeyValueMainInterface kvMain) throws IOException {
 		super(kvMain);
 		synchronized (kvMain) {
 			current = kvMain.rewind();
+			tracker = kvMain.getRewound();
 			nextKey = current.getmKey();
 			kvMain.getIO().deallocOutstanding();
 		}
@@ -56,12 +58,10 @@ public class KeySetIterator extends AbstractIterator  {
 					throw new NoSuchElementException("No next element in EntrySetIterator");
 				// save for return
 				retKey = nextKey;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if ( !ksr.atKey )
-					throw new ConcurrentModificationException("Next EntrySetIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 				} else {
 					nextKey = null;

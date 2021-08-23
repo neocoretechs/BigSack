@@ -28,5 +28,9 @@ public final class TraversalStackElement {
 		this.child = ksr.atKey ? ksr.insertPoint : -ksr.insertPoint;
 		this.index = ksr.insertPoint;
 	}
+	
+	public String toString() {
+		return String.format("TraversalStackElement: %s %d %d%n",keyPage, index, index);
+	}
 
 }

@@ -7,7 +7,7 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 /**
  * Provides the superclass for out iterators and drop-in compatibility for java.util.Iterator<> contracts
- * @author jg
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
  */
 public abstract class AbstractIterator implements Iterator<Object> {

@@ -28,7 +28,7 @@ import java.util.Map;
 * Key-Value pair to be stored in persistent collection.
 * Collections are transparent to type, so we provide this wrapper to give a key-value type
 * if necessary.
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 @SuppressWarnings("rawtypes")
 public class KeyValuePair implements Serializable, Comparable, Map.Entry {

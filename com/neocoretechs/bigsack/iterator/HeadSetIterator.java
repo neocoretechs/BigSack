@@ -32,17 +32,19 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 */
 /**
 * Iterator for items of persistent collection strictly less than 'to' element
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public class HeadSetIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable toKey, nextKey, retKey;
+	TraversalStackElement tracker;
 	@SuppressWarnings("unchecked")
 	public HeadSetIterator(@SuppressWarnings("rawtypes") Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
 		super(kvMain);
 		this.toKey = toKey;
 		synchronized (kvMain) {
-			kvMain.rewind();
+			current = kvMain.rewind();
+			tracker = kvMain.getRewound();
 			nextKey = current.getmKey();
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
 				nextKey = null;
@@ -62,12 +64,10 @@ public class HeadSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in HeadSetIterator");
 				retKey = nextKey;
-				KeySearchResult ksr = kvMain.seekKey(nextKey);
-				if ( !ksr.atKey )
-					throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
-				TraversalStackElement tse = new TraversalStackElement(ksr);	
-				if((tse = kvMain.gotoNextKey(tse)) != null) {
-					current = ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+					if(current == null)
+						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextKey = null;
