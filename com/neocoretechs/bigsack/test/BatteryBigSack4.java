@@ -26,7 +26,7 @@ import com.neocoretechs.bigsack.session.TransactionalTreeSet;
  */
 public class BatteryBigSack4 {
 	static int min = 0; // controls minimum range for the test
-	static int max = 1000; // sets maximum range for the tests
+	static int max = 250000; // sets maximum range for the tests
 	//static int numDelete = 100; // for delete test
 	static int i = 0;
 	static Integer zo = null;
@@ -52,8 +52,8 @@ public class BatteryBigSack4 {
 		battery3A(session, argv);
 		battery3B(session, argv);
 		
-		battery1E(session, argv);
-		battery3(session, argv);
+		//battery1E(session, argv);
+		//battery3(session, argv);
 
 		BigSackAdapter.commitTransaction(bigtestx.class);
 		System.out.println("TEST BATTERY 4 COMPLETE.");
@@ -73,6 +73,10 @@ public class BatteryBigSack4 {
 			bigtestx b = new bigtestx();
 			b.init(i, payloadSize);
 			session.put(b);
+			if(i%(max/100) == 0) {
+				System.out.println("Current index "+i+" 100 added in "+(System.currentTimeMillis()-tims)+"ms.");
+				tims = System.currentTimeMillis();
+			}
 		}
 		long ms = System.currentTimeMillis();
 		System.out.println("Added "+i+" in "+(System.currentTimeMillis()-ms)+"ms.");

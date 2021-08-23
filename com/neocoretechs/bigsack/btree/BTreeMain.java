@@ -257,8 +257,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		if(DEBUG)
 			System.out.printf("%s insert key=%s value=%s%n", this.getClass().getName(), key, value);
 		int result = bTreeNavigator.insert(key, value);
-		if(result == 1) { // it existed, we have to update previous value, which was overwritten
-		}
 		if(DEBUG)
 			System.out.printf("%s insert exit key=%s value=%s result=%d%n", this.getClass().getName(), key, value,result);
 		return result;
@@ -404,12 +402,11 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 */
 	@Override
 	public synchronized KeyValue toEnd() throws IOException {
-		rewind();
-		TraversalStackElement tse = new TraversalStackElement(root, root.getNumKeys(), 0);
-		tse = seekRightTree(tse);
-		if(tse == null)
+		clearStack();
+		rewound = seekRightTree(new TraversalStackElement(root, root.getNumKeys(), root.getNumKeys()));
+		if(rewound == null)
 			return null;
-		return ((KeyPageInterface)tse.keyPage).getKeyValueArray(tse.index);
+		return ((KeyPageInterface)rewound.keyPage).getKeyValueArray(rewound.index);
 	}
 
 	/**

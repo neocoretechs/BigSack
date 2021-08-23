@@ -451,7 +451,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 					getKeyValueArray(i).valueState == KeyValue.synchStates.mustWrite || 
 					getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace ||
 					getKeyValueArray(i).valueState == KeyValue.synchStates.mustUpdate) {
-				if(getKeyValueArray(i).getValueOptr().getBlock() == 0 || getKeyValueArray(i).getValueOptr().getBlock() == -1)
+				if(getKeyValueArray(i).getValueOptr().getBlock() == 0) //|| getKeyValueArray(i).getValueOptr().getBlock() == -1)
 					throw new IOException("Bad page write value index "+i+" page:"+this.toString());
 				bs.writeLong(getKeyValueArray(i).getValueOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getValueOptr().getOffset());
