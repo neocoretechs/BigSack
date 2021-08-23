@@ -133,14 +133,15 @@ final class BigSackSession implements TransactionInterface {
 	/**
 	 * Cause the KvStore to seekKey for the Comparable type.
 	 * @param o the Comparable object to seek.
-	 * @return the value of object associated with the key, null if key was not found
+	 * @return the Key/Value object from the retrieved node
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Object get(Comparable o) throws IOException {
 		KeySearchResult tsr = kvStore.seekKey(o);
 		if(tsr != null && tsr.atKey)
-			return tsr.page.getData(tsr.insertPoint);
+			//return tsr.page.getKeyValueArray(tsr.insertPoint);
+			return tsr.getKeyValue();
 		return null;
 	}
 	/**
@@ -174,8 +175,7 @@ final class BigSackSession implements TransactionInterface {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	protected Iterator<?> subSet(Comparable fkey, Comparable tkey)
-		throws IOException {
+	protected Iterator<?> subSet(Comparable fkey, Comparable tkey) throws IOException {
 		return new SubSetIterator(fkey, tkey, kvStore);
 	}
 	/**
@@ -185,8 +185,7 @@ final class BigSackSession implements TransactionInterface {
 	 * @return the stream from which the lambda expression can be utilized
 	 * @throws IOException
 	 */
-	protected Stream<?> subSetStream(Comparable fkey, Comparable tkey)
-			throws IOException {
+	protected Stream<?> subSetStream(Comparable fkey, Comparable tkey) throws IOException {
 		return new SubSetStream(new SubSetIterator(fkey, tkey, kvStore));
 	}
 	
@@ -199,8 +198,7 @@ final class BigSackSession implements TransactionInterface {
 	* @exception IOException If we cannot obtain the iterator
 	*/
 	@SuppressWarnings("rawtypes")
-	protected Iterator<?> subSetKV(Comparable fkey, Comparable tkey)
-		throws IOException {
+	protected Iterator<?> subSetKV(Comparable fkey, Comparable tkey) throws IOException {
 		return new SubSetKVIterator(fkey, tkey, kvStore);
 	}
 	/**
@@ -210,8 +208,7 @@ final class BigSackSession implements TransactionInterface {
 	 * @return the stream from which the lambda expression can be utilized
 	 * @throws IOException
 	 */
-	protected Stream<?> subSetKVStream(Comparable fkey, Comparable tkey)
-			throws IOException {
+	protected Stream<?> subSetKVStream(Comparable fkey, Comparable tkey) throws IOException {
 			return new SubSetKVStream(fkey, tkey, kvStore);
 	}
 	

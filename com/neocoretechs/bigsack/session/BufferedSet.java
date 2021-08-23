@@ -72,7 +72,7 @@ public abstract class BufferedSet implements SetInterface {
 	* Get a value from backing store if not in cache.
 	* We may toss out one to make room if size surpasses objectCacheSize
 	* @param tkey The key for the value
-	* @return The value for the key
+	* @return The key/value for the key
 	* @exception IOException if get from backing store fails
 	*/
 	@SuppressWarnings("rawtypes")

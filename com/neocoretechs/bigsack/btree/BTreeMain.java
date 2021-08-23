@@ -277,8 +277,7 @@ public final class BTreeMain implements KeyValueMainInterface {
      */
     @Override
 	public synchronized KeySearchResult locate(Comparable key) throws IOException {
-        bTreeNavigator.search(key, true);
-        return bTreeNavigator.getTreeSearchResult();
+        return bTreeNavigator.search(key, true);
     }
 
     /**
@@ -488,11 +487,9 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 */
 	@Override
 	public synchronized KeySearchResult search(Comparable targetKey) throws IOException {
-		KeySearchResult tsr = null;
-		bTreeNavigator.search(targetKey, false);
-        tsr = bTreeNavigator.getTreeSearchResult();       
+		KeySearchResult tsr = bTreeNavigator.search(targetKey, false);      
     	if( DEBUG || DEBUGSEARCH) {
-    		System.out.println("BTreeMain.search returning with currentPage:");
+    		System.out.println("BTreeMain.search returning with currentPage:"+tsr);
     	}
         return tsr;
 	}

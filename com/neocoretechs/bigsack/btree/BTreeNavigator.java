@@ -88,7 +88,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @return
      * @throws IOException
      */
-	public V search(K key, boolean stack) throws IOException {
+	public KeySearchResult search(K key, boolean stack) throws IOException {
         BTNode<K, V> currentNode = (BTNode<K, V>) getRootNode();
         BTNode<K, V> parentNode = null;
         KeyValue<K, V> currentKey;
@@ -112,8 +112,8 @@ public class BTreeNavigator<K extends Comparable, V> {
             }
 
             if ((i < numberOfKeys) && (key.compareTo(currentKey.getmKey()) == 0)) {
-            	tsr = new KeySearchResult(currentNode.getPageId(), i, true);
-                return currentKey.getmValue();
+            	tsr = new KeySearchResult(currentNode.getPage(), i, true);
+                return tsr;
             }
             if(stack)
             	parentNode = currentNode;
@@ -127,8 +127,8 @@ public class BTreeNavigator<K extends Comparable, V> {
             if(stack)
             	mStack.add(new StackInfo(parentNode, currentNode, i));
         }
-       	tsr = new KeySearchResult(-1L, i, false);
-        return null;
+       	tsr = new KeySearchResult(null, i, false);
+        return tsr;
     }
 
     /**

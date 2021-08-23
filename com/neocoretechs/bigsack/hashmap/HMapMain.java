@@ -412,7 +412,7 @@ public final class HMapMain implements KeyValueMainInterface {
     		return;
     	if(!keyValue.getValueOptr().isEmptyPointer()) {
     	  	if( DEBUG || DEBUGOVERWRITE )
-    			System.out.println("OVERWRITE value "+value+" for key "+key+" index["+ksr.insertPoint+"] page:"+ksr.pageId);
+    			System.out.println("OVERWRITE value "+value+" for key "+key+" index["+ksr.insertPoint+"] page:"+ksr);
     		sdbio.delete_object(keyValue.getValueOptr(), GlobalDBIO.getObjectAsBytes(keyValue.getmValue()).length);
     		keyValue.setValueOptr(Optr.emptyPointer);
     	}

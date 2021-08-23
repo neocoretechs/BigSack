@@ -40,8 +40,6 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
 public class BufferedTreeMap extends BufferedMap {
-	protected BigSackSession session;
-
 	/**
 	 * 
 	 * @param dbname

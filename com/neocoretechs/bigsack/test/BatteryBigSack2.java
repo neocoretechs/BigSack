@@ -6,7 +6,7 @@ import java.util.Map.Entry;
 import com.neocoretechs.bigsack.iterator.KeyValuePair;
 import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.BufferedTreeMap;
-import com.neocoretechs.bigsack.session.SessionManager;
+import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
 /**
  * This simple test battery tests the BufferedTreeMap and uses small to medium string K/V pairs
  * with insertion, deletion and retrieval.
@@ -45,9 +45,9 @@ public class BatteryBigSack2 {
 		BufferedTreeMap session = BigSackAdapter.getBigSackTreeMap(key.getClass());
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
-		battery1(session, argv);
+		//battery1(session, argv);
 		// get and verify min to max
-		//battery1A(session, argv);
+		battery1A(session, argv);
 		 // get by value min to max
 		//battery1A0(session, argv);
 		// count
@@ -83,7 +83,7 @@ public class BatteryBigSack2 {
 	 */
 	public static void battery1(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		for(int i = max; i > min; i--) {
+		for(int i = min; i < max; i++) {
 			session.put(key + String.format(uniqKeyFmt, i), val+String.format(uniqKeyFmt, i));
 			if(i%(max/100) == 0) {
 				System.out.println("Current index "+i+" 100 added in "+(System.currentTimeMillis()-tims)+"ms.");
@@ -101,10 +101,13 @@ public class BatteryBigSack2 {
 	public static void battery1A(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
-			Object o = session.get(key + String.format(uniqKeyFmt, i));
-			if( !(val+String.format(uniqKeyFmt, i)).equals(o) ) {
+			Object oo = session.get(key + String.format(uniqKeyFmt, i));
+			Object o = ((KeyValue)oo).getmKey();
+			Object v = ((KeyValue)oo).getmValue();
+			if( !(key+String.format(uniqKeyFmt, i)).equals(o) ||
+				!(val+String.format(uniqKeyFmt, i)).equals(v)	) {
 				 System.out.println("BATTERY1A FAIL "+o);
-				throw new Exception("B1A Fail on get "+i+" with "+o);
+				throw new Exception("B1A Fail on get "+i+" with "+o+", "+v);
 			}
 		}
 		 System.out.println("BATTERY1A SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");

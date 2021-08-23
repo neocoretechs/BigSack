@@ -40,9 +40,6 @@ import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
 public class BufferedTreeSet extends BufferedSet {
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	protected BigSackSession session;
-
 	/**
 	 * 
 	 * @param dbname
