@@ -76,6 +76,7 @@ public class BatteryBigSack4 {
 			if(i%(max/100) == 0) {
 				System.out.println("Current index "+i+" 100 added in "+(System.currentTimeMillis()-tims)+"ms.");
 				tims = System.currentTimeMillis();
+				BigSackAdapter.commitTransaction(bigtestx.class);
 			}
 		}
 		long ms = System.currentTimeMillis();

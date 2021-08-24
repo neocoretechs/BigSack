@@ -604,12 +604,13 @@ public class BTreeNavigator<K extends Comparable, V> {
         return true;
     }
 
-
-    //
-    // Search the specified key within a node
-    // Return index of the keys if it finds
-    // Return -1 otherwise
-    //
+    /**
+     * Search strictly within a given node
+     * @param btNode The given node
+     * @param key the key for which to search
+     * @return The index where found or -1 if not
+     * @throws IOException
+     */
     private int searchKey(BTNode<K, V> btNode, K key) throws IOException {
         for (int i = 0; i < btNode.getNumKeys(); ++i) {
             if (key.compareTo(btNode.getKeyValueArray(i).getmKey()) == 0) {
@@ -621,88 +622,6 @@ public class BTreeNavigator<K extends Comparable, V> {
         }
 
         return -1;
-    }
-
-    private BTNode<K, V> seekRightTree(BTNode<K, V> treeNode, int index) {
-    	if(treeNode.getNumKeys() == 0)
-    		return null;
-		BTNode<K, V> parentNode = treeNode;
-		do {
-    		BTNode<K, V> childNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(parentNode, index);
-    		mStack.add(new StackInfo(parentNode,childNode,index));
-    		if(childNode != null)
-    			index = childNode.getNumKeys();
-    		else
-    			index = parentNode.getNumKeys();
-    		parentNode = childNode;
-    	} while(parentNode != null && !parentNode.getIsLeaf());
-    	return treeNode;
-    }
-    
-    private BTNode<K, V> seekLeftTree(BTNode<K, V> treeNode, int index) {
-		if(DEBUGTREE)
-			System.out.printf("%s.seekLeftTree(%s, %d)%n",this.getClass().getName(), treeNode, index);
-		BTNode<K, V> parentNode = treeNode;
-		do {
-    		BTNode<K, V> childNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(parentNode, index);
-    		mStack.add(new StackInfo(parentNode,childNode,index));
-    		if(DEBUGTREE)
-    			System.out.printf("%s.seekLeftTree pushed parent=%s child=%s index=%d%n",this.getClass().getName(), parentNode, childNode, index);
-    		index = 0;
-    		parentNode = childNode;
-    	} while(parentNode != null && !parentNode.getIsLeaf());
-    	return treeNode;
-    }
-    
-    public KeyValue get(Object object) throws IOException {
-    	KVIteratorIF iterImpl = new KVIteratorIF() {
-			@Override
-			public boolean item(Comparable key, Object value) {
-				if(DEBUGTREE)
-					System.out.printf("%s.item(%s, %s) target=%s%n",this.getClass().getName(), key, value, object);
-				if(value.equals(object))
-					return true;
-				return false;
-			}		
-    	};
-       	mStack.clear();
-    	return retrieveEntriesInOrder((BTNode<K, V>) getRootNode(), iterImpl, 0);
-    }
-
-    public KeyValue<K, V> retrieveEntriesInOrder(BTNode<K, V> treeNode, KVIteratorIF<K, V> iterImpl, int index) throws IOException {
-    	treeNode = seekLeftTree(treeNode, index);
-        boolean bStatus;
-        KeyValue<K, V> keyVal = null;
-        while(!mStack.isEmpty()) {
-        	StackInfo stack = mStack.pop();
-			if(DEBUGTREE)
-				System.out.printf("%s.retrieveEntriesInOrder(%s, %d) popped=%s%n",this.getClass().getName(), treeNode, index, stack);
-        	BTNode tNode = stack.mNode;
-        	if(tNode == null)// then parent is leaf if mNode null
-        		tNode = stack.mParent;
-        	// process this node regardless, we have taken care of subtree and then descend left on next node or right at end
-        	int numKeys = tNode.getNumKeys();
-        	for (int i = 0; i < numKeys; ++i) {
-        		keyVal = tNode.getKeyValueArray(i);
-        		bStatus = iterImpl.item(keyVal.getmKey(), keyVal.getmValue());
-        		if (bStatus) {
-        			return keyVal;
-        		}
-        		if(!tNode.getIsLeaf()) { 
-        			int newIdx = stack.mNodeIdx + 1;
-        			if(newIdx == numKeys) {
-        				if(BTNode.getRightChildAtIndex(tNode, newIdx) == null)
-        					continue;
-        				retrieveEntriesInOrder((BTNode<K, V>) BTNode.getRightChildAtIndex(tNode, newIdx), iterImpl, newIdx);
-        			} else {
-        				if(BTNode.getLeftChildAtIndex(tNode, newIdx) == null)
-        					continue;
-        				retrieveEntriesInOrder((BTNode<K, V>) BTNode.getLeftChildAtIndex(tNode, newIdx), iterImpl, newIdx);
-        			}
-        		}
-        	}
-        }
-        return keyVal;
     }
 
     /**

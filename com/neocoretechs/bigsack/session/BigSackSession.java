@@ -147,7 +147,7 @@ final class BigSackSession implements TransactionInterface {
 	/**
 	 * Retrieve an object with this value for first key found to have it.
 	 * @param o the object value to seek
-	 * @return the object, null if not found
+	 * @return The Map.Entry derived BigSack iterator {@link Entry} element for the key, null if not found
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
@@ -330,9 +330,7 @@ final class BigSackSession implements TransactionInterface {
 	protected boolean containsValue(Object o) throws IOException {
 		Object obj = kvStore.seekObject(o);
 		if( obj != null ) {
-			if(DEBUG)
-				System.out.println("sought object:"+o+" found:"+obj);
-			return obj.equals(o);
+			return true;
 		}
 		return false;
 	}

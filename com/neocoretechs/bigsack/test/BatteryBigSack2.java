@@ -47,24 +47,24 @@ public class BatteryBigSack2 {
 		 // add min to max
 		//battery1(session, argv);
 		// get and verify min to max
-		//battery1A(session, argv);
+		battery1A(session, argv);
 		 // get by value min to max
-		//battery1A0(session, argv);
+		battery1A0(session, argv);
 		// count
-		//battery1A1(session, argv);
+		battery1A1(session, argv);
 		// first last
-		//battery1B(session, argv);
+		battery1B(session, argv);
 		// keyset, entryset
-		//battery1C(session, argv);
+		battery1C(session, argv);
 		// from/to range
 		battery1D(session, argv);
 		// from/to range
-		//battery1D1(session, argv);
+		battery1D1(session, argv);
 		// compare to synthetic key
-		//battery1E(session, argv);
-		//battery1E1(session, argv);
-		//battery1F(session, argv);
-		//battery1F1(session, argv);
+		battery1E(session, argv);
+		battery1E1(session, argv);
+		battery1F(session, argv);
+		battery1F1(session, argv);
 		// overwrite
 		//battery1G(session, argv);
 		// deletion tests below
@@ -121,7 +121,8 @@ public class BatteryBigSack2 {
 	public static void battery1A0(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = min; i < max; i++) {
-			Object o = session.getValue(val + String.format(uniqKeyFmt, i));
+			Entry kv = (Entry) session.getValue(val + String.format(uniqKeyFmt, i));
+			Object o = kv.getValue();
 			if( !(val+String.format(uniqKeyFmt, i)).equals(o) ) {
 				 System.out.println("BATTERY1A0 FAIL "+o);
 				throw new Exception("B1A0 Fail on get "+i+" with "+o);
@@ -136,8 +137,7 @@ public class BatteryBigSack2 {
 	 * @throws Exception
 	 */
 	public static void battery1A1(BufferedTreeMap session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		
+		long tims = System.currentTimeMillis();	
 			int o = (int) session.size();
 			if( o != max) {
 				System.out.println("BATTERY1A1 FAIL count should be "+max+" but came back "+o);

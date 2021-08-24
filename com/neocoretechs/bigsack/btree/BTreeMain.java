@@ -1,12 +1,15 @@
 package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.Stack;
 
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
+import com.neocoretechs.bigsack.iterator.Entry;
+import com.neocoretechs.bigsack.iterator.EntrySetIterator;
+import com.neocoretechs.bigsack.iterator.KeySetIterator;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
@@ -163,19 +166,30 @@ public final class BTreeMain implements KeyValueMainInterface {
 	public synchronized long count() throws IOException {
 		numKeys = 0;
 		long tim = System.currentTimeMillis();
-		KVIteratorIF iterImpl = new KVIteratorIF() {
-			@Override
-			public boolean item(Comparable key, Object value) {
-				++numKeys;
-				return false;
-			}
-		};
-		bTreeNavigator.retrieveEntriesInOrder((BTNode)((BTreeRootKeyPage)root).bTNode, iterImpl, 0);
+		countBTree((BTreeKeyPage) root);
 		if( DEBUG || DEBUGCOUNT )
 			System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
 		// deallocate outstanding blocks in all tablespaces
 		sdbio.deallocOutstanding();
 		return numKeys;
+	}
+	
+	private void countBTree(BTreeKeyPage node) throws IOException {
+        if(node != null) {
+            if (((BTreeKeyPage) node).getmIsLeafNode()) {
+            	numKeys += node.getNumKeys();
+            } else {
+            	//System.out.print("NonLeaf node:"+node.getNumKeys());
+                    int i;
+                    for (i = 0; i < node.getNumKeys(); i++) {
+                    	BTreeKeyPage btk = (BTreeKeyPage) node.getPage(i);
+                        countBTree(btk);
+                        //System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+ node.getKey(i) + ", ");
+                    }
+                    numKeys += node.getNumKeys();
+                    countBTree((BTreeKeyPage) node.getPage(i));
+            }                       
+        }
 	}
 	/**
 	 * Determines if tree is empty by examining the root for the presence of any keys
@@ -194,17 +208,22 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* currentPage and currentIndex set by this seeker of a target object value.
 	* The only physically possible way is an iteration through the entire collection until found or end.
 	* @param targetObject The Object value to seek.
-	* @return data Object if found. null otherwise.
+	* @return The BigSack iterator {@link Entry} if found. null otherwise.
 	* @exception IOException if read failure
 	*/
 	@Override
 	@SuppressWarnings("rawtypes")
 	public synchronized Object seekObject(Object targetObject) throws IOException {	
-		Object o = bTreeNavigator.get(targetObject);
+		Iterator it = new EntrySetIterator(this);
+		Entry o = null;
+		while(it.hasNext()) {
+			o = (Entry) it.next();
+			if(o.getValue().equals(targetObject))
+				return o;
+		}
 		// deallocate outstanding blocks in all tablespaces
 		sdbio.deallocOutstanding();
-		//clearStack();
-		return o;
+		return null;
 	}
 	/**
 	* Seek the key, if we dont find it, leave the tree at it position closest greater than element.
@@ -495,6 +514,39 @@ public final class BTreeMain implements KeyValueMainInterface {
 		return pop();
 	}
 
+	public synchronized TraversalStackElement gotoNextPage(TraversalStackElement tse) throws IOException {
+		if( DEBUG || DEBUGSEARCH ) {
+			System.out.println("BTreeMain.gotoNextPage "/*page:"+currentPage+*/+" index "+tse);
+			printStack();
+		}
+		int currentIndex = tse.index+1;
+		// If we are at a key, then advance the index
+		if(((BTNode)((BTreeKeyPage)tse.keyPage).bTNode).getIsLeaf() ) {
+			if( currentIndex < tse.keyPage.getNumKeys()) {
+				tse.index = tse.keyPage.getNumKeys();
+				tse.child = tse.keyPage.getNumKeys();
+				return tse;
+			}
+			if(stack.isEmpty())
+				return null; // root was leaf, and we are done
+			TraversalStackElement tsex = pop(); // go to zero of parent
+			if(tsex.index == tsex.keyPage.getNumKeys()) // dont pop to nonexistent key for final right page pointer
+				return gotoNextKey(tsex);
+			return tsex;
+		}
+		// not leaf, and we got element 0 of leaf with above pop, work the leaf until end then go right, left
+		if(currentIndex <= tse.keyPage.getNumKeys()) { // increment, go left or right at end
+			tse.index = currentIndex; // use advanced index
+			tse.child = currentIndex; // left
+			return seekLeftTree(tse);
+		}
+		// if its root increment and go left
+		if(stack.isEmpty()) {
+				return null; // done at far right of root
+		}
+		return pop();
+	}
+	
 	/**
 	 * Do a search without populating the stack.
 	 * @param targetKey The key to search for in BTree

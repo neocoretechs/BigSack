@@ -136,13 +136,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	private void processQueue() {
 	    SoftValue sv;
 	    while ((sv = (SoftValue)queue.poll()) != null) {
-	      BlockAccessIndex bai = (BlockAccessIndex) sv.get();
-	      System.out.println("SoftReference process queue, logging:"+sv.key);
-	      try {
-	    		globalIO.getIOManager().deallocOutstandingWriteLog(tablespace, bai);
-	      } catch (IOException e) {
-			throw new RuntimeException(e);
-	      }
+	      System.out.println("SoftReference process queue, removing:"+GlobalDBIO.valueOf((long) sv.key));
 	      usedBlockList.remove(sv.key);
 	    }
 	}
@@ -181,7 +175,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	
 	@Override
 	/**
-	 * Put the key and value to cache. Start the expiration counter beforehand.
+	 * Put the key and value to cache.
 	 */
 	public Object put(Object key, Object value) {
 		if(tablespace != GlobalDBIO.getTablespace(((BlockAccessIndex)value).getBlockNum()) || (Long)key != ((BlockAccessIndex)value).getBlockNum())
