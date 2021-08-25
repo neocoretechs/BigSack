@@ -3,7 +3,9 @@ package com.neocoretechs.bigsack.test;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Stack;
 
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
@@ -37,7 +39,6 @@ public class BatteryBigSack3 {
 		 System.out.println("Begin Battery Fire!");
 		battery1(session, argv);
 		battery1A(session, argv);
-		battery1B(session, argv);
 		battery2A(session, argv);
 		battery3A(session, argv);
 		battery3B(session, argv);
@@ -78,7 +79,9 @@ public class BatteryBigSack3 {
 	 */
 	public static void battery1A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		Iterator<?> it = session.headSet((Comparable) session.first());
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		Iterator<?> it = session.headSet((Comparable) session.first(tse,s));
 		int i = 0;
 		Object o = null;
 		while(it.hasNext()) {
@@ -102,7 +105,9 @@ public class BatteryBigSack3 {
 	 */
 	public static void battery2A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		Iterator<?> it = session.headSet((Comparable) session.last());
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		Iterator<?> it = session.headSet((Comparable) session.last(tse, s));
 		int i = 0;
 		Object o = null;
 		while(it.hasNext()) {
@@ -125,7 +130,9 @@ public class BatteryBigSack3 {
 	 */
 	public static void battery3A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		Iterator<?> it = session.tailSet((Comparable) session.first());
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		Iterator<?> it = session.tailSet((Comparable) session.first(tse,s));
 		int i = 0;
 		while(it.hasNext()) {
 			++i;
@@ -146,7 +153,9 @@ public class BatteryBigSack3 {
 	 */
 	public static void battery3B(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		Iterator<?> it = session.tailSet((Comparable) session.last());
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		Iterator<?> it = session.tailSet((Comparable) session.last(tse, s));
 		int i = 0;
 		Object o = null;
 		while(it.hasNext()) {
@@ -160,18 +169,7 @@ public class BatteryBigSack3 {
 		}
 		System.out.println("BATTERY3B SUCCESS "+(i)+" iterations in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
-	/**
-	 * See if first/last key/val works this can have unintended results 
-	 * @param session
-	 * @param argv
-	 * @throws Exception
-	 */
-	public static void battery1B(TransactionalTreeSet session, String[] argv) throws Exception {
-		long tims = System.currentTimeMillis();
-		bigtestx f = (bigtestx) session.first();
-		bigtestx l = (bigtestx) session.last();
-		System.out.println("BATTERY1B SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
-	}
+
 
 	public static void battery1D(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();

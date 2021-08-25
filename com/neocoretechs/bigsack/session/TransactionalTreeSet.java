@@ -1,11 +1,13 @@
 package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Stack;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -77,9 +79,9 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 	}
 
 	@SuppressWarnings("rawtypes")
-	public KeySearchResult locate(Comparable tvalue) throws IOException {
+	public KeySearchResult locate(Comparable tvalue, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-			return session.locate(tvalue);
+			return session.locate(tvalue, stack);
 		}
 	}
 	
@@ -123,9 +125,9 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object last() throws IOException {
+	public Object last(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object o = session.lastKey();
+				Object o = session.lastKey(tse, stack);
 				return o;
 		}
 	}
@@ -134,9 +136,9 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object first() throws IOException {
+	public Object first(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object o = session.firstKey();
+				Object o = session.firstKey(tse, stack);
 				return o;
 		}
 	
@@ -261,7 +263,7 @@ public class TransactionalTreeSet implements TransactionInterface, OrderedKVSetI
 	@Override
 	public Iterator<?> iterator() throws IOException {
 		synchronized(session.getMutexObject()) {
-			return session.tailSet(session.firstKey());
+			return session.keySet();
 		}
 	}
 

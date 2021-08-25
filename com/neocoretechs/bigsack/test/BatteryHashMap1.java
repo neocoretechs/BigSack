@@ -4,10 +4,12 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Stack;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.session.SetInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.BufferedHashSet;
 import com.neocoretechs.bigsack.session.TransactionalHashSet;
@@ -167,8 +169,10 @@ public class BatteryHashMap1 {
 	 */
 	public static void battery2(BufferedHashSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		bigtestx f = (bigtestx) session.first();
-		bigtestx l = (bigtestx) session.last();
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		bigtestx f = (bigtestx) session.first(tse,s);
+		bigtestx l = (bigtestx) session.last(tse,s);
 		System.out.println("BATTERY2 SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	

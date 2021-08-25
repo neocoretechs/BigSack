@@ -1,9 +1,12 @@
 package com.neocoretechs.bigsack.btree;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Stack;
+import java.util.stream.Stream;
 
+import com.neocoretechs.bigsack.btree.BTreeNavigator.StackInfo;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -89,9 +92,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 	private KeyPageInterface root;
 	BTreeNavigator bTreeNavigator;
 	long numKeys = 0;
-	
-	private Stack<TraversalStackElement> stack = new Stack<TraversalStackElement>();
-	private TraversalStackElement rewound;
 	
 	GlobalDBIO sdbio;
 
@@ -235,8 +235,8 @@ public final class BTreeMain implements KeyValueMainInterface {
 	*/
 	@Override
 	@SuppressWarnings("rawtypes")
-	public synchronized KeySearchResult seekKey(Comparable targetKey) throws IOException {
-		KeySearchResult tsr = locate(targetKey);
+	public synchronized KeySearchResult seekKey(Comparable targetKey, Stack stack) throws IOException {
+		KeySearchResult tsr = locate(targetKey, stack);
 		if( DEBUG || DEBUGSEARCH)
 			System.out.println("SeekKey state is targKey:"+targetKey+" "+tsr);
 		return tsr;
@@ -293,8 +293,13 @@ public final class BTreeMain implements KeyValueMainInterface {
      * @throws IOException
      */
     @Override
-	public synchronized KeySearchResult locate(Comparable key) throws IOException {
-        return bTreeNavigator.search(key, true);
+	public synchronized KeySearchResult locate(Comparable key, Stack stack) throws IOException {
+        KeySearchResult ksr = bTreeNavigator.search(key, true); // uses stack.add
+        for(Object o: bTreeNavigator.getStack().toArray()) {
+        	StackInfo si = (StackInfo)o;
+        	stack.push( new TraversalStackElement(si.mNode.getPage(), si.mNodeIdx, 0) ); 
+        }
+        return ksr;
     }
 
     /**
@@ -399,19 +404,19 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	@Override
-	public synchronized KeyValue rewind() throws IOException {
-		clearStack();
-		rewound = seekLeftTree(new TraversalStackElement(root, 0, 0));
-		if(rewound == null)
+	public synchronized KeyValue rewind(TraversalStackElement rewound, Stack stack) throws IOException {
+		stack.clear();
+		TraversalStackElement trewound = seekLeftTree(new TraversalStackElement(root, 0, 0), stack);
+		if(trewound == null)
 			return null;
+		rewound.child = trewound.child;
+		rewound.index = trewound.index;
+		rewound.keyPage = trewound.keyPage;
 		return ((BTreeKeyPage)rewound.keyPage).getKeyValueArray(0);
 		//if( DEBUG )
 		//	System.out.println("BTreeMain.rewind positioned at "+currentPage+" "+currentIndex+" "+currentChild);
 	}
 
-	public TraversalStackElement getRewound() {
-		return rewound;
-	}
 
 	/**
 	 * Set current position to end of tree.Sets up stack with pages and indexes
@@ -420,11 +425,14 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 * @exception IOException If read fails
 	 */
 	@Override
-	public synchronized KeyValue toEnd() throws IOException {
-		clearStack();
-		rewound = seekRightTree(new TraversalStackElement(root, root.getNumKeys(), root.getNumKeys()));
+	public synchronized KeyValue toEnd(TraversalStackElement rewound, Stack stack) throws IOException {
+		stack.clear();
+		TraversalStackElement trewound = seekRightTree(new TraversalStackElement(root, root.getNumKeys(), root.getNumKeys()), stack);
 		if(rewound == null)
 			return null;
+		rewound.child = trewound.child;
+		rewound.index = trewound.index;
+		rewound.keyPage = trewound.keyPage;
 		return ((KeyPageInterface)rewound.keyPage).getKeyValueArray(rewound.index);
 	}
 
@@ -443,10 +451,10 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* @exception IOException If read fails
 	*/
 	@Override
-	public synchronized TraversalStackElement gotoNextKey(TraversalStackElement tse) throws IOException {
+	public synchronized TraversalStackElement gotoNextKey(TraversalStackElement tse, Stack stack) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.println("BTreeMain.gotoNextKey "/*page:"+currentPage+*/+" index "+tse);
-			printStack();
+			printStack(stack);
 		}
 		int currentIndex = tse.index+1;
 		// If we are at a key, then advance the index
@@ -458,22 +466,22 @@ public final class BTreeMain implements KeyValueMainInterface {
 			}
 			if(stack.isEmpty())
 				return null; // root was leaf, and we are done
-			TraversalStackElement tsex = pop(); // go to zero of parent
+			TraversalStackElement tsex = (TraversalStackElement) stack.pop(); // go to zero of parent
 			if(tsex.index == tsex.keyPage.getNumKeys()) // dont pop to nonexistent key for final right page pointer
-				return gotoNextKey(tsex);
+				return gotoNextKey(tsex, stack);
 			return tsex;
 		}
 		// not leaf, and we got element 0 of leaf with above pop, work the leaf until end then go right, left
 		if(currentIndex <= tse.keyPage.getNumKeys()) { // increment, go left or right at end
 			tse.index = currentIndex; // use advanced index
 			tse.child = currentIndex; // left
-			return seekLeftTree(tse);
+			return seekLeftTree(tse,stack);
 		}
 		// if its root increment and go left
 		if(stack.isEmpty()) {
 				return null; // done at far right of root
 		}
-		return pop();
+		return (TraversalStackElement) stack.pop();
 	}
 
 	/**
@@ -482,7 +490,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* @exception IOException If read fails
 	*/
 	@Override
-	public synchronized TraversalStackElement gotoPrevKey(TraversalStackElement tse) throws IOException {
+	public synchronized TraversalStackElement gotoPrevKey(TraversalStackElement tse, Stack stack) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.println("BTreeMain.gotoPrevKey "/*page:"+currentPage+*/+" index "+tse);
 		}
@@ -496,28 +504,28 @@ public final class BTreeMain implements KeyValueMainInterface {
 			}
 			if(stack.isEmpty())
 				return null; // root was leaf, and we are done
-			TraversalStackElement tsex = pop(); // go to numkeys of parent
+			TraversalStackElement tsex = (TraversalStackElement) stack.pop(); // go to numkeys of parent
 			if(tsex.index == tsex.keyPage.getNumKeys()) // dont pop to nonexistent key for final right page pointer
-				return gotoPrevKey(tsex);
+				return gotoPrevKey(tsex, stack);
 			return tsex;
 		}
 		// not leaf, and we got element 0 of leaf with above pop, work the leaf until end then go right, left
 		if(currentIndex >= 0) { // decrement, go right
 			tse.index = currentIndex; // use advanced index
 			tse.child = currentIndex; // left
-			return seekRightTree(tse);
+			return seekRightTree(tse, stack);
 		}
 		// if its root decrement and go right
 		if(stack.isEmpty()) {
 				return null; // done at far left of root
 		}
-		return pop();
+		return (TraversalStackElement) stack.pop();
 	}
 
-	public synchronized TraversalStackElement gotoNextPage(TraversalStackElement tse) throws IOException {
+	public synchronized TraversalStackElement gotoNextPage(TraversalStackElement tse, Stack stack) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.println("BTreeMain.gotoNextPage "/*page:"+currentPage+*/+" index "+tse);
-			printStack();
+			printStack(stack);
 		}
 		int currentIndex = tse.index+1;
 		// If we are at a key, then advance the index
@@ -529,22 +537,22 @@ public final class BTreeMain implements KeyValueMainInterface {
 			}
 			if(stack.isEmpty())
 				return null; // root was leaf, and we are done
-			TraversalStackElement tsex = pop(); // go to zero of parent
+			TraversalStackElement tsex = (TraversalStackElement) stack.pop(); // go to zero of parent
 			if(tsex.index == tsex.keyPage.getNumKeys()) // dont pop to nonexistent key for final right page pointer
-				return gotoNextKey(tsex);
+				return gotoNextKey(tsex, stack);
 			return tsex;
 		}
 		// not leaf, and we got element 0 of leaf with above pop, work the leaf until end then go right, left
 		if(currentIndex <= tse.keyPage.getNumKeys()) { // increment, go left or right at end
 			tse.index = currentIndex; // use advanced index
 			tse.child = currentIndex; // left
-			return seekLeftTree(tse);
+			return seekLeftTree(tse, stack);
 		}
 		// if its root increment and go left
 		if(stack.isEmpty()) {
 				return null; // done at far right of root
 		}
-		return pop();
+		return (TraversalStackElement) stack.pop();
 	}
 	
 	/**
@@ -567,7 +575,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* child at currentChild to descend the subtree and gravitate left.
 	* @return bottom leaf node, not pushed to stack
 	*/
-	private synchronized TraversalStackElement seekLeftTree(TraversalStackElement tse) throws IOException {
+	private synchronized TraversalStackElement seekLeftTree(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
         if (((BTreeKeyPage) node).getmIsLeafNode()) {
         	if(DEBUGSEARCH)
@@ -582,8 +590,8 @@ public final class BTreeMain implements KeyValueMainInterface {
             	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
             KeyPageInterface btk = (KeyPageInterface) node.getPage(tse.index);
             TraversalStackElement tsex = new TraversalStackElement(node, tse.index, tse.index);
-            push(tsex);
-            return seekLeftTree(new TraversalStackElement(btk, 0, 0));
+            stack.push(tsex);
+            return seekLeftTree(new TraversalStackElement(btk, 0, 0), stack);
         }                       
         return tse;
 	}
@@ -592,7 +600,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* Seeks to rightmost key in current subtree
 	* @return the bottom leaf node, not pushed to stack
 	*/
-	private synchronized TraversalStackElement seekRightTree(TraversalStackElement tse) throws IOException {
+	private synchronized TraversalStackElement seekRightTree(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
         if (((BTreeKeyPage) node).getmIsLeafNode()) {
         	if(DEBUG)
@@ -607,8 +615,8 @@ public final class BTreeMain implements KeyValueMainInterface {
             	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
             KeyPageInterface btk = (KeyPageInterface) node.getPage(tse.index);
             TraversalStackElement tsex = new TraversalStackElement(node, tse.index, tse.index);
-            push(tsex);
-            seekRightTree(new TraversalStackElement(btk, node.getNumKeys(), node.getNumKeys()));
+            push(tsex, stack);
+            return seekRightTree(new TraversalStackElement(btk, node.getNumKeys(), node.getNumKeys()), stack);
         }                       
         return tse;
 	}
@@ -621,7 +629,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	 * @param  
 	 * @return true if stackDepth not at MAXSTACK, false otherwise
 	 */
-	private synchronized void push(TraversalStackElement tse) {
+	private synchronized void push(TraversalStackElement tse, Stack stack) {
 		//if (stackDepth == MAXSTACK)
 		//	throw new RuntimeException("Maximum retrieval stack depth exceeded at "+stackDepth);
 		if( tse == null )
@@ -629,47 +637,19 @@ public final class BTreeMain implements KeyValueMainInterface {
 		stack.push(tse);
 		if( DEBUG ) {
 			System.out.print("BTreeMain.Push:");
-			printStack();
+			printStack(stack);
 		}
 	}
 
-	/** 
-	 * Internal routine to pop stack. 
-	 * sets stackDepth - 1, 
-	 * currentPage to keyPageStack[stackDepth] and 
-	 * currentIndex to indexStack[stackDepth]
-	 * @return false if stackDepth reaches 0, true otherwise
-	 * 
-	 */
-	private synchronized TraversalStackElement pop() {
-		if( stack.isEmpty() )
-			return null;
-		TraversalStackElement tse = stack.pop();
-		if( DEBUG ) {
-			System.out.print("BTreeMain.Pop:");
-			printStack();
-		}
-		return tse;
-	}
 
-	private synchronized void printStack() {
+
+	private synchronized void printStack(Stack stack) {
 		System.out.println("Stack Depth:"+stack.size());
 		for(int i = 0; i < stack.size(); i++) {
-			TraversalStackElement tse = stack.get(i);
+			TraversalStackElement tse = (TraversalStackElement) stack.get(i);
 			System.out.println("index:"+i+" "+GlobalDBIO.valueOf(tse.keyPage.getPageId())+" "+tse.index+" "+tse.child);
 		}
 	}
-	/**
-	* Internal routine to clear references on stack. Just does stack.clear
-	*/
-	@Override
-	public synchronized void clearStack() {
-		//for (int i = 0; i < MAXSTACK; i++)
-		//	keyPageStack[i] = null;
-		//stackDepth = 0;
-		stack.clear();
-	}
-
 	
 	@Override
 	public synchronized GlobalDBIO getIO() {

@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.iterator;
 import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -37,20 +38,21 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 public class TailSetIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, nextKey, retKey;
-	TraversalStackElement tracker;
+	TraversalStackElement tracker = new TraversalStackElement(null, 0,0);
+	Stack stack = new Stack();
 	private static boolean DEBUG = false;
 	public TailSetIterator(@SuppressWarnings("rawtypes") Comparable fromKey, KeyValueMainInterface bTree)
 		throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
-			KeySearchResult tsr = bTree.seekKey(fromKey);
+			KeySearchResult tsr = bTree.seekKey(fromKey, stack);
 			current = tsr.getKeyValue();
 			tracker = new TraversalStackElement(tsr);
 			nextKey = current.getmKey(); // may not have found exact key, but this should give us closest
 			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
 				nextKey = null;
-				bTree.clearStack();
+				stack.clear();
 			}
 			bTree.getIO().deallocOutstanding();
 			if( DEBUG )
@@ -67,14 +69,14 @@ public class TailSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in TailSetIterator");
 				retKey = nextKey;
-				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
 						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 				} else {
 					nextKey = null;
-					kvMain.clearStack();
+					stack.clear();
 				}
 				kvMain.getIO().deallocOutstanding();
 				return retKey;

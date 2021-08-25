@@ -290,7 +290,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	* @exception IOException if read failure
 	*/
 	@SuppressWarnings("rawtypes")
-	public synchronized KeySearchResult seekKey(Comparable targetKey) throws IOException {
+	public synchronized KeySearchResult seekKey(Comparable targetKey, Stack stack) throws IOException {
 		KeySearchResult tsr = search(targetKey);
 		if( DEBUG || DEBUGSEARCH)
 			System.out.println("SeekKeystate is targKey:"+targetKey);
@@ -429,7 +429,7 @@ public final class HMapMain implements KeyValueMainInterface {
      * @return KeySearhcResult of locate operation
      * @throws IOException
      */
-    public synchronized KeySearchResult locate(Comparable key) throws IOException {
+    public synchronized KeySearchResult locate(Comparable key, Stack stack) throws IOException {
 		int[] hashkeys;
 		// element 0 is our tablespace, start there, find a collision space page to hold the new key
 		HMapNavigator hNav = new HMapNavigator(this, key);
@@ -478,9 +478,11 @@ public final class HMapMain implements KeyValueMainInterface {
 	 * such that traversal can take place. Remember to clear stack after these operations.
 	 * @exception IOException If read fails
 	 */
-	public synchronized KeyValue rewind() throws IOException {
+	public synchronized KeyValue rewind(TraversalStackElement rewound, Stack stack) throws IOException {
 		iteratorSupport = new HMapNavigator(this);
-		rewound = null;
+		rewound.keyPage = null;
+		rewound.child = 0;
+		rewound.index = 0;
 		int lastRoot = -1;
 		for(int i = 0; i < root.length; i++) {
 			if(root[i].getNumKeys() > 0)
@@ -491,7 +493,7 @@ public final class HMapMain implements KeyValueMainInterface {
 		if(lastRoot == -1)
 			return null;
 		KeyPageInterface kpi = iteratorSupport.firstPage(root[lastRoot]);
-		rewound = new TraversalStackElement(kpi, 0, 0);
+		rewound.keyPage = kpi;
 		if(kpi == null || kpi.getNumKeys() == 0) {
 			if(DEBUG)
 				System.out.printf("%s.rewind returning null from iteratorSupport.firstPage%n",this.getClass().getName());
@@ -506,19 +508,17 @@ public final class HMapMain implements KeyValueMainInterface {
 	}
     
     @Override
-    public TraversalStackElement getRewound() {
-    	return rewound;
-    }
-    
-    @Override
 	/**
 	 * Set current position to end of tree.Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations. 
 	 * @return 
 	 * @exception IOException If read fails
 	 */
-	public synchronized KeyValue toEnd() throws IOException {
+	public synchronized KeyValue toEnd(TraversalStackElement tse, Stack stack) throws IOException {
 		iteratorSupport = new HMapNavigator(this);
+		rewound.keyPage = null;
+		rewound.child = 0;
+		rewound.index = 0;
 		int lastRoot = -1;
 		for(int i = 0; i < root.length; i++) {
 			if(root[i].getNumKeys() > 0)
@@ -527,15 +527,19 @@ public final class HMapMain implements KeyValueMainInterface {
 		if(lastRoot == -1)
 			return null;
 		KeyPageInterface kpi = iteratorSupport.firstPage(root[lastRoot]);
+		rewound.keyPage = kpi;
 		if(kpi == null || kpi.getNumKeys() == 0)
 			return null;
 		KeyPageInterface kpx = null;
     	while((kpx = iteratorSupport.nextPage()) != null) {
     		kpi = kpx;
     	}
+		rewound.keyPage = kpi;
 		while(((HMapKeyPage)kpi).nextPage != null) {
 			kpi = ((HMapKeyPage)kpi).nextPage;
 		}
+		rewound.keyPage = kpi;
+		rewound.index = kpi.getNumKeys()-1;
 		if(kpi.getNumKeys() == 0)
 			return null;
 		return kpi.getKeyValueArray(kpi.getNumKeys()-1);
@@ -556,7 +560,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	* @return 0 if ok, != 0 if error
 	* @exception IOException If read fails
 	*/
-	public synchronized TraversalStackElement gotoNextKey(TraversalStackElement tse) throws IOException {
+	public synchronized TraversalStackElement gotoNextKey(TraversalStackElement tse, Stack stack) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.printf("%s.gotoNextKey index:%s%n",this.getClass().getName(),tse);
 		}
@@ -590,7 +594,7 @@ public final class HMapMain implements KeyValueMainInterface {
 	* @return 0 if ok, <>0 if error
 	* @exception IOException If read fails
 	*/
-	public synchronized TraversalStackElement gotoPrevKey(TraversalStackElement tse) throws IOException {
+	public synchronized TraversalStackElement gotoPrevKey(TraversalStackElement tse, Stack stack) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.printf("%s.gotoPrevKey index:%s%n",this.getClass().getName(),tse);
 		}
@@ -607,23 +611,12 @@ public final class HMapMain implements KeyValueMainInterface {
 	 */
 	public synchronized KeySearchResult search(Comparable targetKey) throws IOException {
 		KeySearchResult tsr = null;
-		clearStack();
-		tsr = locate(targetKey);
+		Stack stack = new Stack();
+		tsr = locate(targetKey, stack);
     	if( DEBUG || DEBUGSEARCH) {
     		System.out.printf("%s.search returning with currentPage:%s%n",this.getClass().getName(),tsr);
     	}
         return tsr;
-	}
-	
-	@Override
-	/**
-	* Internal routine to clear references on stack. Just does stack.clear
-	*/
-	public synchronized void clearStack() {
-		//for (int i = 0; i < MAXSTACK; i++)
-		//	keyPageStack[i] = null;
-		//stackDepth = 0;
-		//stack.clear();
 	}
 
 	@Override

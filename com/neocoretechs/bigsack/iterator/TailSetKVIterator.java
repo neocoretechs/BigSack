@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.iterator;
 import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -37,14 +38,15 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 public class TailSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, nextKey, retKey;
-	TraversalStackElement tracker;
+	TraversalStackElement tracker = new TraversalStackElement(null, 0,0);
+	Stack stack = new Stack();
 	Object retElem, nextElem;
 	public TailSetKVIterator(@SuppressWarnings("rawtypes") Comparable fromKey, KeyValueMainInterface bTree)
 		throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		synchronized (bTree) {
-			KeySearchResult ksr = bTree.seekKey(fromKey);
+			KeySearchResult ksr = bTree.seekKey(fromKey, stack);
 			current = ksr.getKeyValue();
 			tracker = new TraversalStackElement(ksr);
 			nextKey = current.getmKey();
@@ -52,7 +54,7 @@ public class TailSetKVIterator extends AbstractIterator {
 			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
 				nextElem = null; //exclusive
 				nextKey = null;
-				bTree.clearStack();
+				stack.clear();
 			}
 			bTree.getIO().deallocOutstanding();
 		}
@@ -68,7 +70,7 @@ public class TailSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in TailSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
 						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
@@ -77,7 +79,7 @@ public class TailSetKVIterator extends AbstractIterator {
 				} else {
 					nextKey = null;
 					nextElem = null;
-					kvMain.clearStack();
+					stack.clear();
 				}
 				kvMain.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);

@@ -4,9 +4,11 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Stack;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.TransactionalTreeSet;
 /**
@@ -93,7 +95,9 @@ public class BatteryBigSack4 {
 	public static void battery1A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		i = 0;
-		session.headSetStream((Comparable) session.first()).forEach(o ->System.out.println("["+(i++)+"]"+o));
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		session.headSetStream((Comparable) session.first(tse,s)).forEach(o ->System.out.println("["+(i++)+"]"+o));
 		// if it gets any, its a fail
 		if( i != 0 ) {
 				System.out.println("BATTERY1A FAIL iterations:"+i+" reported size:"+session.size());
@@ -109,8 +113,10 @@ public class BatteryBigSack4 {
 	 */
 	public static void battery1B(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		bigtestx f = (bigtestx) session.first();
-		bigtestx l = (bigtestx) session.last();
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		bigtestx f = (bigtestx) session.first(tse,s);
+		bigtestx l = (bigtestx) session.last(tse,s);
 		System.out.println("BATTERY1B SUCCESS "+f+","+l+" in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
@@ -123,7 +129,9 @@ public class BatteryBigSack4 {
 	public static void battery3A(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		i = 0;
-		session.tailSetStream((Comparable) session.first()).forEach(o -> {			
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		session.tailSetStream((Comparable) session.first(tse,s)).forEach(o -> {			
 			System.out.println("["+(i)+"]"+o);
 			++i;
 		});
@@ -143,7 +151,9 @@ public class BatteryBigSack4 {
 	public static void battery3B(TransactionalTreeSet session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		i = 0;
-		session.tailSetStream((Comparable) session.last()).forEach(o -> {
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0,0);
+		session.tailSetStream((Comparable) session.last(tse,s)).forEach(o -> {
 			System.out.println("["+(i)+"]"+o);
 			++i;
 			zo = (Integer) ((bigtestx) o).key;

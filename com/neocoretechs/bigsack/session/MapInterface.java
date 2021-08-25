@@ -2,10 +2,12 @@ package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Stack;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 
 interface MapInterface extends SetInterface {
 
@@ -61,14 +63,14 @@ interface MapInterface extends SetInterface {
 	 * @return The Comparable first key in the KVStore
 	 * @throws IOException
 	 */
-	Comparable firstKey() throws IOException;
+	Comparable firstKey(TraversalStackElement tse, Stack stack) throws IOException;
 
 	/**
 	 * Get the last key in the KVStore
 	 * @return The last, greatest valued key in the KVStore.
 	 * @throws IOException
 	 */
-	Comparable lastKey() throws IOException;
+	Comparable lastKey(TraversalStackElement tse, Stack stack) throws IOException;
 
 	
 }

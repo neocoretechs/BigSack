@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.iterator;
 import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -38,7 +39,8 @@ public class SubSetIterator extends AbstractIterator {
 	private static boolean DEBUG = false;
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
-	TraversalStackElement tracker;
+	TraversalStackElement tracker = new TraversalStackElement(null, 0,0);
+	Stack stack = new Stack();
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public SubSetIterator(Comparable fromKey, Comparable toKey, KeyValueMainInterface kvMain) throws IOException {
 		super(kvMain);
@@ -47,9 +49,9 @@ public class SubSetIterator extends AbstractIterator {
 		if( DEBUG )
 			System.out.println("SubSetIterator fromKey:"+fromKey+" toKey:"+toKey+" nextKey:"+nextKey+" bTree:"+kvMain);
 		synchronized (kvMain) {
-			KeySearchResult tsr = kvMain.seekKey(fromKey);
+			KeySearchResult tsr = kvMain.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(tsr);
-			nextKey = tsr.getKeyValue().getmKey();
+			nextKey = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmKey();
 			if( DEBUG )
 				System.out.println("SubSetIterator.init nextKey:"+nextKey);
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
@@ -61,7 +63,7 @@ public class SubSetIterator extends AbstractIterator {
 						System.out.println("SubSetIterator init nextKey null toKey:"+toKey+" fromKey:"+fromKey);
 				}
 				nextKey = null; //exclusive
-				kvMain.clearStack();	
+				stack.clear();	
 			}
 			kvMain.getIO().deallocOutstanding();
 		}
@@ -84,7 +86,7 @@ public class SubSetIterator extends AbstractIterator {
 				if (nextKey == null)
 					throw new NoSuchElementException("No next element in SubSetIterator");
 				retKey = nextKey;
-				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
 						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
@@ -94,11 +96,11 @@ public class SubSetIterator extends AbstractIterator {
 					if (nextKey.compareTo(toKey) >= 0) {
 					//if (toKey.compareTo(nextKey) < 0) {
 						nextKey = null;
-						kvMain.clearStack();
+						stack.clear();
 					}
 				} else {
 					nextKey = null;
-					kvMain.clearStack();
+					stack.clear();
 				}
 				kvMain.getIO().deallocOutstanding();
 				return retKey;

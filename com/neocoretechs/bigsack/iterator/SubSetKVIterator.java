@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.iterator;
 import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -38,20 +39,21 @@ public class SubSetKVIterator extends AbstractIterator {
 	@SuppressWarnings("rawtypes")
 	Comparable fromKey, toKey, nextKey, retKey;
 	Object nextElem, retElem;
-	TraversalStackElement tracker;
+	TraversalStackElement tracker = new TraversalStackElement(null, 0,0);
+	Stack stack = new Stack();
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	public SubSetKVIterator(Comparable fromKey, Comparable toKey, KeyValueMainInterface bTree) throws IOException {
 		super(bTree);
 		this.fromKey = fromKey;
 		this.toKey = toKey;
 		synchronized (bTree) {
-			KeySearchResult tsr = bTree.seekKey(fromKey);
+			KeySearchResult tsr = bTree.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(tsr);
 			nextKey = tsr.getKeyValue().getmKey();
 			nextElem = tsr.getKeyValue().getmValue();
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
-					bTree.clearStack();
+					stack.clear();
 			}
 			bTree.getIO().deallocOutstanding();
 		}
@@ -68,7 +70,7 @@ public class SubSetKVIterator extends AbstractIterator {
 					throw new NoSuchElementException("No next element in SubSetKVIterator");
 				retKey = nextKey;
 				retElem = nextElem;
-				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
 						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
@@ -77,12 +79,12 @@ public class SubSetKVIterator extends AbstractIterator {
 					if (nextKey.compareTo(toKey) >= 0) {
 						nextKey = null;
 						nextElem = null; //exclusive
-						kvMain.clearStack();
+						stack.clear();
 					}
 				} else {
 					nextKey = null;
 					nextElem = null;
-					kvMain.clearStack();
+					stack.clear();
 				}
 				kvMain.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);

@@ -2,6 +2,7 @@ package com.neocoretechs.bigsack.iterator;
 import java.io.IOException;
 import java.util.ConcurrentModificationException;
 import java.util.NoSuchElementException;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
@@ -38,12 +39,12 @@ public class EntrySetIterator extends AbstractIterator {
 	Object retElem, nextElem;
 	@SuppressWarnings("rawtypes")
 	Comparable retKey, nextKey;
-	TraversalStackElement tracker;
+	TraversalStackElement tracker = new TraversalStackElement(null, 0,0);
+	Stack stack = new Stack();
 	public EntrySetIterator(KeyValueMainInterface kvMain) throws IOException {
 		super(kvMain);
 		synchronized (kvMain) {
-			current = kvMain.rewind();
-			tracker = kvMain.getRewound();
+			current = kvMain.rewind(tracker,stack);
 			nextElem = current.getmValue();
 			nextKey = current.getmKey();
 			kvMain.getIO().deallocOutstanding();
@@ -61,7 +62,7 @@ public class EntrySetIterator extends AbstractIterator {
 				// save for return
 				retKey = nextKey;
 				retElem = nextElem;
-				if((tracker = kvMain.gotoNextKey(tracker)) != null) {
+				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
 						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
@@ -70,7 +71,7 @@ public class EntrySetIterator extends AbstractIterator {
 				} else {
 					nextElem = null;
 					nextKey = null;
-					kvMain.clearStack();
+					stack.clear();
 				}
 				kvMain.getIO().deallocOutstanding();
 				return new Entry(retKey, retElem);

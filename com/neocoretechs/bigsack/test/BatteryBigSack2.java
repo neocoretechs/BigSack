@@ -2,11 +2,13 @@ package com.neocoretechs.bigsack.test;
 
 import java.util.Iterator;
 import java.util.Map.Entry;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.iterator.KeyValuePair;
 import com.neocoretechs.bigsack.session.BigSackAdapter;
 import com.neocoretechs.bigsack.session.BufferedTreeMap;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /**
  * This simple test battery tests the BufferedTreeMap and uses small to medium string K/V pairs
  * with insertion, deletion and retrieval.
@@ -29,7 +31,7 @@ public class BatteryBigSack2 {
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0; // controls range of testing
-	static int max = 100000;
+	static int max = 100000; //make sure insert is INCLUSIVE OF MAX!
 	static int numDelete = 100; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
@@ -47,9 +49,9 @@ public class BatteryBigSack2 {
 		 // add min to max
 		//battery1(session, argv);
 		// get and verify min to max
-		battery1A(session, argv);
+		//battery1A(session, argv);
 		 // get by value min to max
-		battery1A0(session, argv);
+		//battery1A0(session, argv);
 		// count
 		battery1A1(session, argv);
 		// first last
@@ -139,7 +141,8 @@ public class BatteryBigSack2 {
 	public static void battery1A1(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();	
 			int o = (int) session.size();
-			if( o != max) {
+			System.out.println(o);
+			if( o != max+1) {
 				System.out.println("BATTERY1A1 FAIL count should be "+max+" but came back "+o);
 				throw new Exception("BATTERY1A1 FAIL count should be "+max+" but came back "+o);
 			}
@@ -153,23 +156,25 @@ public class BatteryBigSack2 {
 	 */
 	public static void battery1B(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		String f = (String) session.first();
-		String l = (String) session.last();
+		Stack s = new Stack();
+		TraversalStackElement tse = new TraversalStackElement(null, 0, 0);
+		String f = (String) session.first(tse, s);
+		String l = (String) session.last(tse, s);
 		
 		String minval = val + String.format(uniqKeyFmt, min);
-		String maxval = val + String.format(uniqKeyFmt, (max-1));
+		String maxval = val + String.format(uniqKeyFmt, (max));
 		
 		if( !f.equals(minval) || !l.equals(maxval) ) { // max-1 cause we looped it in
 				 System.out.println("BATTERY1B FAIL "+f+" -- "+l+" supposed to be "+minval+" -- "+maxval);
 				throw new Exception("B1B Fail on Value get with "+f+" -- "+l+" supposed to be "+minval+" -- "+maxval);
 		}
 		
-		String fk = (String) session.firstKey();
+		String fk = (String) session.firstKey(tse, s);
 		System.out.println("B1B First Key="+fk);
-		String lk = (String) session.lastKey();
+		String lk = (String) session.lastKey(tse, s);
 		System.out.println("B1B Last Key="+lk);
 		minval = key + String.format(uniqKeyFmt, min);
-		maxval = key + String.format(uniqKeyFmt, (max-1));
+		maxval = key + String.format(uniqKeyFmt, (max));
 		if( !(fk.equals(minval)) || !(lk.equals(maxval)) ) { // looped in so max-1
 			 System.out.println("BATTERY1B FAIL "+fk+" -- "+lk+" supposed to be "+minval+" -- "+maxval);
 			throw new Exception("B1B Fail on Key get with "+fk+" -- "+lk+" supposed to be "+minval+" -- "+maxval);
@@ -202,7 +207,7 @@ public class BatteryBigSack2 {
 			}
 			++ctr;
 		}
-		if( ctr != max ) {
+		if( ctr != max+1 ) {
 			 System.out.println("BATTERY1C FAIL counter reached "+ctr+" not "+max);
 			throw new Exception("B1C FAIL counter reached "+ctr+" not "+max);
 		}
@@ -254,7 +259,7 @@ public class BatteryBigSack2 {
 			}
 			++ctr;
 		}
-		if( ctr != max ) {
+		if( ctr != max+1 ) {
 			 System.out.println("BATTERY1E FAIL counter reached "+ctr+" not "+max);
 			throw new Exception("B1E FAIL counter reached "+ctr+" not "+max);
 		}
@@ -282,7 +287,7 @@ public class BatteryBigSack2 {
 			}
 			++ctr;
 		}
-		if( ctr != max ) {
+		if( ctr != max+1 ) {
 			 System.out.println("BATTERY1F FAIL counter reached "+ctr+" not "+max);
 			throw new Exception("B1F FAIL counter reached "+ctr+" not "+max);
 		}
@@ -307,7 +312,7 @@ public class BatteryBigSack2 {
 			KeyValuePair f = (KeyValuePair) itk.next();
 			if( f == null)
 				throw new Exception("BATTERY1D1 FAIL K/V pair came back null for iterator.next() for "+key+String.format(uniqKeyFmt, max));
-			System.out.println("BATTERY1D1 iterator result:"+f);
+			//System.out.println("BATTERY1D1 iterator result:"+f);
 			String nval = val + String.format(uniqKeyFmt, ctr);
 			if( !f.value.equals(nval) ) {
 				 System.out.println("BATTERY1D1 FAIL "+f+" -- "+nval);
@@ -345,7 +350,7 @@ public class BatteryBigSack2 {
 			}
 			++ctr;
 		}
-		if( ctr != max ) {
+		if( ctr != max) {
 			 System.out.println("BATTERY1E1 FAIL counter reached "+ctr+" not "+max);
 			throw new Exception("B1E1 FAIL counter reached "+ctr+" not "+max);
 		}

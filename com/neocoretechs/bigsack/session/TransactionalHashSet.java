@@ -2,9 +2,11 @@ package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 
 public class TransactionalHashSet implements SetInterface, TransactionInterface {
 	protected BigSackSession session;
@@ -97,9 +99,9 @@ public class TransactionalHashSet implements SetInterface, TransactionInterface 
 	}
 
 	@Override
-	public KeySearchResult locate(Comparable key) throws IOException {
+	public KeySearchResult locate(Comparable key, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-			return session.locate(key);
+			return session.locate(key, stack);
 		}
 	}
 
@@ -129,9 +131,9 @@ public class TransactionalHashSet implements SetInterface, TransactionInterface 
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object last() throws IOException {
+	public Object last(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object o = session.lastKey();
+				Object o = session.lastKey(tse, stack);
 				return o;
 		}
 	}
@@ -140,9 +142,9 @@ public class TransactionalHashSet implements SetInterface, TransactionInterface 
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object first() throws IOException {
+	public Object first(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object o = session.firstKey();
+				Object o = session.firstKey(tse, stack);
 				return o;
 		}
 	

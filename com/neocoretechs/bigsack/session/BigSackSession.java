@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Stack;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
@@ -17,6 +18,7 @@ import com.neocoretechs.bigsack.iterator.TailSetKVIterator;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 import com.neocoretechs.bigsack.stream.EntrySetStream;
 import com.neocoretechs.bigsack.stream.HeadSetKVStream;
 import com.neocoretechs.bigsack.stream.HeadSetStream;
@@ -138,7 +140,8 @@ final class BigSackSession implements TransactionInterface {
 	 */
 	@SuppressWarnings("rawtypes")
 	protected Object get(Comparable o) throws IOException {
-		KeySearchResult tsr = kvStore.seekKey(o);
+		Stack stack = new Stack();
+		KeySearchResult tsr = kvStore.seekKey(o, stack);
 		if(tsr != null && tsr.atKey)
 			//return tsr.page.getKeyValueArray(tsr.insertPoint);
 			return tsr.getKeyValue();
@@ -161,8 +164,8 @@ final class BigSackSession implements TransactionInterface {
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	protected KeySearchResult locate(Comparable key) throws IOException {
-		KeySearchResult tsr = kvStore.locate(key);
+	protected KeySearchResult locate(Comparable key, Stack stack) throws IOException {
+		KeySearchResult tsr = kvStore.locate(key, stack);
 		return tsr;
 	}
 	
@@ -344,7 +347,8 @@ final class BigSackSession implements TransactionInterface {
 	@SuppressWarnings("rawtypes")
 	protected boolean contains(Comparable o) throws IOException {
 		// return TreeSearchResult
-		KeySearchResult tsr = kvStore.seekKey(o);
+		Stack s = new Stack();
+		KeySearchResult tsr = kvStore.seekKey(o, s);
 		return tsr.atKey;
 	}
 	
@@ -362,10 +366,9 @@ final class BigSackSession implements TransactionInterface {
 	 * @return Object from first key
 	 * @throws IOException
 	 */
-	protected Object first() throws IOException {
-		KeyValue current = kvStore.rewind();
+	protected Object first(TraversalStackElement tse, Stack stack) throws IOException {
+		KeyValue current = kvStore.rewind(tse, stack);
 		Object retVal = current.getmValue();
-		kvStore.clearStack();
 		return retVal;
 	}
 	/**
@@ -374,12 +377,11 @@ final class BigSackSession implements TransactionInterface {
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	protected Comparable firstKey() throws IOException {
+	protected Comparable firstKey(TraversalStackElement tse, Stack stack) throws IOException {
 		if(DEBUG)
 			System.out.printf("%s.firstKey for kvStore %s%n", this.getClass().getName(),kvStore);
-		KeyValue current = kvStore.rewind();
+		KeyValue current = kvStore.rewind(tse, stack);
 		Comparable retVal = current.getmKey();
-		kvStore.clearStack();
 		return retVal;
 	}
 	/**
@@ -387,10 +389,9 @@ final class BigSackSession implements TransactionInterface {
 	 * @return The Object of the greatest key
 	 * @throws IOException
 	 */
-	protected Object last() throws IOException {
-		KeyValue current = kvStore.toEnd();
+	protected Object last(TraversalStackElement tse, Stack stack) throws IOException {
+		KeyValue current = kvStore.toEnd(tse, stack);
 		Object retVal = current.getmValue();
-		kvStore.clearStack();
 		return retVal;
 	}
 	/**
@@ -399,10 +400,9 @@ final class BigSackSession implements TransactionInterface {
 	 * @throws IOException
 	 */
 	@SuppressWarnings("rawtypes")
-	protected Comparable lastKey() throws IOException {
-		KeyValue current = kvStore.toEnd();
+	protected Comparable lastKey(TraversalStackElement tse, Stack stack) throws IOException {
+		KeyValue current = kvStore.toEnd(tse, stack);
 		Comparable retVal = current.getmKey();
-		kvStore.clearStack();
 		return retVal;
 	}
 	/**

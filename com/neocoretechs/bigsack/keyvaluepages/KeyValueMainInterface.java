@@ -1,6 +1,7 @@
 package com.neocoretechs.bigsack.keyvaluepages;
 
 import java.io.IOException;
+import java.util.Stack;
 
 import com.neocoretechs.bigsack.btree.BTNode;
 import com.neocoretechs.bigsack.btree.BTreeNavigator;
@@ -76,7 +77,7 @@ public interface KeyValueMainInterface {
 	* @return search result with key data
 	* @exception IOException if read failure
 	*/
-	KeySearchResult seekKey(Comparable targetKey) throws IOException;
+	KeySearchResult seekKey(Comparable targetKey, Stack stack) throws IOException;
 
 	/**
 	 * Called back from delete in NodeInterface to remove persistent data prior to in-memory update where the
@@ -115,7 +116,7 @@ public interface KeyValueMainInterface {
 	 * @return
 	 * @throws IOException
 	 */
-	KeySearchResult locate(Comparable key) throws IOException;
+	KeySearchResult locate(Comparable key, Stack stack) throws IOException;
 
 	/**
 	* Remove key/data object.
@@ -178,7 +179,7 @@ public interface KeyValueMainInterface {
 	 * such that traversal can take place. Remember to clear stack after these operations.
 	 * @exception IOException If read fails
 	 */
-	KeyValue rewind() throws IOException;
+	KeyValue rewind(TraversalStackElement rewound, Stack stack) throws IOException;
 
 	/**
 	 * Set current position to end of tree.Sets up stack with pages and indexes
@@ -186,7 +187,7 @@ public interface KeyValueMainInterface {
 	 * @return 
 	 * @exception IOException If read fails
 	 */
-	KeyValue toEnd() throws IOException;
+	KeyValue toEnd(TraversalStackElement rewound, Stack stack) throws IOException;
 
 	/**
 	* Seek to location of next key in k/v store. Set current key and current object.
@@ -202,14 +203,14 @@ public interface KeyValueMainInterface {
 	* @return 0 if ok, != 0 if error
 	* @exception IOException If read fails
 	*/
-	TraversalStackElement gotoNextKey(TraversalStackElement tse) throws IOException;
+	TraversalStackElement gotoNextKey(TraversalStackElement tse, Stack stack) throws IOException;
 
 	/**
 	* Go to location of previous key in k/v store
 	* @return 0 if ok, <>0 if error
 	* @exception IOException If read fails
 	*/
-	TraversalStackElement gotoPrevKey(TraversalStackElement tse) throws IOException;
+	TraversalStackElement gotoPrevKey(TraversalStackElement tse, Stack stack) throws IOException;
 
 	/**
 	 * Utilize reposition to locate key. Set currentPage, currentIndex, currentKey, and currentChild.
@@ -219,11 +220,6 @@ public interface KeyValueMainInterface {
 	 * @throws IOException
 	 */
 	KeySearchResult search(Comparable targetKey) throws IOException;
-
-	/**
-	* Internal routine to clear references on stack. Just does stack.clear
-	*/
-	void clearStack();
 
 	GlobalDBIO getIO();
 
@@ -243,6 +239,5 @@ public interface KeyValueMainInterface {
 	void traverseStructure(StructureCallBackListener listener, KeyPageInterface node, long parent, int level)
 			throws IOException;
 
-	TraversalStackElement getRewound();
 
 }

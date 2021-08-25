@@ -2,10 +2,12 @@ package com.neocoretechs.bigsack.session;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Stack;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 
 public interface SetInterface {
 
@@ -33,7 +35,7 @@ public interface SetInterface {
 	 * @return The TreeSearchResult, which has atKey true if key was actually located, the page, and index on that page. if insertPoint > 0 then insertPoint-1 point to key that immediately precedes target key.
 	 * @throws IOException
 	 */	
-	KeySearchResult locate(Comparable key) throws IOException ;
+	KeySearchResult locate(Comparable key, Stack stack) throws IOException ;
 	
 	/**
 	* Returns iterator
@@ -60,14 +62,14 @@ public interface SetInterface {
 	 * @return Object from first key
 	 * @throws IOException
 	 */
-	Object first() throws IOException;
+	Object first(TraversalStackElement tse, Stack stack) throws IOException;
 
 	/**
 	 * Get the last object associated with greatest valued key in the KVStore
 	 * @return The Object of the greatest key
 	 * @throws IOException
 	 */
-	Object last() throws IOException;
+	Object last(TraversalStackElement tse, Stack stack) throws IOException;
 	
 	/**
 	 * Get the number of keys total.

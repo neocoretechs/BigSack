@@ -1,11 +1,13 @@
 package com.neocoretechs.bigsack.session;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Stack;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 /*
 * Copyright (c) 2003, NeoCoreTechs
 * All rights reserved.
@@ -62,9 +64,9 @@ public abstract class BufferedSet implements SetInterface {
 	}
 	
 	@SuppressWarnings("rawtypes")
-	public KeySearchResult locate(Comparable tvalue) throws IOException {
+	public KeySearchResult locate(Comparable tvalue, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-			return session.locate(tvalue);
+			return session.locate(tvalue, stack);
 		}
 	}
 	
@@ -176,9 +178,9 @@ public abstract class BufferedSet implements SetInterface {
 	* @return First key in set
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Comparable firstKey() throws IOException {
+	public Comparable firstKey(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-			Comparable ret = session.firstKey();
+			Comparable ret = session.firstKey(tse, stack);
 			session.Commit();
 			return ret;
 		}
@@ -187,9 +189,9 @@ public abstract class BufferedSet implements SetInterface {
 	* @return Last key in set
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Comparable lastKey() throws IOException {
+	public Comparable lastKey(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-			Comparable ret = session.lastKey();
+			Comparable ret = session.lastKey(tse, stack);
 			session.Commit();
 			return ret;
 		}
@@ -200,9 +202,9 @@ public abstract class BufferedSet implements SetInterface {
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object last() throws IOException {
+	public Object last(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-				Object ret = session.last();
+				Object ret = session.last(tse, stack);
 				session.Commit();
 				return ret;
 		}
@@ -213,9 +215,9 @@ public abstract class BufferedSet implements SetInterface {
 	* @return A long value of number of elements
 	* @exception IOException If backing store retrieval failure
 	*/
-	public Object first() throws IOException {
+	public Object first(TraversalStackElement tse, Stack stack) throws IOException {
 		synchronized (session.getMutexObject()) {
-			Object ret = session.first();
+			Object ret = session.first(tse, stack);
 			session.Commit();
 			return ret;
 		}
