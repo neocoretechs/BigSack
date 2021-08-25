@@ -297,8 +297,11 @@ public final class BTreeMain implements KeyValueMainInterface {
         KeySearchResult ksr = bTreeNavigator.search(key, true); // uses stack.add
         for(Object o: bTreeNavigator.getStack().toArray()) {
         	StackInfo si = (StackInfo)o;
-        	stack.push( new TraversalStackElement(si.mNode.getPage(), si.mNodeIdx, 0) ); 
+        	stack.push( new TraversalStackElement(si.mParent.getPage(), si.mNodeIdx, 0) ); 
         }
+        // if it didnt find it exactly, remove duplicate element from stack
+        if(!ksr.atKey && !stack.empty())
+        	stack.pop();
         return ksr;
     }
 

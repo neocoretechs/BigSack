@@ -85,10 +85,10 @@ public class BatteryBigSack2 {
 	 */
 	public static void battery1(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
-		for(int i = min; i < max; i++) {
+		for(int i = min; i <= max; i++) {
 			session.put(key + String.format(uniqKeyFmt, i), val+String.format(uniqKeyFmt, i));
 			if(i%(max/100) == 0) {
-				System.out.println("Current index "+i+" 100 added in "+(System.currentTimeMillis()-tims)+"ms.");
+				System.out.println("Current index "+i+" added in "+(System.currentTimeMillis()-tims)+"ms.");
 				tims = System.currentTimeMillis();
 			}
 		}
@@ -140,16 +140,17 @@ public class BatteryBigSack2 {
 	 */
 	public static void battery1A1(BufferedTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();	
-			int o = (int) session.size();
-			System.out.println(o);
-			if( o != max+1) {
-				System.out.println("BATTERY1A1 FAIL count should be "+max+" but came back "+o);
-				throw new Exception("BATTERY1A1 FAIL count should be "+max+" but came back "+o);
-			}
-		 System.out.println("BATTERY1A1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
+		int o = (int) session.size();
+		System.out.println("Total number of elements = "+o);
+		if( o != max+1) {
+			System.out.println("BATTERY1A1 FAIL count should be "+(max+1)+" but came back "+o);
+			throw new Exception("BATTERY1A1 FAIL count should be "+(max+1)+" but came back "+o);
+		}
+		System.out.println("BATTERY1A1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
-	 * See if first/last key/val works
+	 * See if first/last key/val works, this will verify that the rest of the tests will properly execute as min/max
+	 * bounds for keys and values are verified.
 	 * @param session
 	 * @param argv
 	 * @throws Exception
@@ -164,8 +165,8 @@ public class BatteryBigSack2 {
 		String minval = val + String.format(uniqKeyFmt, min);
 		String maxval = val + String.format(uniqKeyFmt, (max));
 		
-		if( !f.equals(minval) || !l.equals(maxval) ) { // max-1 cause we looped it in
-				 System.out.println("BATTERY1B FAIL "+f+" -- "+l+" supposed to be "+minval+" -- "+maxval);
+		if( !f.equals(minval) || !l.equals(maxval) ) { 
+				 System.out.println("BATTERY1B FAIL "+f+" -- "+l+" values are supposed to be "+minval+" -- "+maxval);
 				throw new Exception("B1B Fail on Value get with "+f+" -- "+l+" supposed to be "+minval+" -- "+maxval);
 		}
 		
@@ -175,12 +176,11 @@ public class BatteryBigSack2 {
 		System.out.println("B1B Last Key="+lk);
 		minval = key + String.format(uniqKeyFmt, min);
 		maxval = key + String.format(uniqKeyFmt, (max));
-		if( !(fk.equals(minval)) || !(lk.equals(maxval)) ) { // looped in so max-1
-			 System.out.println("BATTERY1B FAIL "+fk+" -- "+lk+" supposed to be "+minval+" -- "+maxval);
+		if( !(fk.equals(minval)) || !(lk.equals(maxval)) ) { 
+			 System.out.println("BATTERY1B FAIL "+fk+" -- "+lk+" keys are supposed to be "+minval+" -- "+maxval);
 			throw new Exception("B1B Fail on Key get with "+fk+" -- "+lk+" supposed to be "+minval+" -- "+maxval);
 		}
-		 System.out.println("BATTERY1B SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
-	
+		System.out.println("BATTERY1B SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
 	/**
 	 * Hammers on keyset and entryset
@@ -202,14 +202,14 @@ public class BatteryBigSack2 {
 			String nval = val + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nkey) || !l.equals(nval)) {
 				 System.out.println("BATTERY1C FAIL "+f+" -- "+l+" "+ctr);
-				 System.out.println("BATTERY1C FAIL counter reached "+ctr+" not "+max);
+				 System.out.println("BATTERY1C FAIL counter reached "+ctr);
 				throw new Exception("B1C Fail on get with "+f+" -- "+l+" "+ctr);
 			}
 			++ctr;
 		}
 		if( ctr != max+1 ) {
-			 System.out.println("BATTERY1C FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1C FAIL counter reached "+ctr+" not "+max);
+			 System.out.println("BATTERY1C FAIL counter reached "+ctr+" not "+(max+1));
+			throw new Exception("B1C FAIL counter reached "+ctr+" not "+(max+1));
 		}
 		 System.out.println("BATTERY1C SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -230,7 +230,7 @@ public class BatteryBigSack2 {
 			String nval = key + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nval) ) {
 				 System.out.println("BATTERY1D FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1D FAIL counter reached "+ctr+" not "+max);
+				 System.out.println("BATTERY1D FAIL counter reached "+ctr);
 				throw new Exception("B1D Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
@@ -247,21 +247,24 @@ public class BatteryBigSack2 {
 		long tims = System.currentTimeMillis();
 		// from element inclusive to element exclusive
 		// notice how we use base key to set lower bound as the partial unformed key is least possible value
-		Iterator<?> itk = session.subMap(key, key+String.format(uniqKeyFmt, max)); // 'to' exclusive so we use max val
-		int ctr = 0;
+		int minx = min+100;
+		String sminx =  key+String.format(uniqKeyFmt, minx);
+		int maxx = max-100;
+		String smaxx =  key+String.format(uniqKeyFmt, maxx);
+		Iterator<?> itk = session.subMap(sminx, smaxx); // 'to' exclusive so we use max val
+		int ctr = minx;
 		while(itk.hasNext()) {
 			Object f = itk.next();
 			String nval = key + String.format(uniqKeyFmt, ctr);
+			//System.out.println(nval);
 			if( !f.equals(nval) ) {
-				 System.out.println("BATTERY1E FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1E FAIL counter reached "+ctr+" not "+max);
-				throw new Exception("B1E Fail on get with "+f+" -- "+nval);
+				 System.out.println("BATTERY1E FAIL retrieved:"+f+" -- expected:"+nval);
+				 System.out.println("BATTERY1E FAIL counter reached "+ctr+" not "+maxx);
+				throw new Exception("B1E Fail on get with retrieved:"+f+" -- expected:"+nval);
 			}
+			if(ctr == maxx)
+				break;
 			++ctr;
-		}
-		if( ctr != max+1 ) {
-			 System.out.println("BATTERY1E FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1E FAIL counter reached "+ctr+" not "+max);
 		}
 		 System.out.println("BATTERY1E SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -279,17 +282,14 @@ public class BatteryBigSack2 {
 		int ctr = 0;
 		while(itk.hasNext()) {
 			Object f = itk.next();
+			//System.out.println(f);
 			String nval = key + String.format(uniqKeyFmt, ctr);
 			if( !f.equals(nval) ) {
 				 System.out.println("BATTERY1F FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1F FAIL counter reached "+ctr+" not "+max);
-				throw new Exception("B1F Fail on get with "+f+" -- "+nval);
+				 System.out.println("BATTERY1F FAIL counter reached "+ctr);
+				//throw new Exception("B1F Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
-		}
-		if( ctr != max+1 ) {
-			 System.out.println("BATTERY1F FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1F FAIL counter reached "+ctr+" not "+max);
 		}
 		 System.out.println("BATTERY1F SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -316,7 +316,7 @@ public class BatteryBigSack2 {
 			String nval = val + String.format(uniqKeyFmt, ctr);
 			if( !f.value.equals(nval) ) {
 				 System.out.println("BATTERY1D1 FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1D1 FAIL counter reached "+ctr+" not "+max);
+				 System.out.println("BATTERY1D1 FAIL counter reached "+ctr);
 				throw new Exception("B1D1 Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
@@ -338,21 +338,26 @@ public class BatteryBigSack2 {
 		long tims = System.currentTimeMillis();
 		// from element inclusive to element exclusive
 		// notice how we use base key to set lower bound as the partial unformed key is least possible value
-		Iterator<?> itk = session.subMapKV(key, key+String.format(uniqKeyFmt, max)); // 'to' exclusive so we use max val
-		int ctr = 0;
+		// 'to' exclusive so we use max val
+		int minx = min+100;
+		String sminx =  key+String.format(uniqKeyFmt, minx);
+		int maxx = max-100;
+		String smaxx =  key+String.format(uniqKeyFmt, maxx);
+		Iterator<?> itk = session.subMapKV(sminx, smaxx); // 'to' exclusive so we use max val
+		int ctr = minx;
 		while(itk.hasNext()) {
 			KeyValuePair f = (KeyValuePair) itk.next();
-			String nval = val + String.format(uniqKeyFmt, ctr);
-			if( !f.value.equals(nval) ) {
-				 System.out.println("BATTERY1E1 FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1E1 FAIL counter reached "+ctr+" not "+max);
-				throw new Exception("B1E1 Fail on get with "+f+" -- "+nval);
+			String nval = key + String.format(uniqKeyFmt, ctr);
+			String nvalx = val + String.format(uniqKeyFmt, ctr);
+			//System.out.println(nval);
+			if( !f.key.equals(nval) || !f.value.equals(nvalx)) {
+				 System.out.println("BATTERY1E1 FAIL retrieved:"+f+" -- expected:"+nval);
+				 System.out.println("BATTERY1E1 FAIL counter reached "+ctr);
+				throw new Exception("B1E1 Fail on get with retrieved:"+f+" -- expected:"+nval);
 			}
+			if(ctr == maxx)
+				break;
 			++ctr;
-		}
-		if( ctr != max) {
-			 System.out.println("BATTERY1E1 FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1E1 FAIL counter reached "+ctr+" not "+max);
 		}
 		 System.out.println("BATTERY1E1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}
@@ -374,14 +379,14 @@ public class BatteryBigSack2 {
 			String nval = val + String.format(uniqKeyFmt, ctr);
 			if( !f.value.equals(nval) ) {
 				 System.out.println("BATTERY1F1 FAIL "+f+" -- "+nval);
-				 System.out.println("BATTERY1F1 FAIL counter reached "+ctr+" not "+max);
+				 System.out.println("BATTERY1F1 FAIL counter reached "+ctr);
 				throw new Exception("B1F1 Fail on get with "+f+" -- "+nval);
 			}
 			++ctr;
 		}
-		if( ctr != max ) {
-			 System.out.println("BATTERY1F1 FAIL counter reached "+ctr+" not "+max);
-			throw new Exception("B1F1 FAIL counter reached "+ctr+" not "+max);
+		if( ctr != max+1 ) {
+			 System.out.println("BATTERY1F1 FAIL counter reached "+ctr+" not "+(max+1));
+			throw new Exception("B1F1 FAIL counter reached "+ctr+" not "+(max+1));
 		}
 		 System.out.println("BATTERY1F1 SUCCESS in "+(System.currentTimeMillis()-tims)+" ms.");
 	}

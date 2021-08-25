@@ -58,14 +58,14 @@ public class EntrySetIterator extends AbstractIterator {
 			try {
 				// move nextelem to retelem, search nextelem, get nextelem
 				if (nextKey == null)
-					throw new NoSuchElementException("No next element in EntrySetIterator");
+					throw new NoSuchElementException("No next iterator element");
 				// save for return
 				retKey = nextKey;
 				retElem = nextElem;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
-						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
+						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					nextElem = current.getmValue();
 				} else {

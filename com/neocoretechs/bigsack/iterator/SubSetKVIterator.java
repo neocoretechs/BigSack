@@ -49,8 +49,8 @@ public class SubSetKVIterator extends AbstractIterator {
 		synchronized (bTree) {
 			KeySearchResult tsr = bTree.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(tsr);
-			nextKey = tsr.getKeyValue().getmKey();
-			nextElem = tsr.getKeyValue().getmValue();
+			nextKey = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmKey();
+			nextElem = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmValue();
 			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
 					stack.clear();
@@ -67,13 +67,13 @@ public class SubSetKVIterator extends AbstractIterator {
 			// move nextelem to retelem, search nextelem, get nextelem
 			synchronized (kvMain) {
 				if (nextKey == null)
-					throw new NoSuchElementException("No next element in SubSetKVIterator");
+					throw new NoSuchElementException("No next iterator element");
 				retKey = nextKey;
 				retElem = nextElem;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
 					if(current == null)
-						throw new ConcurrentModificationException("Next HeadSetIterator element rendered invalid. Last good key:"+nextKey);
+						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
 					nextKey = current.getmKey();
 					nextElem = current.getmValue();
 					if (nextKey.compareTo(toKey) >= 0) {

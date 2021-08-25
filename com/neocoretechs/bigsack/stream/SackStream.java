@@ -30,11 +30,10 @@ import java.util.stream.StreamSupport;
  * Once wrapped, the system supplied StreamSupport class provides the actual stream using:
  * (Stream<T>) StreamSupport.stream(spliterator, parallel) <p/>
  * Before calling 'of()', call 'parallel()' , 'setParallel(true | false)', 'sequential()' or 
- * 'unordered()' to change the charactaristics of the stream.<p/>
- * The default charactaristscs are Spliterator.DISTINCT | Spliterator.SORTED | Spliterator.ORDERED<p/>
+ * 'unordered()' to change the characteristics of the stream.<p/>
+ * The default characteristics are Spliterator.DISTINCT | Spliterator.SORTED | Spliterator.ORDERED<p/>
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
- * @param <T>
  */
 public class SackStream<T> implements Stream<T> {
 	protected static final int characteristics = Spliterator.DISTINCT | Spliterator.SORTED | Spliterator.ORDERED;

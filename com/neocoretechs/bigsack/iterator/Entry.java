@@ -1,7 +1,11 @@
 package com.neocoretechs.bigsack.iterator;
 
 import java.io.Serializable;
-
+/**
+ * Serializable wrapper for Map.Entry
+ * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
+ *
+ */
 public class Entry implements java.util.Map.Entry<Comparable, Object>, Serializable {
 	private static final long serialVersionUID = 4761413076980149698L;
 	Comparable key;
