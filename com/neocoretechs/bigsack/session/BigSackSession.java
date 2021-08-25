@@ -368,6 +368,8 @@ final class BigSackSession implements TransactionInterface {
 	 */
 	protected Object first(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyValue current = kvStore.rewind(tse, stack);
+		if(current == null)
+			return null;
 		Object retVal = current.getmValue();
 		return retVal;
 	}
@@ -381,6 +383,8 @@ final class BigSackSession implements TransactionInterface {
 		if(DEBUG)
 			System.out.printf("%s.firstKey for kvStore %s%n", this.getClass().getName(),kvStore);
 		KeyValue current = kvStore.rewind(tse, stack);
+		if(current == null)
+			return null;
 		Comparable retVal = current.getmKey();
 		return retVal;
 	}
@@ -391,6 +395,8 @@ final class BigSackSession implements TransactionInterface {
 	 */
 	protected Object last(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyValue current = kvStore.toEnd(tse, stack);
+		if(current == null)
+			return null;
 		Object retVal = current.getmValue();
 		return retVal;
 	}
@@ -402,6 +408,8 @@ final class BigSackSession implements TransactionInterface {
 	@SuppressWarnings("rawtypes")
 	protected Comparable lastKey(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyValue current = kvStore.toEnd(tse, stack);
+		if(current == null)
+			return null;
 		Comparable retVal = current.getmKey();
 		return retVal;
 	}

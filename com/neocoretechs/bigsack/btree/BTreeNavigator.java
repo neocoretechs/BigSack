@@ -89,6 +89,8 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException
      */
 	public KeySearchResult search(K key, boolean stack) throws IOException {
+		if(key == null)
+			throw new IOException("Key cannot be null");
         BTNode<K, V> currentNode = (BTNode<K, V>) getRootNode();
         BTNode<K, V> parentNode = null;
         KeyValue<K, V> currentKey;
@@ -98,6 +100,10 @@ public class BTreeNavigator<K extends Comparable, V> {
         
         while (currentNode != null) {
             numberOfKeys = currentNode.getNumKeys();
+            if(numberOfKeys == 0) {
+            	tsr = new KeySearchResult(currentNode.getPage(), 0, false);
+            	return tsr;
+            }
             i = 0;
             currentKey = currentNode.getKeyValueArray(i);
             while ((i < numberOfKeys) && (key.compareTo(currentKey.getmKey()) > 0)) {
