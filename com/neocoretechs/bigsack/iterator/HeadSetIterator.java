@@ -45,10 +45,12 @@ public class HeadSetIterator extends AbstractIterator {
 		this.toKey = toKey;
 		synchronized (kvMain) {
 			current = kvMain.rewind(tracker,stack);
-			nextKey = current.getmKey();
-			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
-				nextKey = null;
-				stack.clear();
+			if(current != null) {
+				nextKey = current.getmKey();
+				if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
+					nextKey = null;
+					stack.clear();
+				}
 			}
 			kvMain.getIO().deallocOutstanding();
 		}
@@ -66,12 +68,16 @@ public class HeadSetIterator extends AbstractIterator {
 				retKey = nextKey;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-					if(current == null)
-						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
-					nextKey = current.getmKey();
-					if (nextKey.compareTo(toKey) >= 0) {
+					if(current == null) {
 						nextKey = null;
 						stack.clear();
+						//throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
+					} else {
+						nextKey = current.getmKey();
+						if (nextKey.compareTo(toKey) >= 0) {
+							nextKey = null;
+							stack.clear();
+						}
 					}
 				} else {
 					nextKey = null;

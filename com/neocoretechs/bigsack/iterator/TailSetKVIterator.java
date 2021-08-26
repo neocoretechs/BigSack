@@ -49,12 +49,14 @@ public class TailSetKVIterator extends AbstractIterator {
 			KeySearchResult ksr = bTree.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(ksr);
 			current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-			nextKey = current.getmKey();
-			nextElem = current.getmValue();
-			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
-				nextElem = null; //exclusive
-				nextKey = null;
-				stack.clear();
+			if(current != null) {
+				nextKey = current.getmKey();
+				nextElem = current.getmValue();
+				if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
+					nextElem = null; //exclusive
+					nextKey = null;
+					stack.clear();
+				}
 			}
 			bTree.getIO().deallocOutstanding();
 		}
@@ -72,10 +74,15 @@ public class TailSetKVIterator extends AbstractIterator {
 				retElem = nextElem;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-					if(current == null)
-						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
-					nextKey = current.getmKey();
-					nextElem = current.getmValue();
+					if(current == null) {
+						nextKey = null;
+						nextElem = null;
+						stack.clear();
+						//throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
+					} else {
+						nextKey = current.getmKey();
+						nextElem = current.getmValue();
+					}
 				} else {
 					nextKey = null;
 					nextElem = null;

@@ -46,12 +46,14 @@ public class HeadSetKVIterator extends AbstractIterator {
 		this.toKey = toKey;
 		synchronized (kvMain) {
 			current = kvMain.rewind(tracker, stack);
-			nextKey = current.getmKey();
-			nextElem = current.getmValue();
-			if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
-				nextElem = null; //exclusive
-				nextKey = null;
-				stack.clear();
+			if(current != null) {
+				nextKey = current.getmKey();
+				nextElem = current.getmValue();
+				if (nextKey == null || nextKey.compareTo(toKey) >= 0) {
+					nextElem = null; //exclusive
+					nextKey = null;
+					stack.clear();
+				}
 			}
 			kvMain.getIO().deallocOutstanding();
 		}
@@ -70,14 +72,19 @@ public class HeadSetKVIterator extends AbstractIterator {
 				retElem = nextElem;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-					if(current == null)
-						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
-					nextKey = current.getmKey();
-					nextElem = current.getmValue();
-					if (nextKey.compareTo(toKey) >= 0) {
+					if(current == null) {
 						nextElem = null; //exclusive
 						nextKey = null;
 						stack.clear();
+						//throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
+					} else {
+						nextKey = current.getmKey();
+						nextElem = current.getmValue();
+						if (nextKey.compareTo(toKey) >= 0) {
+							nextElem = null; //exclusive
+							nextKey = null;
+							stack.clear();
+						}
 					}
 				} else {
 					nextElem = null;

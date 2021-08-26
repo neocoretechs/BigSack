@@ -606,45 +606,23 @@ public final class BTreeMain implements KeyValueMainInterface {
 	private synchronized TraversalStackElement seekRightTree(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
         if (((BTreeKeyPage) node).getmIsLeafNode()) {
-        	if(DEBUG)
-            	System.out.printf("%s Leaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
-                    //for (int i = 0; i < node.getNumKeys(); i++) {
-                    //        System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
-                    //}
-                    //System.out.println("\n");
+        	if(DEBUG) {
+            	System.out.printf("%s Leaf node numkeys:%d %s %s%n",this.getClass().getName(),node.getNumKeys(),node,tse);
+            	printStack(stack);
+            }
             tse.index = node.getNumKeys()-1;
         } else {
-            if(DEBUG)
-            	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+            if(DEBUG) {
+            	System.out.printf("%s NonLeaf node numkeys:%d %s %s%n",this.getClass().getName(),node.getNumKeys(),node,tse);
+            	printStack(stack);
+            }
             KeyPageInterface btk = (KeyPageInterface) node.getPage(tse.index);
             TraversalStackElement tsex = new TraversalStackElement(node, tse.index, tse.index);
-            push(tsex, stack);
-            return seekRightTree(new TraversalStackElement(btk, node.getNumKeys(), node.getNumKeys()), stack);
+            stack.push(tsex);
+            return seekRightTree(new TraversalStackElement(btk, btk.getNumKeys(), btk.getNumKeys()), stack);
         }                       
         return tse;
 	}
-
-	/** 
-	 * Internal routine to push stack. Pushes a TraversalStackElement
-	 * set keyPageStack[stackDepth] to currentPage
-	 * set indexStack[stackDepth] to currentIndex
-	 * Sets stackDepth up by 1
-	 * @param  
-	 * @return true if stackDepth not at MAXSTACK, false otherwise
-	 */
-	private synchronized void push(TraversalStackElement tse, Stack stack) {
-		//if (stackDepth == MAXSTACK)
-		//	throw new RuntimeException("Maximum retrieval stack depth exceeded at "+stackDepth);
-		if( tse == null )
-			throw new RuntimeException("BTreeMain.push cant push a null page to stack");
-		stack.push(tse);
-		if( DEBUG ) {
-			System.out.print("BTreeMain.Push:");
-			printStack(stack);
-		}
-	}
-
-
 
 	private synchronized void printStack(Stack stack) {
 		System.out.println("Stack Depth:"+stack.size());

@@ -72,14 +72,19 @@ public class SubSetKVIterator extends AbstractIterator {
 				retElem = nextElem;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-					if(current == null)
-						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
-					nextKey = current.getmKey();
-					nextElem = current.getmValue();
-					if (nextKey.compareTo(toKey) >= 0) {
+					if(current == null) {
 						nextKey = null;
 						nextElem = null; //exclusive
 						stack.clear();
+						//throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
+					} else {
+						nextKey = current.getmKey();
+						nextElem = current.getmValue();
+						if (nextKey.compareTo(toKey) >= 0) {
+							nextKey = null;
+							nextElem = null; //exclusive
+							stack.clear();
+						}
 					}
 				} else {
 					nextKey = null;

@@ -71,9 +71,13 @@ public class TailSetIterator extends AbstractIterator {
 				retKey = nextKey;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-					if(current == null)
-						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
-					nextKey = current.getmKey();
+					if(current == null) {
+						nextKey = null;
+						stack.clear();
+						//throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
+					} else {
+						nextKey = current.getmKey();
+					}
 				} else {
 					nextKey = null;
 					stack.clear();

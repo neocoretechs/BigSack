@@ -45,8 +45,10 @@ public class EntrySetIterator extends AbstractIterator {
 		super(kvMain);
 		synchronized (kvMain) {
 			current = kvMain.rewind(tracker,stack);
-			nextElem = current.getmValue();
-			nextKey = current.getmKey();
+			if(current != null) {
+				nextElem = current.getmValue();
+				nextKey = current.getmKey();
+			}
 			kvMain.getIO().deallocOutstanding();
 		}
 	}
@@ -64,10 +66,15 @@ public class EntrySetIterator extends AbstractIterator {
 				retElem = nextElem;
 				if((tracker = kvMain.gotoNextKey(tracker, stack)) != null) {
 					current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-					if(current == null)
-						throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
-					nextKey = current.getmKey();
-					nextElem = current.getmValue();
+					if(current == null) {
+						nextElem = null;
+						nextKey = null;
+						stack.clear();
+						//throw new ConcurrentModificationException("Next iterator element rendered invalid. Last good key:"+nextKey);
+					} else {
+						nextKey = current.getmKey();
+						nextElem = current.getmValue();
+					}
 				} else {
 					nextElem = null;
 					nextKey = null;
