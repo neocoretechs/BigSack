@@ -200,9 +200,8 @@ public class TransactionalTreeMap implements TransactionInterface, OrderedKVMapI
 		}
 	}
 	/**
-	* Return the last element, we have to bypass cache for this because
-	* of our random throwouts
-	* @return A long value of number of elements
+	* Return the last value in the set
+	* @return The last element in the set
 	* @exception IOException If backing store retrieval failure
 	*/
 	public Object last(TraversalStackElement tse, Stack stack) throws IOException {
