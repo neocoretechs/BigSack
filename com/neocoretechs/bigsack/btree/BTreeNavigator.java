@@ -16,6 +16,21 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
 /**
  * Auxiliary methods to aid BTree navigation. Insert, split, merge, retrieve.
+ * Our acumen is when leaf fills, then it is split to a middle parent and two leaves. 
+ * If the grandparent is not full, we can merge the lone parent, 
+ * else we wait for further splits and merges to fill that non-leaf.<p/>
+ * Case 1: On delete, If we delete from a child, shift the remaining elements left if not empty<p/>
+ * If a child empties, we never leave null links, so we split a node off from the end or
+ * beginning if that position in the parent is the predecessor link, otherwise we split
+ * the parent at the link to the now empty leaf, thus creating 2 valid links to 2 new leaves.<p/>
+ * Again, if that parent can be merged with grandparent, do so.<p/>
+ * Case 2: For a non-leaf that deletes from a leaf and does NOT empty it, we can rotate the far right
+ * left child to the former position in the parent.<p/>
+ * Case 3: Finally for 2 internal nodes, a non-leaf parent deleting from a non-leaf child, we have to take the right node
+ * and follow it to the left most leaf, take the first child, and rotate it into the slot. That is,
+ * the least valued node immediately to the right<p/>
+ * If case 3 empties a leaf, handle it with case using the parent of that leftmost leaf.
+ * 
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
 public class BTreeNavigator<K extends Comparable, V> {
@@ -395,6 +410,53 @@ public class BTreeNavigator<K extends Comparable, V> {
         // number of keys is automatically increased by placement via setKeyValueArray
     }
     
+    /**
+     * Split a child node with a presumed parent. Perform a merge on single value node with parent if not root later.
+     * @param parentNode The new parent of the previously full key
+     * @param nodeIdx Position into which to insert LOWER_BOUND_KEYNUM from btNode into parentNode
+     * @param btNode The previous, full key
+     * @throws IOException
+     */
+    private void splitNode(BTNode parentNode, int leftUpperBound, int rightLowerBound, int rightUpperBound, int newRightKeys) throws IOException {
+        // create 2 new node with the same leaf status as the previous full node
+    	leftNodeSplitThread.startSplit(parentNode, leftUpperBound);
+    	rightNodeSplitThread.startSplit(parentNode, newRightKeys, rightLowerBound, rightUpperBound);
+    	try {
+			nodeSplitSynch.await();
+		} catch (InterruptedException | BrokenBarrierException e) {
+			e.printStackTrace();
+			return;
+		}
+        BTNode<K, V> leftNode = leftNodeSplitThread.getResult();
+        BTNode<K, V> rightNode = rightNodeSplitThread.getResult();
+       	if(DEBUGSPLIT)
+    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
+      	//if(DEBUGSPLIT)
+    	//	System.out.printf("%s.splitNode setup parent. parentNodeNode %s, leftNode %s rightNode=%s%n", this.getClass().getName(), parentNode, leftNode, rightNode);
+        // The node should have 1 key at this point.
+        // move its middle key to position 0 and set left and right child pointers to new node.
+        parentNode.setKeyValueArray(0, parentNode.getKeyValueArray(leftUpperBound));
+        parentNode.setKeyValueArray(leftUpperBound, null);
+        parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+        parentNode.getKeyValueArray(0).valueState = KeyValue.synchStates.mustUpdate;
+        parentNode.setChild(0, leftNode); // make sure to set child pages after setChild
+        parentNode.childPages[0] = leftNode.getPageId();
+        parentNode.setChild(1, rightNode);
+        parentNode.childPages[1] = rightNode.getPageId();
+        parentNode.setNumKeys(1);
+        parentNode.getPage().setNumKeys(1);
+        parentNode.setmIsLeaf(false);
+        leftNode.setUpdated(true);
+        rightNode.setUpdated(true);
+        parentNode.setUpdated(true);
+        leftNode.getPage().setNumKeys(leftNode.getNumKeys());
+        leftNode.getPage().putPage();
+        rightNode.getPage().setNumKeys(rightNode.getNumKeys());
+        rightNode.getPage().putPage();
+        parentNode.getPage().putPage(); // parent might be flushed from buffer pool, so do a put
+     	if(DEBUGSPLIT)
+    		System.out.printf("%s.splitNode exit. parentNodeNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
+    }
     //
     // Find the predecessor node for a specified node
     //
@@ -638,17 +700,21 @@ public class BTreeNavigator<K extends Comparable, V> {
      */
     public V delete(K key) throws IOException {
         mIntermediateInternalNode = null;
-        KeyValue<K, V> keyVal = deleteKey(null, (BTNode)getRootNode(), key, 0);
+        KeySearchResult ksr = search(key, true); // populate stack
+        if(!ksr.atKey)
+        	return null; // didnt specifically find it;
+        StackInfo si = mStack.peek(); // get parent and target
+        KeyValue<K, V> keyVal = deleteKey(si.mParent, si.mNodeIdx, si.mNode, key, ksr.insertPoint);
         if (keyVal == null) {
             return null;
         }
-        bTreeMain.delete(keyVal.getValueOptr(), keyVal.getmValue());
-        bTreeMain.delete(keyVal.getKeyOptr(), key);
         return keyVal.getmValue();
     }
 
     /**
-     * Delete the given key.
+     * Delete the given key. See preamble above. In general we favor a non-conversion of non-leaf to leaf nodes
+     * which prevents having to check all the links when we remove nodes. We favor the addition of new leaves from emptied ones.
+     * When a leaf fills we convert it by splitting.
      * @param parentNode
      * @param btNode
      * @param key
@@ -656,7 +722,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @return The Kev/Value entry of deleted key
      * @throws IOException
      */
-    private KeyValue<K, V> deleteKey(BTNode<K, V> parentNode, BTNode<K, V> btNode, K key, int nodeIdx) throws IOException {
+    private KeyValue<K, V> deleteKey(BTNode<K, V> parentNode, int parentIndex, BTNode<K, V> btNode, K key, int nodeIdx) throws IOException {
         int i;
         int nIdx;
         KeyValue<K, V> retVal;
@@ -665,138 +731,83 @@ public class BTreeNavigator<K extends Comparable, V> {
             // The tree is empty
             return null;
         }
-
+        // if its a leaf node, just shift left unless empty at which point we have split at parent node
+        // position, then attempt a merge
         if (btNode.getIsLeaf()) {
-            nIdx = searchKey(btNode, key);
-            if (nIdx < 0) {
-                // Can't find the specified key
-                return null;
-            }
-
-            retVal = btNode.getKeyValueArray(nIdx);
-
-            if ((btNode.getNumKeys() > BTNode.LOWER_BOUND_KEYNUM) || (parentNode == null)) {
-                // Remove it from the node
-                for (i = nIdx; i < btNode.getNumKeys() - 1; ++i) {
-                    btNode.setKeyValueArray(i, btNode.getKeyValueArray(i + 1));
-                    btNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate;
-                }
-                btNode.setKeyValueArray(i, null);
-                btNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate;
-                btNode.setNumKeys(btNode.getNumKeys() - 1);
-                btNode.getPage().setUpdated(true);
-                if (btNode.getNumKeys() == 0) {
-                    // btNode is actually the root node
-                    btNode.setAsNewRoot();
-                }
-
-                return retVal;
-            }
-
-            // Find the left sibling
-            BTNode<K, V> rightSibling;
-            BTNode<K, V> leftSibling = (BTNode<K, V>) BTNode.getLeftSiblingAtIndex(parentNode, nodeIdx);
-            if ((leftSibling != null) && (leftSibling.getNumKeys() > BTNode.LOWER_BOUND_KEYNUM)) {
-                // Remove the key and borrow a key from the left sibling
-                moveLeftLeafSiblingKeyWithKeyRemoval(btNode, nodeIdx, nIdx, parentNode, leftSibling);
-            }
-            else {
-                rightSibling = (BTNode<K, V>) BTNode.getRightSiblingAtIndex(parentNode, nodeIdx);
-                if ((rightSibling != null) && (rightSibling.getNumKeys() > BTNode.LOWER_BOUND_KEYNUM)) {
-                    // Remove a key and borrow a key the right sibling
-                    moveRightLeafSiblingKeyWithKeyRemoval(btNode, nodeIdx, nIdx, parentNode, rightSibling);
-                }
-                else {
-                    // Merge to its sibling
-                    boolean isRebalanceNeeded = false;
-                    boolean bStatus;
-                    if (leftSibling != null) {
-                        // Merge with the left sibling
-                        bStatus = doLeafSiblingMergeWithKeyRemoval(btNode, nodeIdx, nIdx, parentNode, leftSibling, false);
-                        if (!bStatus) {
-                            isRebalanceNeeded = false;
-                        }
-                        else if (parentNode.getNumKeys() < BTNode.LOWER_BOUND_KEYNUM) {
-                            // Need to rebalance the tree
-                            isRebalanceNeeded = true;
-                        }
-                    }
-                    else {
-                        // Merge with the right sibling
-                        bStatus = doLeafSiblingMergeWithKeyRemoval(btNode, nodeIdx, nIdx, parentNode, rightSibling, true);
-                        if (!bStatus) {
-                            isRebalanceNeeded = false;
-                        }
-                        else if (parentNode.getNumKeys() < BTNode.LOWER_BOUND_KEYNUM) {
-                            // Need to rebalance the tree
-                            isRebalanceNeeded = true;
-                        }
-                    }
-
-                    if (isRebalanceNeeded && (getRootNode() != null)) {
-                        rebalanceTree((BTNode<K, V>) getRootNode(), parentNode, (K) parentNode.getKeyValueArray(0).getmKey());
-                    }
-                }
-            }
-
+        	retVal = shiftNodeLeft(btNode, nodeIdx);
+        	if(btNode.getNumKeys() == 0) {
+        		if(mStack.isEmpty()) // it was root
+        			return retVal;
+        		// split parent at point where we came to leaf child
+        		// if parent position is 0 just split off left node
+        		if(parentIndex == 0) {
+        		 	leftNodeSplitThread.startSplit(parentNode, 1);
+        		 	BTNode<K, V> resNode = leftNodeSplitThread.getResult();
+        		 	retVal = shiftNodeLeft(parentNode, 0); // handles putPage
+        		 	resNode.getPage().setUpdated(true);
+        		 	resNode.getPage().putPage();
+        		} else {
+        			// if parent is last node just extract right and move it to one we just zapped to zero
+        			if(parentIndex >= parentNode.getNumKeys()-1) {
+             		 	rightNodeSplitThread.startSplit(parentNode, 1, parentNode.getNumKeys()-1, parentNode.getNumKeys());
+            		 	BTNode<K, V> resNode = rightNodeSplitThread.getResult();
+            		 	retVal = btNode.getKeyValueArray(parentNode.getNumKeys()-1);
+            		 	btNode.setKeyValueArray(parentNode.getNumKeys()-1, null);
+            		 	btNode.childPages[parentNode.getNumKeys()] = -1L;
+            		 	// this may not get set
+            		 	btNode.setChild(parentNode.getNumKeys(), null);
+            		 	btNode.getKeyValueArray(parentNode.getNumKeys()).keyState = KeyValue.synchStates.mustUpdate;
+            		 	// set num keys to current-1, then set the key at that index to mustUpdate
+            		 	btNode.setNumKeys(btNode.getNumKeys()-1);
+            		 	btNode.getKeyValueArray(btNode.getNumKeys()-1).keyState = KeyValue.synchStates.mustUpdate;
+            		 	btNode.getPage().setNumKeys(btNode.getNumKeys());
+            		 	btNode.getPage().putPage();
+            		 	resNode.getPage().setUpdated(true);
+            		 	resNode.getPage().putPage();
+        			} else {
+        				// we have to split both nodes from parent, then potentially join parent to grandparent
+        				splitNode(parentNode, parentIndex, parentIndex+1, parentNode.getNumKeys(),parentNode.getNumKeys() - parentIndex);
+        				retVal = parentNode.getKeyValueArray(0);
+        			}
+        		}
+        	}
             return retVal;  // Done with handling for the leaf node
         }
 
         //
-        // At this point the node is an internal node
+        // At this point the target node is an internal, non-leaf node, so case 2 or 3 in the preamble applies
         //
-
-        nIdx = searchKey(btNode, key);
-        if (nIdx >= 0) {
-            // We found the key in the internal node
-
-            // Find its predecessor
-            mIntermediateInternalNode = btNode;
-            mNodeIdx = nIdx;
-            BTNode<K, V> predecessorNode =  (BTNode<K, V>) findPredecessor(btNode, nIdx);
-            KeyValue<K, V> predecessorKey = predecessorNode.getKeyValueArray(predecessorNode.getNumKeys() - 1);
-
-            // Swap the data of the deleted key and its predecessor (in the leaf node)
-            KeyValue<K, V> deletedKey = btNode.getKeyValueArray(nIdx);
-            btNode.setKeyValueArray(nIdx, predecessorKey);
-            predecessorNode.setKeyValueArray(predecessorNode.getNumKeys() - 1, deletedKey);
-
-            // mIntermediateNode is done in findPrecessor
-            return deleteKey(mIntermediateInternalNode, predecessorNode, deletedKey.getmKey(), mNodeIdx);
-        }
-
-        //
-        // Find the child subtree (node) that contains the key
-        //
-        i = 0;
-        KeyValue<K, V> currentKey = btNode.getKeyValueArray(0);
-        while ((i < btNode.getNumKeys()) && (key.compareTo(currentKey.getmKey()) > 0)) {
-            ++i;
-            if (i < btNode.getNumKeys()) {
-                currentKey = btNode.getKeyValueArray(i);
-            }
-            else {
-                --i;
-                break;
-            }
-        }
-
-        BTNode<K, V> childNode;
-        if (key.compareTo(currentKey.getmKey()) > 0) {
-            childNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(btNode, i);
-            if (childNode.getKeyValueArray(0).getmKey().compareTo(btNode.getKeyValueArray(btNode.getNumKeys() - 1).getmKey()) > 0) {
-                // The right-most side of the node
-                i = i + 1;
-            }
-        }
-        else {
-            childNode = (BTNode<K, V>) BTNode.getLeftChildAtIndex(btNode, i);
-        }
-
-        return deleteKey(btNode, childNode, key, i);
+        
+        return null;// temporary
+     
     }
-
-
+    /**
+     * Move the indicated node out and overwrite with rightmost nodes, then put page to deep store.
+     * @param rootNode Node to shift
+     * @param i position to overwrite
+     * @throws IOException
+     */
+    private KeyValue<K, V> shiftNodeLeft(BTNode<K, V> rootNode, int i) throws IOException {
+   		//
+		// move the keys to the left and overwrite indicated node
+    	int numberOfKeys = rootNode.getNumKeys();
+    	KeyValue<K,V> kv = rootNode.getKeyValueArray(i);
+		for(; i < numberOfKeys; i++) {
+			if(i+1 != numberOfKeys) {
+				rootNode.setKeyValueArray(i, rootNode.getKeyValueArray(i+1));
+			}
+			rootNode.setChild(i, rootNode.getChildNoread(i+1));
+  			rootNode.childPages[i] = rootNode.childPages[i+1]; // make sure to setChild then set the childPages as setChild may compensate for unretrieved node
+			rootNode.getKeyValueArray(i).keyState = KeyValue.synchStates.mustUpdate;
+			rootNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustUpdate;
+		}
+		--numberOfKeys;
+		rootNode.setNumKeys(numberOfKeys);
+		((BTreeKeyPage)rootNode.getPage()).delete(i);
+		rootNode.getPage().setNumKeys(numberOfKeys);
+		rootNode.getPage().putPage();
+		return kv;
+    }
     //
     // Remove the specified key and move a key from the right leaf sibling to the node
     // Note: The node and its sibling must be leaves

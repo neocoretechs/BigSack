@@ -294,14 +294,22 @@ public class BTreeKeyPage implements KeyPageInterface {
 	* @param index the index of the item on this page to delete
 	* @throws IOException 
 	*/
-	synchronized void delete(int index) throws IOException {
+	public synchronized void delete(int index) throws IOException {
 		//System.out.println("KeyPageInterface.delete "+this+" index:"+index);
 		if( bTNode.getKeyValueArray(index) == null )
 			throw new IOException("Node at index "+index+" null for attempted delete");
-		if( !bTNode.getKeyValueArray(index).getKeyOptr().equals(Optr.emptyPointer))
+		if( !bTNode.getKeyValueArray(index).getKeyOptr().equals(Optr.emptyPointer)) {
 			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmKey()).length);
-		if( bTNode.getKeyValueArray(index).getValueOptr() != null && !bTNode.getKeyValueArray(index).getValueOptr().equals(Optr.emptyPointer))
+			bTNode.getKeyValueArray(index).setKeyOptr(Optr.emptyPointer);
+			bTNode.getKeyValueArray(index).setmKey(null);
+			bTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.mustUpdate;
+		}
+		if( bTNode.getKeyValueArray(index).getValueOptr() != null && !bTNode.getKeyValueArray(index).getValueOptr().equals(Optr.emptyPointer)) {
 			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmValue()).length);
+			bTNode.getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
+			bTNode.getKeyValueArray(index).setmValue(null);
+			bTNode.getKeyValueArray(index).valueState = KeyValue.synchStates.mustUpdate;
+		}
 		// If its the rightmost key ignore move
 		setUpdated(true);
 	}
@@ -434,7 +442,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 					getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || 
 					getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace ||
 					getKeyValueArray(i).keyState == KeyValue.synchStates.mustUpdate) { // if set, key was processed by putKey[i]
-				if(getKeyValueArray(i).getKeyOptr().getBlock() == 0 || getKeyValueArray(i).getKeyOptr().getBlock() == -1)
+				if(getKeyValueArray(i).getKeyOptr().getBlock() == 0 )//|| getKeyValueArray(i).getKeyOptr().getBlock() == -1)
 					throw new IOException("Bad page write key index "+i+" page:"+this.toString());
 				bs.writeLong(getKeyValueArray(i).getKeyOptr().getBlock());
 				bs.writeShort(getKeyValueArray(i).getKeyOptr().getOffset());

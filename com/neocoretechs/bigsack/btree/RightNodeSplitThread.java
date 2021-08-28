@@ -28,7 +28,9 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
     BTNode<K, V> rightNode;
     BTNode<K, V> parentNode;
     BTreeNavigator<K, V> bTree;
-
+    int NEWKEYS;
+    int LOWERRIGHTLIMIT;
+    int UPPERRIGHTLIMIT;
 
 	public RightNodeSplitThread(CyclicBarrier synch, BTreeNavigator<K, V> bTree) {
 		this.synch = synch;
@@ -36,9 +38,29 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 	}
 	
 	public CyclicBarrier getBarrier() { return synch; }
-	
+	/**
+	 * Split a full node, bounds are taken from constants in {@link BTNode}
+	 * @param parentNode
+	 */
 	public void startSplit(BTNode<K, V> parentNode) {
 		this.parentNode = parentNode;
+		NEWKEYS = BTNode.LOWER_BOUND_KEYNUM;
+		LOWERRIGHTLIMIT = BTNode.MIN_DEGREE;
+		UPPERRIGHTLIMIT = BTNode.UPPER_BOUND_KEYNUM;
+		trigger.countDown();
+	}
+	/**
+	 * Split a potentially partially full node
+	 * @param parentNode
+	 * @param newKeys total keys in new node, typically upperRightLimit = loweRightLimit
+	 * @param lowerRightLimit index of parent target
+	 * @param upperRightLimit numKeys of parent in almost all cases
+	 */
+	public void startSplit(BTNode<K, V> parentNode, int newKeys, int lowerRightLimit, int upperRightLimit) {
+		this.parentNode = parentNode;
+		NEWKEYS = newKeys;
+		LOWERRIGHTLIMIT = lowerRightLimit;
+		UPPERRIGHTLIMIT = upperRightLimit;
 		trigger.countDown();
 	}
 	
@@ -61,12 +83,12 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 			    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
 			        // Since the node is full,
 			        // new nodes must share LOWER_BOUND_KEYNUM (aka t - 1) keys from the node
-			        rightNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
+			        rightNode.setNumKeys(NEWKEYS);
 			        // Copy right half of the keys from the node to the new nodes
 			      	//if(DEBUGSPLIT)
 			    	//	System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
-			        for(i = BTNode.MIN_DEGREE; i < BTNode.UPPER_BOUND_KEYNUM; i++) {
-			        	int j = i-BTNode.MIN_DEGREE;
+			        for(i = LOWERRIGHTLIMIT; i < UPPERRIGHTLIMIT; i++) {
+			        	int j = i-LOWERRIGHTLIMIT;
 			            rightNode.setKeyValueArray(j, parentNode.getKeyValueArray(i));
 			            rightNode.setChild(j, parentNode.getChildNoread(i));
 			            rightNode.childPages[j] = parentNode.childPages[i]; // make sure to set child pages after setChild in case instance is null
@@ -75,9 +97,9 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 			            parentNode.setKeyValueArray(i, null);
 			            parentNode.setChild(i, null);
 			        }
-			        rightNode.setChild(BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE, parentNode.getChildNoread(BTNode.UPPER_BOUND_KEYNUM));
-			        rightNode.childPages[BTNode.UPPER_BOUND_KEYNUM-BTNode.MIN_DEGREE] = parentNode.childPages[BTNode.UPPER_BOUND_KEYNUM];
-			        parentNode.setChild(BTNode.UPPER_BOUND_KEYNUM, null);
+			        rightNode.setChild(UPPERRIGHTLIMIT-LOWERRIGHTLIMIT, parentNode.getChildNoread(UPPERRIGHTLIMIT));
+			        rightNode.childPages[UPPERRIGHTLIMIT-LOWERRIGHTLIMIT] = parentNode.childPages[UPPERRIGHTLIMIT];
+			        parentNode.setChild(UPPERRIGHTLIMIT, null);
 				synch.await();
 				trigger = new CountDownLatch(1);
 			} catch (InterruptedException | BrokenBarrierException e) {

@@ -28,7 +28,7 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
     BTNode<K, V> leftNode;
     BTNode<K, V> parentNode;
     BTreeNavigator<K, V> bTree;
-
+    int LEFTUPPERLIMIT;
 
 	public LeftNodeSplitThread(CyclicBarrier synch, BTreeNavigator<K, V> bTree) {
 		this.synch = synch;
@@ -36,12 +36,26 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 	}
 	
 	public CyclicBarrier getBarrier() { return synch; }
-	
+	/**
+	 * Split a full node
+	 * @param parentNode
+	 */
 	public void startSplit(BTNode<K, V> parentNode) {
 		this.parentNode = parentNode;
+		LEFTUPPERLIMIT = BTNode.LOWER_BOUND_KEYNUM;
 		trigger.countDown();
 	}
-
+	/**
+	 * Split a potentially partially full node
+	 * @param parentNode
+	 * @param leftUpperLimit
+	 */
+	public void startSplit(BTNode<K, V> parentNode, int leftUpperLimit) {
+		this.parentNode = parentNode;
+		LEFTUPPERLIMIT = leftUpperLimit;
+		trigger.countDown();
+	}
+	
 	public BTNode<K, V> getResult() {
 		return leftNode;
 	}
@@ -61,11 +75,11 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 			    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
 			        // Since the node is full,
 			        // new nodes must share LOWER_BOUND_KEYNUM (aka t - 1) keys from the node
-			        leftNode.setNumKeys(BTNode.LOWER_BOUND_KEYNUM);
+			        leftNode.setNumKeys(LEFTUPPERLIMIT);
 			        // Copy right half of the keys from the node to the new nodes
 			      	//if(DEBUGSPLIT)
 			    	//	System.out.printf("%s.splitNode copy keys. parentNode %s%n", this.getClass().getName(), parentNode);
-			        for (i = 0; i < BTNode.LOWER_BOUND_KEYNUM; ++i) {
+			        for (i = 0; i < LEFTUPPERLIMIT; ++i) {
 			        	leftNode.setKeyValueArray(i, parentNode.getKeyValueArray(i));
 			        	leftNode.setChild(i, parentNode.getChildNoread(i));
 			        	leftNode.childPages[i] = parentNode.childPages[i]; // make sure to set childPages after setChild in case child is null
