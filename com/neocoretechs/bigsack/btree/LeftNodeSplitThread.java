@@ -42,8 +42,8 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 	 */
 	public void startSplit(BTNode<K, V> parentNode) {
 		this.parentNode = parentNode;
-		LEFTUPPERLIMIT = BTNode.LOWER_BOUND_KEYNUM;
-		leftNode = null;
+		this.LEFTUPPERLIMIT = BTNode.LOWER_BOUND_KEYNUM;
+		this.leftNode = null;
 		trigger.countDown();
 	}
 	/**
@@ -53,15 +53,21 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 	 */
 	public void startSplit(BTNode<K, V> parentNode, int leftUpperLimit) {
 		this.parentNode = parentNode;
-		LEFTUPPERLIMIT = leftUpperLimit;
-		leftNode = null;
+		this.LEFTUPPERLIMIT = leftUpperLimit;
+		this.leftNode = null;
 		trigger.countDown();
 	}
-	
-	public void startSplit(BTNode<K, V> parentNode2, BTNode<K, V> btNode, int leftUpperLimit) throws IOException {
+	/**
+	 * Use the existing, presumably empty node as target
+	 * @param parentNode the parent node
+	 * @param btNode The target used in lieu of creating new node
+	 * @param leftUpperLimit
+	 * @throws IOException
+	 */
+	public void startSplit(BTNode<K, V> parentNode, BTNode<K, V> btNode, int leftUpperLimit) throws IOException {
 		this.parentNode = parentNode;
-		LEFTUPPERLIMIT = leftUpperLimit;
-		leftNode = btNode;
+		this.LEFTUPPERLIMIT = leftUpperLimit;
+		this.leftNode = btNode;
 		for(int i =0; i <= leftNode.getNumKeys(); i++) {
 			if(i < leftNode.getNumKeys())
 				leftNode.setKeyValueArray(i, null);
@@ -72,7 +78,10 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 		leftNode.getPage().setNumKeys(0);
 		trigger.countDown();		
 	}
-	
+	/**
+	 * Get the newly created node, or the passed in second arg of 3 arg constructor
+	 * @return
+	 */
 	public BTNode<K, V> getResult() {
 		return leftNode;
 	}

@@ -25,7 +25,7 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 	private volatile boolean shouldRun = true;
 	private CyclicBarrier synch;
 	private CountDownLatch trigger = new CountDownLatch(1);
-    BTNode<K, V> rightNode;
+    BTNode<K, V> rightNode = null;
     BTNode<K, V> parentNode;
     BTreeNavigator<K, V> bTree;
     int NEWKEYS;
@@ -44,6 +44,7 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 	 */
 	public void startSplit(BTNode<K, V> parentNode) {
 		this.parentNode = parentNode;
+		this.rightNode = null;
 		NEWKEYS = BTNode.LOWER_BOUND_KEYNUM;
 		LOWERRIGHTLIMIT = BTNode.MIN_DEGREE;
 		UPPERRIGHTLIMIT = BTNode.UPPER_BOUND_KEYNUM;
@@ -58,6 +59,24 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 	 */
 	public void startSplit(BTNode<K, V> parentNode, int newKeys, int lowerRightLimit, int upperRightLimit) {
 		this.parentNode = parentNode;
+		this.rightNode = null;
+		NEWKEYS = newKeys;
+		LOWERRIGHTLIMIT = lowerRightLimit;
+		UPPERRIGHTLIMIT = upperRightLimit;
+		trigger.countDown();
+	}
+	
+	/**
+	 * Split a potentially partially full node
+	 * @param parentNode
+	 * @param rightNode re-usable right
+	 * @param newKeys total keys in new node, typically upperRightLimit = loweRightLimit
+	 * @param lowerRightLimit index of parent target
+	 * @param upperRightLimit numKeys of parent in almost all cases
+	 */
+	public void startSplit(BTNode<K, V> parentNode, BTNode<K, V> rightNode, int newKeys, int lowerRightLimit, int upperRightLimit) {
+		this.parentNode = parentNode;
+		this.rightNode = rightNode;
 		NEWKEYS = newKeys;
 		LOWERRIGHTLIMIT = lowerRightLimit;
 		UPPERRIGHTLIMIT = upperRightLimit;
@@ -77,7 +96,8 @@ public class RightNodeSplitThread<K extends Comparable, V> implements Runnable {
 						System.out.printf("%s processing:",this.getClass().getName());
 					}
 				       // create node with the same leaf status as the previous full node
-			        rightNode = (BTNode<K, V>) bTree.createNode(parentNode.getIsLeaf());
+					if(rightNode == null)
+						rightNode = (BTNode<K, V>) bTree.createNode(parentNode.getIsLeaf());
 			        int i;
 			       	if(DEBUG)
 			    		System.out.printf("%s.splitNode parentNode %s%n", this.getClass().getName(), GlobalDBIO.valueOf(parentNode.getPageId()));
