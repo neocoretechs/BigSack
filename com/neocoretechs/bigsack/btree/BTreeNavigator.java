@@ -26,8 +26,10 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
  * beginning if that position in the parent is the predecessor link, otherwise we split
  * the parent at the link to the now empty leaf, thus creating 2 valid links to 2 new leaves.<p/>
  * Again, if that parent can be merged with grandparent, do so.<p/>
- * <dd>Case 2: For a non-leaf that deletes from a leaf and does NOT empty it, we can rotate the far right
- * left child to the former position in the parent.<p/>
+ * <dd>Case 2: For a non-leaf that deletes from a leaf and does NOT empty it, we can rotate the right far
+ * left child or left far right child to the former position in the parent.<p/>
+ * Special case here is when a parent has 2 leaves with one node, in that case bring them both up into parent
+ * and remove 2 leaves and designate parent a leaf.
  * <dd>Case 3: Finally for 2 internal nodes, a non-leaf parent deleting from a non-leaf child, we have to take the right node
  * and follow it to the left most leaf, take the first child, and rotate it into the slot. That is,
  * the least valued node immediately to the right<p/>
@@ -555,9 +557,14 @@ public class BTreeNavigator<K extends Comparable, V> {
             // The tree is empty
             return null;
         }
+        // check case of parent one node and 2 one node leaves, in this case consolidate the survivors and demote the parent
+        retVal = checkDegenerateSingletons(parentNode, btNode);
+        if(retVal != null)
+        	return retVal;
         // if its a leaf node, just shift left unless empty at which point we have split at parent node
         // position, then attempt a merge
         if (btNode.getIsLeaf()) {
+        	System.out.println("Case 2:");
         	retVal = shiftNodeLeft(btNode, nodeIdx); // deletes key and data from page and node
         	// start our initial stack to prime recursive rotation of empty leaf nodes if necessary
         	Stack<StackInfo> subStack = new Stack<StackInfo>();
@@ -568,12 +575,99 @@ public class BTreeNavigator<K extends Comparable, V> {
         //
         // At this point the target node is an internal, non-leaf node, so case 3 in the preamble applies
         //
+    	System.out.println("Case 3:");
 		Stack<StackInfo> s2 = getRightChildLeastLeaf(btNode,nodeIdx);
 		retVal = shiftNodeLeft(s2.peek().mNode,0); // shiftNodeLeft handles housekeeping of page and indexes etc.
 		recursiveRotate(s2);
         return retVal;
     }
     /**
+     * Check the case of a one key node and 2 one key leaves, we delete one and consolidate the other
+     * to root, then demote root to leaf
+     * @param parentNode
+     * @param btNode
+     * @return
+     * @throws IOException 
+     */
+    private KeyValue<K, V> checkDegenerateSingletons(BTNode<K, V> parentNode, BTNode<K, V> btNode) throws IOException {
+    	System.out.println("Case 0:");
+    	KeyValue<K, V> retVal = null;
+    	// If target node is root, and it has 2 leaves each with 1 key, and 1 key itself, then consolidate
+    	if(parentNode == null) { // node is root
+    		if(btNode.getNumKeys() > 1)
+    			return null;
+			if(btNode.getChild(0) == null || !((BTNode<K, V>) btNode.getChild(0)).getIsLeaf() || btNode.getChild(0).getNumKeys() > 1)
+				return null;
+			if(btNode.getChild(1) == null || !((BTNode<K, V>) btNode.getChild(1)).getIsLeaf() || btNode.getChild(1).getNumKeys() > 1)
+				return null;
+		   	System.out.println("Case 0+1:");
+			retVal = btNode.getKeyValueArray(0); // 
+			// move the 2 leaves to root, set root as leaf
+			btNode.setKeyValueArray(1, btNode.getChild(1).getKeyValueArray(0));
+			btNode.setKeyValueArray(0, btNode.getChild(0).getKeyValueArray(0));
+			// left
+			btNode.getChild(0).setKeyValueArray(0, null);
+			btNode.getChild(0).setNumKeys(0);
+			((BTNode)btNode.getChild(0)).getPage().getBlockAccessIndex().getBlk().resetBlock();
+			((BTNode)btNode.getChild(0)).getPage().putPage();
+			// right
+			btNode.getChild(1).setKeyValueArray(0, null);
+			btNode.getChild(1).setNumKeys(0);
+			((BTNode)btNode.getChild(1)).getPage().getBlockAccessIndex().getBlk().resetBlock();
+			((BTNode)btNode.getChild(1)).getPage().putPage();
+			// parent
+			btNode.setChild(0, null); // set child pages after setChild
+			btNode.childPages[0] = -1L;
+			btNode.setChild(1, null);
+			btNode.childPages[1] = -1L;
+			btNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+			btNode.getKeyValueArray(1).keyState = KeyValue.synchStates.mustUpdate;
+		   	btNode.getPage().setNumKeys(parentNode.getNumKeys());
+	    	btNode.setmIsLeaf(true);
+	    	btNode.getPage().putPage();
+	    	return retVal;
+    	} else {
+    	   	System.out.println("Case 0+2:");
+    		if(parentNode.getNumKeys() == 1 && btNode.getIsLeaf() && btNode.getNumKeys() == 1) {
+    			if(parentNode.getChild(0) == btNode) {
+    				if(!((BTNode<K, V>) parentNode.getChild(1)).getIsLeaf() || parentNode.getChild(1).getNumKeys() > 1)
+    					return null;
+    				// delete target is left leaf, move right node up and set parent to leaf
+    				parentNode.setKeyValueArray(1, parentNode.getChild(1).getKeyValueArray(0));
+    			} else {
+    				if(parentNode.getChild(1) == btNode) {
+    					if(!((BTNode<K, V>) parentNode.getChild(0)).getIsLeaf() || parentNode.getChild(0).getNumKeys() > 1)
+    						return null;
+    					// delete target is right leaf, move left node up after moving parent right 1
+    					parentNode.setKeyValueArray(1, parentNode.getKeyValueArray(0));
+    					parentNode.setKeyValueArray(0, parentNode.getChild(0).getKeyValueArray(0));
+    				} else {
+    					throw new IOException("Node inconsistency in singleton parent "+parentNode);
+    				}
+    			}
+    		}
+    	}
+		// target of delete
+    	retVal = btNode.getKeyValueArray(0);
+		btNode.setKeyValueArray(0, null);
+		btNode.setNumKeys(0);
+		btNode.getPage().getBlockAccessIndex().getBlk().resetBlock();
+		btNode.getPage().putPage();
+		// parent
+		parentNode.setChild(0, null); // set child pages after setChild
+		parentNode.childPages[0] = -1L;
+		parentNode.setChild(1, null);
+		parentNode.childPages[1] = -1L;
+		parentNode.setChild(2, null);
+		parentNode.childPages[2] = -1L;
+    	parentNode.getPage().setNumKeys(parentNode.getNumKeys());
+		parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+		parentNode.getKeyValueArray(1).keyState = KeyValue.synchStates.mustUpdate;
+    	parentNode.setmIsLeaf(true);
+    	parentNode.getPage().putPage();
+		return retVal;
+	}
+	/**
      * Call with stack populated with at least the initial parent and empty target and the index of link from parent.
      * We will recursively process to rotate the nodes leaving no empty leaf.<p/>
      * 
@@ -631,8 +725,9 @@ public class BTreeNavigator<K extends Comparable, V> {
   				}
   				return;
    			} else {
-				// only 1 node in parent, if left node was deleted, pick least valued right leaf to rotate in
-				// if right node was deleted, pick greatest valued left leaf node to rotate in
+				// only 1 node in parent, if left node was deleted, pick least valued right leaf to rotate in to parent
+				// if right node was deleted, pick greatest valued left leaf node to rotate in to parent
+   				// then place old parent link 
    				BTNode<K, V> reNode = null;
    				if(BTNode.getLeftChildAtIndex(parentNode, 0) == btNode) {
    					Stack<StackInfo> s2 = getRightChildLeastLeaf(parentNode,0); // start from parent element 0, go right, then leftmost
@@ -659,11 +754,16 @@ public class BTreeNavigator<K extends Comparable, V> {
    						}
    					}
    				}
-   				// we processed our reNode, we have our retVal, so set previously empty leaf to it
-   				btNode.setKeyValueArray(0, retVal);
+   				// we processed our reNode, we have our retVal, so set previously empty leaf to parent and parent to value
+   				btNode.setKeyValueArray(0, parentNode.getKeyValueArray(parentIndex));
    				btNode.getPage().setNumKeys(1);
    				btNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
    				btNode.getPage().putPage();
+   				parentNode.setKeyValueArray(parentIndex, retVal);
+   				parentNode.getKeyValueArray(parentIndex).keyState = KeyValue.synchStates.mustUpdate;
+   				// parent child pointers, etc remain unchanged
+   				parentNode.setUpdated(true);
+   				parentNode.getPage().putPage();
 			}
     	}
      	// either recursively process our parent from above or return if we are done
