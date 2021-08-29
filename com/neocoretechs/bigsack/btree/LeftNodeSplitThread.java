@@ -43,6 +43,7 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 	public void startSplit(BTNode<K, V> parentNode) {
 		this.parentNode = parentNode;
 		LEFTUPPERLIMIT = BTNode.LOWER_BOUND_KEYNUM;
+		leftNode = null;
 		trigger.countDown();
 	}
 	/**
@@ -53,7 +54,23 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 	public void startSplit(BTNode<K, V> parentNode, int leftUpperLimit) {
 		this.parentNode = parentNode;
 		LEFTUPPERLIMIT = leftUpperLimit;
+		leftNode = null;
 		trigger.countDown();
+	}
+	
+	public void startSplit(BTNode<K, V> parentNode2, BTNode<K, V> btNode, int leftUpperLimit) throws IOException {
+		this.parentNode = parentNode;
+		LEFTUPPERLIMIT = leftUpperLimit;
+		leftNode = btNode;
+		for(int i =0; i <= leftNode.getNumKeys(); i++) {
+			if(i < leftNode.getNumKeys())
+				leftNode.setKeyValueArray(i, null);
+			leftNode.childPages[i] = -1L;
+			leftNode.setChild(i, null);
+		}
+		leftNode.setNumKeys(0);
+		leftNode.getPage().setNumKeys(0);
+		trigger.countDown();		
 	}
 	
 	public BTNode<K, V> getResult() {
@@ -69,6 +86,7 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 					System.out.printf("%s processing:",this.getClass().getName());
 				}
 				       // create 2 new node with the same leaf status as the previous full node
+				if(leftNode == null)
 			        leftNode = (BTNode<K, V>) bTree.createNode(parentNode.getIsLeaf());
 			        int i;
 			       	if(DEBUG)
@@ -98,5 +116,6 @@ public class LeftNodeSplitThread<K extends Comparable, V> implements Runnable {
 		}
 
 	}
+
 
 }

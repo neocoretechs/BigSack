@@ -13,6 +13,7 @@ import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
+import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 
 /**
  * Auxiliary methods to aid BTree navigation. Insert, split, merge, retrieve.
@@ -513,7 +514,25 @@ public class BTreeNavigator<K extends Comparable, V> {
         return btNode;
     }
 
-
+    private BTNode<K, V> getRightChildLeastLeaf(BTNode<K, V> rootNode, int i) throws IOException {
+    	BTNode<K, V> rightNode = (BTNode<K, V>) BTNode.getRightChildAtIndex(rootNode, i);
+    	if(rightNode == null)
+    		return null;
+    	StackInfo tse = new StackInfo(rootNode,rightNode,i);
+    	Stack<StackInfo> stack = new Stack<StackInfo>();
+    	StackInfo tsex = seekLeftTree(tse, stack);
+    	return tsex.mNode;
+    }
+    
+    private BTNode<K, V> getLeftChildGreatestLeaf(BTNode<K, V> rootNode, int i) throws IOException {
+      	BTNode<K, V> leftNode = (BTNode<K, V>) rootNode.getLeftChildAtIndex(rootNode, i);
+    	if(leftNode == null)
+    		return null;
+     	StackInfo tse = new StackInfo(rootNode,leftNode,i);
+    	Stack<StackInfo> stack = new Stack<StackInfo>();
+    	StackInfo tsex = seekRightTree(tse, stack);
+    	return tsex.mNode;
+    }
     //
     // Do the left rotation
     //
@@ -734,42 +753,67 @@ public class BTreeNavigator<K extends Comparable, V> {
         // if its a leaf node, just shift left unless empty at which point we have split at parent node
         // position, then attempt a merge
         if (btNode.getIsLeaf()) {
-        	retVal = shiftNodeLeft(btNode, nodeIdx);
-        	if(btNode.getNumKeys() == 0) {
+        	retVal = shiftNodeLeft(btNode, nodeIdx); // deletes key and data from page and node
+        	if(btNode.getNumKeys() == 0) { // is our leaf now empty?
         		if(mStack.isEmpty()) // it was root
         			return retVal;
         		// split parent at point where we came to leaf child
         		// if parent position is 0 just split off left node
-        		if(parentIndex == 0) {
-        		 	leftNodeSplitThread.startSplit(parentNode, 1);
-        		 	BTNode<K, V> resNode = leftNodeSplitThread.getResult();
-        		 	retVal = shiftNodeLeft(parentNode, 0); // handles putPage
-        		 	resNode.getPage().setUpdated(true);
-        		 	resNode.getPage().putPage();
-        		} else {
-        			// if parent is last node just extract right and move it to one we just zapped to zero
-        			if(parentIndex >= parentNode.getNumKeys()-1) {
-             		 	rightNodeSplitThread.startSplit(parentNode, 1, parentNode.getNumKeys()-1, parentNode.getNumKeys());
-            		 	BTNode<K, V> resNode = rightNodeSplitThread.getResult();
-            		 	retVal = btNode.getKeyValueArray(parentNode.getNumKeys()-1);
-            		 	btNode.setKeyValueArray(parentNode.getNumKeys()-1, null);
-            		 	btNode.childPages[parentNode.getNumKeys()] = -1L;
-            		 	// this may not get set
-            		 	btNode.setChild(parentNode.getNumKeys(), null);
-            		 	btNode.getKeyValueArray(parentNode.getNumKeys()).keyState = KeyValue.synchStates.mustUpdate;
-            		 	// set num keys to current-1, then set the key at that index to mustUpdate
-            		 	btNode.setNumKeys(btNode.getNumKeys()-1);
-            		 	btNode.getKeyValueArray(btNode.getNumKeys()-1).keyState = KeyValue.synchStates.mustUpdate;
-            		 	btNode.getPage().setNumKeys(btNode.getNumKeys());
-            		 	btNode.getPage().putPage();
-            		 	resNode.getPage().setUpdated(true);
-            		 	resNode.getPage().putPage();
-        			} else {
-        				// we have to split both nodes from parent, then potentially join parent to grandparent
-        				splitNode(parentNode, parentIndex, parentIndex+1, parentNode.getNumKeys(),parentNode.getNumKeys() - parentIndex);
-        				retVal = parentNode.getKeyValueArray(0);
-        			}
-        		}
+      			if(parentNode.getNumKeys() > 1) { // can we split off the node?
+      				if(parentIndex == 0) {
+        				leftNodeSplitThread.startSplit(parentNode, btNode, 1);
+        				BTNode<K, V> resNode = leftNodeSplitThread.getResult();
+        				retVal = shiftNodeLeft(parentNode, 0); // handles putPage
+        				resNode.getPage().setUpdated(true);
+        				resNode.getPage().putPage();
+      				} else {
+      					// if parent is last node just extract right and move it to one we just zapped to zero
+      					if(parentIndex >= parentNode.getNumKeys()-1) {
+      						rightNodeSplitThread.startSplit(parentNode, 1, parentNode.getNumKeys()-1, parentNode.getNumKeys());
+      						BTNode<K, V> resNode = rightNodeSplitThread.getResult();
+      						retVal = btNode.getKeyValueArray(parentNode.getNumKeys()-1);
+      						btNode.setKeyValueArray(parentNode.getNumKeys()-1, null);
+      						btNode.childPages[parentNode.getNumKeys()] = -1L;
+      						// this may not get set
+      						btNode.setChild(parentNode.getNumKeys(), null);
+      						btNode.getKeyValueArray(parentNode.getNumKeys()).keyState = KeyValue.synchStates.mustUpdate;
+      						// set num keys to current-1, then set the key at that index to mustUpdate
+      						btNode.setNumKeys(btNode.getNumKeys()-1);
+      						btNode.getKeyValueArray(btNode.getNumKeys()-1).keyState = KeyValue.synchStates.mustUpdate;
+      						btNode.getPage().setNumKeys(btNode.getNumKeys());
+      						btNode.getPage().putPage();
+      						resNode.getPage().setUpdated(true);
+      						resNode.getPage().putPage();
+      					} else {
+      						// we have to split both nodes from parent, then potentially join parent to grandparent
+      						splitNode(parentNode, parentIndex, parentIndex+1, parentNode.getNumKeys(),parentNode.getNumKeys() - parentIndex);
+      						retVal = parentNode.getKeyValueArray(0);
+      					}
+      				}
+       			} else {
+    				// only 1 node in parent, if left node was deleted, pick least valued right leaf to rotate in
+    				// if right node was deleted, pick greatest valued left leaf node to rotate in
+       				BTNode<K, V> reNode = null;
+       				KeyValue<K, V> reVal = null;
+       				if(BTNode.getLeftChildAtIndex(parentNode, 0) == btNode) {
+       					reNode = getRightChildLeastLeaf(parentNode,0);
+       					reVal = shiftNodeLeft(reNode,0);
+       				} else {
+       					if(BTNode.getRightChildAtIndex(parentNode, 0) == btNode) {
+       						reNode = getLeftChildGreatestLeaf(parentNode,0);
+       						reVal = reNode.getKeyValueArray(reNode.getNumKeys()-1);
+       						reNode.setNumKeys(reNode.getNumKeys()-1);
+       						reNode.getPage().setNumKeys(reNode.getNumKeys());
+       						reNode.getPage().putPage(); // peeled off last node
+       					} else {
+       						throw new IOException("Could not find corresponding link to child node from parent during single node parent delete:"+parentNode);
+       					}
+       				}
+       				btNode.setKeyValueArray(0, reVal);
+       				btNode.getPage().setNumKeys(1);
+       				btNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+       				btNode.getPage().putPage();
+    			}
         	}
             return retVal;  // Done with handling for the leaf node
         }
@@ -781,6 +825,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         return null;// temporary
      
     }
+        
     /**
      * Move the indicated node out and overwrite with rightmost nodes, then put page to deep store.
      * @param rootNode Node to shift
@@ -1073,6 +1118,57 @@ public class BTreeNavigator<K extends Comparable, V> {
             }
         }
     }
+
+	/**
+	* Seeks to leftmost key in current subtree. Takes the currentChild and currentIndex from currentPage and uses the
+	* child at currentChild to descend the subtree and gravitate left.
+	* @return bottom leaf node, not pushed to stack
+	*/
+	private synchronized StackInfo seekLeftTree(StackInfo tse, Stack stack) throws IOException {
+		BTNode<K, V> node = tse.mNode;
+        if (node.getIsLeaf()) {
+        	if(DEBUG)
+            	System.out.printf("%s Leaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+                    //for (int i = 0; i < node.getNumKeys(); i++) {
+                    //        System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                    //}
+                    //System.out.println("\n");
+            tse.mNodeIdx = 0;
+        } else {
+            if(DEBUG)
+            	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+            BTNode<K, V> btk = (BTNode<K, V>) node.getChild(tse.mNodeIdx);
+            StackInfo tsex = new StackInfo(node, btk, tse.mNodeIdx);
+            stack.push(tsex);
+            return seekLeftTree(new StackInfo(node, btk, 0), stack);
+        }                       
+        return tse;
+	}
+
+	/**
+	* Seeks to rightmost key in current subtree
+	* @return the bottom leaf node, not pushed to stack
+	*/
+	private synchronized StackInfo seekRightTree(StackInfo tse, Stack stack) throws IOException {
+		BTNode<K, V> node = tse.mNode;
+        if (node.getIsLeaf()) {
+        	if(DEBUG)
+            	System.out.printf("%s Leaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+                    //for (int i = 0; i < node.getNumKeys(); i++) {
+                    //        System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
+                    //}
+                    //System.out.println("\n");
+        	tse.mNodeIdx = node.getNumKeys()-1;
+        } else {
+            if(DEBUG)
+            	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
+            BTNode<K, V> btk = (BTNode<K, V>) node.getChild(tse.mNodeIdx);
+            StackInfo tsex = new StackInfo(node, btk, tse.mNodeIdx);
+            stack.push(tsex);
+            return seekLeftTree(new StackInfo(node, btk, btk.getNumKeys()), stack);
+        }                       
+        return tse;
+	}
 
     /**
      * Inner class StackInfo for back tracing
