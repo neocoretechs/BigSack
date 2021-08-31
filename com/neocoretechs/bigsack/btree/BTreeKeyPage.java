@@ -297,7 +297,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	public synchronized void delete(int index) throws IOException {
 		//System.out.println("KeyPageInterface.delete "+this+" index:"+index);
 		if( bTNode.getKeyValueArray(index) == null )
-			throw new IOException("Node at index "+index+" null for attempted delete");
+			throw new IOException("Node at index "+index+" null for attempted delete "+this);
 		if( !bTNode.getKeyValueArray(index).getKeyOptr().equals(Optr.emptyPointer)) {
 			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmKey()).length);
 			bTNode.getKeyValueArray(index).setKeyOptr(Optr.emptyPointer);

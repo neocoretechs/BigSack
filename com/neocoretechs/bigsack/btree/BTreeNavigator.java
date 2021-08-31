@@ -6,7 +6,9 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 
 import com.neocoretechs.bigsack.btree.BTreeNavigator.StackInfo;
+import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
+import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
@@ -43,10 +45,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 	private static final boolean DEBUGSPLIT = false;
 	private static final boolean DEBUGMERGE = false;
 	private static final boolean DEBUGTREE = false;
-    public final static int     REBALANCE_FOR_LEAF_NODE         =   1;
-    public final static int     REBALANCE_FOR_INTERNAL_NODE     =   2;
-
-    private BTNode<K, V> mIntermediateInternalNode = null;
+ 
     private int mNodeIdx = 0;
     private final Stack<StackInfo> mStack = new Stack<StackInfo>();
     private KeyValueMainInterface bTreeMain;
@@ -514,7 +513,6 @@ public class BTreeNavigator<K extends Comparable, V> {
                 return -1;
             }
         }
-
         return -1;
     }
 
@@ -525,18 +523,38 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException
      */
     public V delete(K key) throws IOException {
-        mIntermediateInternalNode = null;
         KeySearchResult ksr = search(key, true); // populate stack
-        if(!ksr.atKey)
-        	return null; // didnt specifically find it;
-        StackInfo si = mStack.peek(); // get parent and target
-        KeyValue<K, V> keyVal = deleteKey(si.mParent, si.mNodeIdx, si.mNode, key, ksr.insertPoint);
+        if(!ksr.atKey || ksr.page == null)
+        	return null; // didnt specifically find it
+        KeyValue<K, V> keyVal = null;
+        if(!mStack.isEmpty()) {
+        	StackInfo si = mStack.peek(); // get parent and target
+        	keyVal = deleteKey(si.mParent, si.mNodeIdx, si.mNode, key, ksr.insertPoint);
+        } else {
+        	keyVal = deleteKey(null, 0, (BTNode<K, V>)((BTreeKeyPage)ksr.page).bTNode, key, ksr.insertPoint);
+        }
         if (keyVal == null) {
             return null;
         }
-        return keyVal.getmValue();
+        V value = keyVal.getmValue();
+        // delete our returned item from deep store
+        deleteFromDeepStore(keyVal);
+        return value;
     }
-
+    /**
+     * Remove from deep store, we assume it has been unlinked and dealt with beforehand and is no longer
+     * present in the key collection for a node, this cleans up the remainder
+     * @param kv
+     * @throws IOException
+     */
+    private void deleteFromDeepStore(KeyValue<K, V> kv) throws IOException {
+		if( !kv.getKeyOptr().equals(Optr.emptyPointer)) {
+			bTreeMain.getIO().delete_object(kv.getKeyOptr(), GlobalDBIO.getObjectAsBytes(kv.getmKey()).length);
+		}
+		if( kv.getValueOptr() != null && !kv.getValueOptr().equals(Optr.emptyPointer)) {
+			bTreeMain.getIO().delete_object(kv.getValueOptr(), GlobalDBIO.getObjectAsBytes(kv.getmValue()).length);
+		}
+    }
     /**
      * Delete the given key. See preamble above. In general we favor a non-conversion of non-leaf to leaf nodes
      * which prevents having to check all the links when we remove nodes. We favor the addition of new leaves from emptied ones.
@@ -545,7 +563,7 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @param btNode
      * @param key
      * @param nodeIdx
-     * @return The Kev/Value entry of deleted key
+     * @return The Kev/Value entry of deleted key. The data in deep store is preserved until explicit delete
      * @throws IOException
      */
     private KeyValue<K, V> deleteKey(BTNode<K, V> parentNode, int parentIndex, BTNode<K, V> btNode, K key, int nodeIdx) throws IOException {
@@ -565,7 +583,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         // position, then attempt a merge
         if (btNode.getIsLeaf()) {
         	System.out.println("Case 2:");
-        	retVal = shiftNodeLeft(btNode, nodeIdx); // deletes key and data from page and node
+        	retVal = shiftNodeLeft(btNode, nodeIdx); // removes key from page and node, entry still in deep store
         	// start our initial stack to prime recursive rotation of empty leaf nodes if necessary
         	Stack<StackInfo> subStack = new Stack<StackInfo>();
         	subStack.push(new StackInfo(parentNode, btNode, parentIndex));
@@ -577,7 +595,9 @@ public class BTreeNavigator<K extends Comparable, V> {
         //
     	System.out.println("Case 3:");
 		Stack<StackInfo> s2 = getRightChildLeastLeaf(btNode,nodeIdx);
-		retVal = shiftNodeLeft(s2.peek().mNode,0); // shiftNodeLeft handles housekeeping of page and indexes etc.
+		retVal = btNode.getKeyValueArray(nodeIdx);
+		KeyValue<K, V> replVal = shiftNodeLeft(s2.peek().mNode,0); // shiftNodeLeft handles housekeeping of page and indexes etc.
+		btNode.setKeyValueArray(nodeIdx, replVal); // overwrite target with right child least leaf
 		recursiveRotate(s2);
         return retVal;
     }
@@ -590,11 +610,10 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @throws IOException 
      */
     private KeyValue<K, V> checkDegenerateSingletons(BTNode<K, V> parentNode, BTNode<K, V> btNode) throws IOException {
-    	System.out.println("Case 0:");
     	KeyValue<K, V> retVal = null;
     	// If target node is root, and it has 2 leaves each with 1 key, and 1 key itself, then consolidate
-    	if(parentNode == null) { // node is root
-    		if(btNode.getNumKeys() > 1)
+    	if(parentNode == null) { // node is root as parent, so process btNode as root of this process
+    		if(btNode.getNumKeys() > 1) // make sure node has 1 key
     			return null;
 			if(btNode.getChild(0) == null || !((BTNode<K, V>) btNode.getChild(0)).getIsLeaf() || btNode.getChild(0).getNumKeys() > 1)
 				return null;
@@ -603,18 +622,22 @@ public class BTreeNavigator<K extends Comparable, V> {
 		   	System.out.println("Case 0+1:");
 			retVal = btNode.getKeyValueArray(0); // 
 			// move the 2 leaves to root, set root as leaf
-			btNode.setKeyValueArray(1, btNode.getChild(1).getKeyValueArray(0));
-			btNode.setKeyValueArray(0, btNode.getChild(0).getKeyValueArray(0));
+			NodeInterface leftNode = btNode.getChild(0);
+			NodeInterface rightNode = btNode.getChild(1);
+			btNode.setKeyValueArray(1, rightNode.getKeyValueArray(0));
+			btNode.setKeyValueArray(0, leftNode.getKeyValueArray(0));
 			// left
-			btNode.getChild(0).setKeyValueArray(0, null);
-			btNode.getChild(0).setNumKeys(0);
-			((BTNode)btNode.getChild(0)).getPage().getBlockAccessIndex().getBlk().resetBlock();
-			((BTNode)btNode.getChild(0)).getPage().putPage();
+			leftNode.setKeyValueArray(0, null);
+			leftNode.setNumKeys(0);
+			((BTNode)leftNode).getPage().setNumKeys(0);
+			((BTNode)leftNode).getPage().getBlockAccessIndex().getBlk().resetBlock();
+			((BTNode)leftNode).getPage().putPage();
 			// right
-			btNode.getChild(1).setKeyValueArray(0, null);
-			btNode.getChild(1).setNumKeys(0);
-			((BTNode)btNode.getChild(1)).getPage().getBlockAccessIndex().getBlk().resetBlock();
-			((BTNode)btNode.getChild(1)).getPage().putPage();
+			rightNode.setKeyValueArray(0, null);
+			rightNode.setNumKeys(0);
+			((BTNode)rightNode).getPage().setNumKeys(0);
+			((BTNode)rightNode).getPage().getBlockAccessIndex().getBlk().resetBlock();
+			((BTNode)rightNode).getPage().putPage();
 			// parent
 			btNode.setChild(0, null); // set child pages after setChild
 			btNode.childPages[0] = -1L;
@@ -627,17 +650,21 @@ public class BTreeNavigator<K extends Comparable, V> {
 	    	btNode.getPage().putPage();
 	    	return retVal;
     	} else {
-    	   	System.out.println("Case 0+2:");
+    		// parent not null, see if its our 1 key parent 1 key each node scenario
     		if(parentNode.getNumKeys() == 1 && btNode.getIsLeaf() && btNode.getNumKeys() == 1) {
     			if(parentNode.getChild(0) == btNode) {
+    				// parent has 1 key, and child 0 has 1 key then check child 1
     				if(!((BTNode<K, V>) parentNode.getChild(1)).getIsLeaf() || parentNode.getChild(1).getNumKeys() > 1)
     					return null;
+    		  	   	System.out.println("Case 0+2:");
     				// delete target is left leaf, move right node up and set parent to leaf
     				parentNode.setKeyValueArray(1, parentNode.getChild(1).getKeyValueArray(0));
     			} else {
+    				// parent has 1 key, and child 1 has 1 key, so check child 0
     				if(parentNode.getChild(1) == btNode) {
     					if(!((BTNode<K, V>) parentNode.getChild(0)).getIsLeaf() || parentNode.getChild(0).getNumKeys() > 1)
     						return null;
+    			  	   	System.out.println("Case 0+3:");
     					// delete target is right leaf, move left node up after moving parent right 1
     					parentNode.setKeyValueArray(1, parentNode.getKeyValueArray(0));
     					parentNode.setKeyValueArray(0, parentNode.getChild(0).getKeyValueArray(0));
@@ -645,14 +672,28 @@ public class BTreeNavigator<K extends Comparable, V> {
     					throw new IOException("Node inconsistency in singleton parent "+parentNode);
     				}
     			}
+    		} else {
+    			// its not our case
+    			return null;
     		}
     	}
-		// target of delete
+		// target of delete, above case of one key parent one key each node was confirmed and preprocessed
+    	// set up parent and get rid of other 2 nodes
     	retVal = btNode.getKeyValueArray(0);
-		btNode.setKeyValueArray(0, null);
-		btNode.setNumKeys(0);
-		btNode.getPage().getBlockAccessIndex().getBlk().resetBlock();
-		btNode.getPage().putPage();
+		NodeInterface leftNode = btNode.getChild(0);
+		NodeInterface rightNode = btNode.getChild(1);
+		// left
+		leftNode.setKeyValueArray(0, null);
+		leftNode.setNumKeys(0);
+		((BTNode)leftNode).getPage().setNumKeys(0);
+		((BTNode)leftNode).getPage().getBlockAccessIndex().getBlk().resetBlock();
+		((BTNode)leftNode).getPage().putPage();
+		// right
+		rightNode.setKeyValueArray(0, null);
+		rightNode.setNumKeys(0);
+		((BTNode)rightNode).getPage().setNumKeys(0);
+		((BTNode)rightNode).getPage().getBlockAccessIndex().getBlk().resetBlock();
+		((BTNode)rightNode).getPage().putPage();
 		// parent
 		parentNode.setChild(0, null); // set child pages after setChild
 		parentNode.childPages[0] = -1L;
@@ -696,6 +737,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     		// if parent position is 0 just split off left node
   			if(parentNode.getNumKeys() > 1) { // can we split off the node?
   				if(parentIndex == 0) {
+  			  	   	System.out.println("Case 1+0:");
     				leftNodeSplitThread.startSplit(parentNode, btNode, 1); // btNode is target we populate
     				shiftNodeLeft(parentNode, 0); // handles putPage
     				btNode.getPage().setNumKeys(btNode.getNumKeys());
@@ -703,6 +745,7 @@ public class BTreeNavigator<K extends Comparable, V> {
   				} else {
   					// if parent is last node just extract right and move it to one we just zapped to zero
   					if(parentIndex >= parentNode.getNumKeys()-1) {
+  				  	   	System.out.println("Case 1+1:");
   						rightNodeSplitThread.startSplit(parentNode, btNode, 1, parentNode.getNumKeys()-1, parentNode.getNumKeys());
   						// set num keys to current-1, then set the key at that index to mustUpdate
   						parentNode.setNumKeys(parentNode.getNumKeys()-1);
@@ -712,6 +755,7 @@ public class BTreeNavigator<K extends Comparable, V> {
   						parentNode.getPage().setNumKeys(parentNode.getNumKeys());
   						parentNode.getPage().putPage();
   					} else {
+  				  	   	System.out.println("Case 1+2:");
   						// we have to split both nodes from parent, then potentially join parent to grandparent
   						splitNode(parentNode, parentIndex, parentIndex+1, parentNode.getNumKeys(),parentNode.getNumKeys() - parentIndex);
   						// anything left in our stack is our target, barring that the main stack is the target
@@ -730,11 +774,13 @@ public class BTreeNavigator<K extends Comparable, V> {
    				// then place old parent link 
    				BTNode<K, V> reNode = null;
    				if(BTNode.getLeftChildAtIndex(parentNode, 0) == btNode) {
+   			  	   	System.out.println("Case 1+3:");
    					Stack<StackInfo> s2 = getRightChildLeastLeaf(parentNode,0); // start from parent element 0, go right, then leftmost
    					reNode = s2.peek().mNode; // our target, presumably
    					retVal = shiftNodeLeft(reNode,0); // shiftNodeLeft handles housekeeping of page and indexes etc.
    				} else {
    					if(BTNode.getRightChildAtIndex(parentNode, 0) == btNode) {
+   				  	   	System.out.println("Case 1+4:");
    						// peel off right node and put, no routine for right shift as its trivial
    						Stack<StackInfo> s2 = getLeftChildGreatestLeaf(parentNode,0);
    						reNode = s2.peek().mNode;
@@ -743,10 +789,11 @@ public class BTreeNavigator<K extends Comparable, V> {
    						reNode.getPage().setNumKeys(reNode.getNumKeys());
    						reNode.getPage().putPage(); // peeled off last node
    					} else {
-   						// no links out left? could mean we have to demote our parent node to a leaf...
+   						// no links out remaining? could mean we have to demote our parent node to a leaf...
    						if(parentNode.getChild(0) != null || parentNode.getChild(1) != null) {
    							throw new IOException("Could not find corresponding link to child node from parent during single node parent delete:"+parentNode);
    						} else {
+   					  	   	System.out.println("Case ****9+9***:");
    							parentNode.setmIsLeaf(true);
    							parentNode.setUpdated(true);
    							parentNode.getPage().putPage();
@@ -773,12 +820,14 @@ public class BTreeNavigator<K extends Comparable, V> {
     }
     /**
      * Move the indicated node out and overwrite with rightmost nodes, then put page to deep store.
+     * We ereturn the overwritten node, so the value is not deleted from deep store.
      * @param rootNode Node to shift
      * @param i position to overwrite
      * @return The overwritten node
      * @throws IOException
      */
     private KeyValue<K, V> shiftNodeLeft(BTNode<K, V> rootNode, int i) throws IOException {
+    	int target = i;
    		//
 		// move the keys to the left and overwrite indicated node
     	int numberOfKeys = rootNode.getNumKeys();
@@ -794,7 +843,6 @@ public class BTreeNavigator<K extends Comparable, V> {
 		}
 		--numberOfKeys;
 		rootNode.setNumKeys(numberOfKeys);
-		((BTreeKeyPage)rootNode.getPage()).delete(i);
 		rootNode.getPage().setNumKeys(numberOfKeys);
 		rootNode.getPage().putPage();
 		return kv;
