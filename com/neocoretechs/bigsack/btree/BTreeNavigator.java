@@ -36,6 +36,8 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
  * and follow it to the left most leaf, take the first child, and rotate it into the slot. That is,
  * the least valued node immediately to the right<p/>
  * If case 3 empties a leaf, handle it with case using the parent of that leftmost leaf.
+ * In the context of the methods, 'rootNode' refers to the starting node in the process, and not explicitly to
+ * the root node of the entire tree.
  * 
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  */
@@ -53,18 +55,28 @@ public class BTreeNavigator<K extends Comparable, V> {
     private KeySearchResult tsr;
     // node split thread infrastructure
 	private CyclicBarrier nodeSplitSynch = new CyclicBarrier(3);
+	private CyclicBarrier nodeSplitSynchDelete = new CyclicBarrier(2); // when left or right split runs independently
 	private LeftNodeSplitThread leftNodeSplitThread;
 	private RightNodeSplitThread rightNodeSplitThread;
+	private LeftNodeSplitThread leftNodeSplitThreadDelete;
+	private RightNodeSplitThread rightNodeSplitThreadDelete;
 
     public BTreeNavigator(KeyValueMainInterface bMain) {
     	this.bTreeMain = bMain;
 		// Append the worker name to thread pool identifiers, if there, dont overwrite existing thread group
 		ThreadPoolManager.init(new String[]{String.format("%s%s", "LEFTNODESPLITWORKER",bMain.getIO().getDBName()),
-											String.format("%s%s", "RIGHTNODESPLITWORKER",bMain.getIO().getDBName())}, false);
+											String.format("%s%s", "RIGHTNODESPLITWORKER",bMain.getIO().getDBName()),
+											String.format("%s%s", "DELETELEFTNODESPLITWORKER",bMain.getIO().getDBName()),
+											String.format("%s%s", "DELETERIGHTNODESPLITWORKER",bMain.getIO().getDBName())
+											}, false);
 		leftNodeSplitThread = new LeftNodeSplitThread(nodeSplitSynch, this);
 		rightNodeSplitThread = new RightNodeSplitThread(nodeSplitSynch, this);
+		leftNodeSplitThreadDelete = new LeftNodeSplitThread(nodeSplitSynchDelete, this);
+		rightNodeSplitThreadDelete = new RightNodeSplitThread(nodeSplitSynchDelete, this);
 		ThreadPoolManager.getInstance().spin(leftNodeSplitThread,String.format("%s%s", "LEFTNODESPLITWORKER",bMain.getIO().getDBName()));
 		ThreadPoolManager.getInstance().spin(rightNodeSplitThread,String.format("%s%s", "RIGHTNODESPLITWORKER",bMain.getIO().getDBName()));
+		ThreadPoolManager.getInstance().spin(leftNodeSplitThreadDelete,String.format("%s%s", "DELETELEFTNODESPLITWORKER",bMain.getIO().getDBName()));
+		ThreadPoolManager.getInstance().spin(rightNodeSplitThreadDelete,String.format("%s%s", "DELETERIGHTNODESPLITWORKER",bMain.getIO().getDBName()));
     }
     /**
      * Gets the root node from KeyValueMainInterface. We have only one root for a btree.
@@ -731,14 +743,21 @@ public class BTreeNavigator<K extends Comparable, V> {
     	int parentIndex = si.mNodeIdx;
     	KeyValue<K, V> retVal;
      	if(btNode.getNumKeys() == 0) { // is our leaf now empty?
-    		if(stack.isEmpty()) // it was root
-    			return;
     		// split parent at point where we came to leaf child
     		// if parent position is 0 just split off left node
   			if(parentNode.getNumKeys() > 1) { // can we split off the node?
   				if(parentIndex == 0) {
   			  	   	System.out.println("Case 1+0:");
-    				leftNodeSplitThread.startSplit(parentNode, btNode, 1); // btNode is target we populate
+    				leftNodeSplitThreadDelete.startSplit(parentNode, btNode, 1); // btNode is target we populate, splits it off, sets parent pos to null
+    				//System.out.println("ParentNode"+parentNode);//+" split child:"+btNode);
+    			 	try {
+    					nodeSplitSynchDelete.await();
+    				} catch (InterruptedException | BrokenBarrierException e) {
+    					e.printStackTrace();
+    					return;
+    				}
+    				// resolve parent, this fixes NPE bug in shiftNodeLeft
+    				parentNode.setChild(1, btNode);
     				shiftNodeLeft(parentNode, 0); // handles putPage
     				btNode.getPage().setNumKeys(btNode.getNumKeys());
     				btNode.getPage().putPage();
@@ -746,7 +765,13 @@ public class BTreeNavigator<K extends Comparable, V> {
   					// if parent is last node just extract right and move it to one we just zapped to zero
   					if(parentIndex >= parentNode.getNumKeys()-1) {
   				  	   	System.out.println("Case 1+1:");
-  						rightNodeSplitThread.startSplit(parentNode, btNode, 1, parentNode.getNumKeys()-1, parentNode.getNumKeys());
+  						rightNodeSplitThreadDelete.startSplit(parentNode, btNode, 1, parentNode.getNumKeys()-1, parentNode.getNumKeys());
+  		 			 	try {
+  	    					nodeSplitSynchDelete.await();
+  	    				} catch (InterruptedException | BrokenBarrierException e) {
+  	    					e.printStackTrace();
+  	    					return;
+  	    				}
   						// set num keys to current-1, then set the key at that index to mustUpdate
   						parentNode.setNumKeys(parentNode.getNumKeys()-1);
   						parentNode.getKeyValueArray(btNode.getNumKeys()-1).keyState = KeyValue.synchStates.mustUpdate;
@@ -758,6 +783,7 @@ public class BTreeNavigator<K extends Comparable, V> {
   				  	   	System.out.println("Case 1+2:");
   						// we have to split both nodes from parent, then potentially join parent to grandparent
   						splitNode(parentNode, parentIndex, parentIndex+1, parentNode.getNumKeys(),parentNode.getNumKeys() - parentIndex);
+  						// wait for thread completion is handled in splitNode
   						// anything left in our stack is our target, barring that the main stack is the target
   						// if all that is empty, we split the root presumably
   						if(stack.isEmpty() && mStack.isEmpty())
@@ -820,7 +846,8 @@ public class BTreeNavigator<K extends Comparable, V> {
     }
     /**
      * Move the indicated node out and overwrite with rightmost nodes, then put page to deep store.
-     * We ereturn the overwritten node, so the value is not deleted from deep store.
+     * We return the overwritten node, so the value is not deleted from deep store. Number of keys is
+     * decreased by 1. child pages are updated, only passed in rootNode is affected.
      * @param rootNode Node to shift
      * @param i position to overwrite
      * @return The overwritten node
@@ -833,7 +860,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     	int numberOfKeys = rootNode.getNumKeys();
     	KeyValue<K,V> kv = rootNode.getKeyValueArray(i);
 		for(; i < numberOfKeys; i++) {
-			if(i+1 != numberOfKeys) {
+			if(i+1 < numberOfKeys) {
 				rootNode.setKeyValueArray(i, rootNode.getKeyValueArray(i+1));
 			}
 			rootNode.setChild(i, rootNode.getChildNoread(i+1));
@@ -844,6 +871,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 		--numberOfKeys;
 		rootNode.setNumKeys(numberOfKeys);
 		rootNode.getPage().setNumKeys(numberOfKeys);
+		//System.out.println("rootNode:"+rootNode);
 		rootNode.getPage().putPage();
 		return kv;
     }

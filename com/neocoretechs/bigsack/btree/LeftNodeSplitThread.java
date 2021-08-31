@@ -1,7 +1,6 @@
 package com.neocoretechs.bigsack.btree;
 
 import java.io.IOException;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -9,12 +8,12 @@ import java.util.concurrent.CyclicBarrier;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KeyValue;
 
-
 /**
  * The function of each of the two node split threads
- * is to process each half of the payload KeyPageInterface. This means acquiring a block, picking off the
- * left or right half of the keys in the main node, and forming the new left or right node. The logic to 
- * perform either the left or right processing is in the request payload invoked by process().
+ * is to process each half of the payload KeyPageInterface. This means acquiring a block or
+ * using the supplied node from the overloded constructor, picking off the
+ * left or right half of the keys in the main node, and forming the new left or right node.<p/>
+ * The node is set to null in the parent node along with old left child link, but the number of keys is not updated.<p/>
  * The cyclic barrier is initialized with 3 waiters and is recycled for each completion of the 2 threads.
  * The additional cycle is the main thread waiting.
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
