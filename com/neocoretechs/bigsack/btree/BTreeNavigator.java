@@ -486,8 +486,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     		return null;
     	StackInfo tse = new StackInfo(rootNode,rightNode,i);
     	Stack<StackInfo> stack = new Stack<StackInfo>();
-    	StackInfo tsex = seekLeftTree(tse, stack);
-    	stack.push(tsex);
+    	seekLeftTree(tse, stack);
     	return stack;
     }
     /**
@@ -504,8 +503,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     		return null;
      	StackInfo tse = new StackInfo(rootNode,leftNode,i);
     	Stack<StackInfo> stack = new Stack<StackInfo>();
-    	StackInfo tsex = seekRightTree(tse, stack);
-    	stack.push(tsex);
+    	seekRightTree(tse, stack);
     	return stack;
     }
 
@@ -631,7 +629,7 @@ public class BTreeNavigator<K extends Comparable, V> {
 				return null;
 			if(btNode.getChild(1) == null || !((BTNode<K, V>) btNode.getChild(1)).getIsLeaf() || btNode.getChild(1).getNumKeys() > 1)
 				return null;
-		   	System.out.println("Case 0+1:");
+		   	System.out.println("Case degenerate 0+1:");
 			retVal = btNode.getKeyValueArray(0); // 
 			// move the 2 leaves to root, set root as leaf
 			NodeInterface leftNode = btNode.getChild(0);
@@ -668,7 +666,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     				// parent has 1 key, and child 0 has 1 key then check child 1
     				if(!((BTNode<K, V>) parentNode.getChild(1)).getIsLeaf() || parentNode.getChild(1).getNumKeys() > 1)
     					return null;
-    		  	   	System.out.println("Case 0+2:");
+    		  	   	System.out.println("Case degenerate 0+2:");
     				// delete target is left leaf, move right node up and set parent to leaf
     				parentNode.setKeyValueArray(1, parentNode.getChild(1).getKeyValueArray(0));
     			} else {
@@ -676,7 +674,7 @@ public class BTreeNavigator<K extends Comparable, V> {
     				if(parentNode.getChild(1) == btNode) {
     					if(!((BTNode<K, V>) parentNode.getChild(0)).getIsLeaf() || parentNode.getChild(0).getNumKeys() > 1)
     						return null;
-    			  	   	System.out.println("Case 0+3:");
+    			  	   	System.out.println("Case degenerate 0+3:");
     					// delete target is right leaf, move left node up after moving parent right 1
     					parentNode.setKeyValueArray(1, parentNode.getKeyValueArray(0));
     					parentNode.setKeyValueArray(0, parentNode.getChild(0).getKeyValueArray(0));
@@ -749,14 +747,12 @@ public class BTreeNavigator<K extends Comparable, V> {
   				if(parentIndex == 0) {
   			  	   	System.out.println("Case 1+0:");
     				leftNodeSplitThreadDelete.startSplit(parentNode, btNode, 1); // btNode is target we populate, splits it off, sets parent pos to null
-    				//System.out.println("ParentNode"+parentNode);//+" split child:"+btNode);
     			 	try {
     					nodeSplitSynchDelete.await();
     				} catch (InterruptedException | BrokenBarrierException e) {
     					e.printStackTrace();
     					return;
     				}
-    				// resolve parent, this fixes NPE bug in shiftNodeLeft
     				parentNode.setChild(1, btNode);
     				shiftNodeLeft(parentNode, 0); // handles putPage
     				btNode.getPage().setNumKeys(btNode.getNumKeys());
@@ -795,6 +791,11 @@ public class BTreeNavigator<K extends Comparable, V> {
   				}
   				return;
    			} else {
+   				// one node in parent, check our degenerate case
+   				if(checkDegenerateSingletons(parentNode, btNode) != null) {
+   					System.out.println("Degenerate singleton detected from recursiveRotate");
+   					return;
+   				}
 				// only 1 node in parent, if left node was deleted, pick least valued right leaf to rotate in to parent
 				// if right node was deleted, pick greatest valued left leaf node to rotate in to parent
    				// then place old parent link 
@@ -802,18 +803,45 @@ public class BTreeNavigator<K extends Comparable, V> {
    				if(BTNode.getLeftChildAtIndex(parentNode, 0) == btNode) {
    			  	   	System.out.println("Case 1+3:");
    					Stack<StackInfo> s2 = getRightChildLeastLeaf(parentNode,0); // start from parent element 0, go right, then leftmost
+   					if(s2.empty()) {
+   						System.out.println("Stack empty at Case 1+3");
+   						return;
+   					}
+					printStack(s2);
    					reNode = s2.peek().mNode; // our target, presumably
-   					retVal = shiftNodeLeft(reNode,0); // shiftNodeLeft handles housekeeping of page and indexes etc.
+   					retVal = shiftNodeLeft(reNode,0); // get out left node out, shiftNodeLeft handles housekeeping of page and indexes etc.
+   					KeyValue<K, V> saveKey = parentNode.getKeyValueArray(0);
+   					parentNode.setKeyValueArray(0, retVal);
+   					btNode.setKeyValueArray(0, saveKey); // exchange
+   					btNode.getPage().setNumKeys(1); //because btNode was originally empty
+   					parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+   					btNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+   					parentNode.getPage().putPage();
+   					btNode.getPage().putPage();
+   					recursiveRotate(s2);
    				} else {
    					if(BTNode.getRightChildAtIndex(parentNode, 0) == btNode) {
    				  	   	System.out.println("Case 1+4:");
    						// peel off right node and put, no routine for right shift as its trivial
    						Stack<StackInfo> s2 = getLeftChildGreatestLeaf(parentNode,0);
+   						if(s2.empty()) {
+   	   						System.out.println("Stack empty at Case 1+4");
+   	   						return;
+   	   					}
    						reNode = s2.peek().mNode;
-   						retVal = reNode.getKeyValueArray(reNode.getNumKeys()-1);
-   						reNode.setNumKeys(reNode.getNumKeys()-1);
+   						retVal = reNode.getKeyValueArray(reNode.getNumKeys()-1); // far right node
+   						reNode.setNumKeys(reNode.getNumKeys()-1); // shift it out
    						reNode.getPage().setNumKeys(reNode.getNumKeys());
    						reNode.getPage().putPage(); // peeled off last node
+   						KeyValue<K, V> saveKey = parentNode.getKeyValueArray(0);
+   	   					parentNode.setKeyValueArray(0, retVal);
+   	   					btNode.setKeyValueArray(0, saveKey); // exchange
+   	   					btNode.getPage().setNumKeys(1); //because btNode was originally empty
+   	   					parentNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+   	   					btNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
+   	   					parentNode.getPage().putPage();
+   	   					btNode.getPage().putPage();
+   	   					recursiveRotate(s2);
    					} else {
    						// no links out remaining? could mean we have to demote our parent node to a leaf...
    						if(parentNode.getChild(0) != null || parentNode.getChild(1) != null) {
@@ -827,16 +855,6 @@ public class BTreeNavigator<K extends Comparable, V> {
    						}
    					}
    				}
-   				// we processed our reNode, we have our retVal, so set previously empty leaf to parent and parent to value
-   				btNode.setKeyValueArray(0, parentNode.getKeyValueArray(parentIndex));
-   				btNode.getPage().setNumKeys(1);
-   				btNode.getKeyValueArray(0).keyState = KeyValue.synchStates.mustUpdate;
-   				btNode.getPage().putPage();
-   				parentNode.setKeyValueArray(parentIndex, retVal);
-   				parentNode.getKeyValueArray(parentIndex).keyState = KeyValue.synchStates.mustUpdate;
-   				// parent child pointers, etc remain unchanged
-   				parentNode.setUpdated(true);
-   				parentNode.getPage().putPage();
 			}
     	}
      	// either recursively process our parent from above or return if we are done
@@ -926,7 +944,15 @@ public class BTreeNavigator<K extends Comparable, V> {
         }                       
         return tse;
 	}
-
+	
+	private synchronized void printStack(Stack stack) {
+		System.out.println("Stack Depth:"+stack.size());
+		for(int i = 0; i < stack.size(); i++) {
+			StackInfo tse = (StackInfo) stack.get(i);
+			System.out.println(i+"= P:"+GlobalDBIO.valueOf(tse.mParent.getPageId())+" numKeys="+tse.mParent.getNumKeys()+" Leaf:"+tse.mParent.getIsLeaf()+" C:"+GlobalDBIO.valueOf(tse.mNode.getPageId())+" numKeys="+tse.mNode.getNumKeys()+" Leaf:"+tse.mNode.getIsLeaf()+" node index="+tse.mNodeIdx);
+		}
+	}
+	
     /**
      * Inner class StackInfo for back tracing
      * Structure contains parent node and node index
