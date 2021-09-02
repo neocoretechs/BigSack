@@ -70,6 +70,8 @@ import com.neocoretechs.bigsack.session.BufferedTreeSet;
  * 3.  R =         | 4 |
  *                 /   \
  *     | 1 | 2 | 3 |   | 5 | 6 | 7 | 8 |
+ *     
+ * <dd>Merge 4 with parent if parent is not full.
  *
 * @author Groff Copyright (C) NeoCoreTechs 2015,2017,2021
 */
@@ -78,16 +80,12 @@ public final class BTreeMain implements KeyValueMainInterface {
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of KeyPageInterface
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;
-	private static boolean DEBUGDELETE = true;
+	private static boolean DEBUGDELETE = false;
 	private static boolean DEBUGINSERT = false;
 	private static boolean TEST = true; // Do a table scan and key count at startup
 	private static boolean ALERT = true; // Info level messages
 	private static boolean OVERWRITE = true; // flag to determine whether value data is overwritten for a key or its ignored
 	private static final boolean DEBUGOVERWRITE = false; // notify of overwrite of value for key
-	static int EOF = 2;
-	static int NOTFOUND = 3;
-	static int ALREADYEXISTS = 4;
-	static int TREEERROR = 6;
 
 	private KeyPageInterface root;
 	BTreeNavigator bTreeNavigator;
@@ -280,14 +278,11 @@ public final class BTreeMain implements KeyValueMainInterface {
 			System.out.printf("%s insert exit key=%s value=%s result=%d%n", this.getClass().getName(), key, value,result);
 		return result;
 	}
-
     
     /**
      * Perform a search using {@link BTreeNavigator}, populating the stack as we traverse the tree levels.
      * The stack is needed for iterators and other operations. If we need a straight search, use 'search'
      * with does away with minor overhead of stack population, and preserves the stack.
-     * If the TreeSearchResult.insertPoint is > 0 then insertPoint - 1 points to the key that immediately
-     * precedes the target key.
      * @param key
      * @return populated {@link KeySearchResult}
      * @throws IOException
@@ -337,57 +332,35 @@ public final class BTreeMain implements KeyValueMainInterface {
         }
     }
  
-	
 	/**
 	* Remove key/data object.
 	* Deletion from a B-tree is more complicated than insertion, because we can delete a key from any node, not 
 	* just a leaf, and when we delete a key from an internal node, we will have to rearrange the nodes children.
 	* As in insertion, we must make sure the deletion doesnt violate the B-tree properties. 
 	* Just as we had to ensure that a node didnt get too big due to insertion, we must ensure that a node 
-	* doesnt get too small during deletion (except that the root is allowed to have fewer than the minimum number t-1 of keys). 
-	* Just as a simple insertion algorithm might have to back up if a node on the path to where the key was to be inserted was full, 
-	* a simple approach to deletion might have to back up if a node (other than the root) along the path to where the key is to be 
-	* deleted has the minimum number of keys.
-	* The deletion procedure deletes the key k from the subtree rooted at x. 
-	* This procedure guarantees that whenever it calls itself recursively on a node x, the number of keys in x is at least the minimum degree T.
-	* Note that this condition requires one more key than the minimum required by the usual B-tree conditions, 
-	* so that sometimes a key may have to be moved into a child node before recursion descends to that child. 
-	* This strengthened condition allows us to delete a key from the tree in one downward pass without having to back up
-	* (with one exception, to be explained). You should interpret the following specification for deletion from a B-tree 
-	* with the understanding that if the root node x ever becomes an internal node having no keys 
-	* (this situation can occur when we delete x, and x only child x.c1 becomes the new root of the tree), 
-	* we decrease the height of the tree by one and preserve the property that the root of the tree contains at least one key. 
-	* (unless the tree is empty).
-	* Various cases of deleting keys from a B-tree:
-	* 1. If the key k is in node x and x is a leaf, delete the key k from x.
-	* 2. If the key k is in node x and x is an internal node, do the following:
-    * a) If the child y that precedes k in node x has at least t keys, then find the predecessor k0 of k in the sub-tree rooted at y. 
-    * Recursively delete k0, and replace k by k0 in x. (We can find k0 and delete it in a single downward pass.)
-	* b) If y has fewer than t keys, then, symmetrically, examine the child z that follows k in node x. If z has at least t keys, 
-	* then find the successor k0 of k in the subtree rooted at z. Recursively delete k0, and replace k by k0 in x. 
-	* (We can find k0 and delete it in a single downward pass.)
-    * c) Otherwise, if both y and z have only t-1 keys, merge k and all of z into y, so that x loses both k and the pointer to z, and y 
-    * now contains 2t-1 keys. Then free z and recursively delete k from y.
-	* 3. If the key k is not present in internal node x, determine the root x.c(i) of the appropriate subtree that must contain k, 
-	* if k is in the tree at all. If x.c(i) has only t-1 keys, execute step 3a or 3b as necessary to guarantee that we descend to a 
-	* node containing at least t keys. Then finish by recursing on the appropriate child of x.
-	* a) If x.c(i) has only t-1 keys but has an immediate sibling with at least t keys, give x.c(i) an extra key by moving a key 
-	* from x down into x.c(i), moving a key from x.c(i) immediate left or right sibling up into x, and moving the appropriate 
-	* child pointer from the sibling into x.c(i).
-    * b) If x.c(i) and both of x.c(i) immediate siblings have t-1 keys, merge x.c(i) with one sibling, which involves moving a key 
-    * from x down into the new merged node to become the median key for that node.
-	* Since most of the keys in a B-tree are in the leaves, deletion operations are most often used to delete keys from leaves. 
+	* doesnt get too small during deletion.<p/> 
+	* Node deletion is handled by consideration of several cases designed to
+	* never leave an empty leaf, and by inclusion, never leave a non-leaf with an invalid child pointer.<p/>
+	* <dd>Case 1: On delete, If we delete from a child, shift the remaining elements left if not empty<p/>
+	* If a child empties, we never leave null links, so we split a node off from the end or
+	* beginning if that position in the parent is the predecessor link, otherwise we split
+	* the parent at the link to the now empty leaf, thus creating 2 valid links to 2 new leaves.<p/>
+	* Again, if that parent can be merged with grandparent, do so.<p/>
+	* <dd>Case 2: For a non-leaf that deletes from a leaf and does NOT empty it, we can rotate the right link far
+	* left child or left link far right child to the former position in the parent, using the next inorder key.<p/>
+	* Special case here is when a parent has 2 leaves with one key, and itself has one key, in that case bring them both up into parent
+	* and remove 2 leaves and designate parent a leaf. We use our checkDegenerateSingletons method.
+	* <dd>Case 3: Finally for 2 internal nodes, a non-leaf parent deleting from a non-leaf child, we have to take the right node
+	* and follow it to the left most leaf, take the first key, and rotate it into the slot. That is,
+	* the least valued node immediately to the right. that is, the next inorder traversal key.<p/>
+	* If case 3 empties a leaf, handle it with case using the parent of that leftmost leaf. For any operation that
+	* descends into a subtree to extract the next inorder key, recursively perform the checks until we come to the
+	* original root of our operation.<p/>
+	* Since most of the keys in a B-tree are in the leaves, deletion operations most often delete keys from leaves. 
 	* The recursive delete procedure then acts in one downward pass through the tree, without having to back up. 
 	* When deleting a key in an internal node, however, the procedure makes a downward pass through the tree but may have to 
 	* return to the node from which the key was deleted to replace the key with its predecessor or successor.
-	* The KeyPageInterface contains most of the functionality and the following methods are unique to the deletion process:
-	* 1) remove
-    * 2) removeFromNonLeaf
-    * 3) getPred
-    * 4) getSucc
-    * 5) borrowFromPrev
-    * 6) borrowFromNext
-    * 7) merge
+	* The {@link BTreeNavigator} contains most of the functionality.
 	* @param newKey The key to delete
 	* @return 0 if ok, <> 0 if error
 	* @exception IOException if seek or write failure
@@ -404,6 +377,9 @@ public final class BTreeMain implements KeyValueMainInterface {
 	/**
 	 * Rewind current position to beginning of tree. Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations.
+	 * @param rewound TraversalStackElement to be populated with bottom element
+	 * @param stack Stack to be populated with traversal
+	 * @return The KeyValue at beginning of tree
 	 * @exception IOException If read fails
 	 */
 	@Override
@@ -424,7 +400,9 @@ public final class BTreeMain implements KeyValueMainInterface {
 	/**
 	 * Set current position to end of tree.Sets up stack with pages and indexes
 	 * such that traversal can take place. Remember to clear stack after these operations. 
-	 * @return 
+	 * @param rewound TraversalStackElement to be populated with bottom element
+	 * @param stack Stack to be populated with traversal
+	 * @return The KeyValue at end of tree
 	 * @exception IOException If read fails
 	 */
 	@Override
@@ -450,7 +428,9 @@ public final class BTreeMain implements KeyValueMainInterface {
 	* We are finished when we are at the root and can no longer traverse right. this is because we popped all the way up,
 	* and there are no more subtrees to traverse.
 	* Note that we dont deal with keys at all here, just child pointers.
-	* @return Element from stack previously pushed with seek
+	* @param tse TraversalStackElement that carries the pointers to advance
+	* @param stack Stack to be extracted with traversal
+	* @return Element with indexes advanced
 	* @exception IOException If read fails
 	*/
 	@Override
@@ -489,7 +469,9 @@ public final class BTreeMain implements KeyValueMainInterface {
 
 	/**
 	* Go to location of previous key in tree
-	* @return 
+	* @param tse TraversalStackElement that carries the pointers to advance
+	* @param stack Stack to be extracted with traversal
+	* @return Element with indexes decremented
 	* @exception IOException If read fails
 	*/
 	@Override
@@ -525,6 +507,13 @@ public final class BTreeMain implements KeyValueMainInterface {
 		return (TraversalStackElement) stack.pop();
 	}
 
+	/**
+	 * Auxiliary method to advance page by page, vs key by key
+	 * @param tse
+	 * @param stack
+	 * @return
+	 * @throws IOException
+	 */
 	public synchronized TraversalStackElement gotoNextPage(TraversalStackElement tse, Stack stack) throws IOException {
 		if( DEBUG || DEBUGSEARCH ) {
 			System.out.println("BTreeMain.gotoNextPage "/*page:"+currentPage+*/+" index "+tse);
@@ -576,6 +565,8 @@ public final class BTreeMain implements KeyValueMainInterface {
 	/**
 	* Seeks to leftmost key in current subtree. Takes the currentChild and currentIndex from currentPage and uses the
 	* child at currentChild to descend the subtree and gravitate left.
+	* @param tse TraversalStackElement that carries the pointers to advance
+	* @param stack Stack to be populated with traversal
 	* @return bottom leaf node, not pushed to stack
 	*/
 	private synchronized TraversalStackElement seekLeftTree(TraversalStackElement tse, Stack stack) throws IOException {
@@ -601,6 +592,8 @@ public final class BTreeMain implements KeyValueMainInterface {
 
 	/**
 	* Seeks to rightmost key in current subtree
+	* @param tse TraversalStackElement that carries the pointers to advance
+	* @param stack Stack to be populated with traversal
 	* @return the bottom leaf node, not pushed to stack
 	*/
 	private synchronized TraversalStackElement seekRightTree(TraversalStackElement tse, Stack stack) throws IOException {

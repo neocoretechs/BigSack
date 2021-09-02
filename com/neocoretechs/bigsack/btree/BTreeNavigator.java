@@ -20,22 +20,26 @@ import com.neocoretechs.bigsack.keyvaluepages.TraversalStackElement;
 
 /**
  * Auxiliary methods to aid BTree navigation. Insert, split, merge, retrieve.
- * Our acumen is when leaf fills, then it is split to a middle parent and two leaves. 
+ * For insert, our acumen is when leaf fills, then it is split to a middle parent and two leaves. 
  * If the grandparent is not full, we can merge the lone parent, 
  * else we wait for further splits and merges to fill that non-leaf.<p/>
+ * Node deletion is more complex and is handled by consideration of several cases designed to
+ * never leave an empty leaf, and by inclusion, never leave a non-leaf with an invalid child pointer.<p/>
  * <dd>Case 1: On delete, If we delete from a child, shift the remaining elements left if not empty<p/>
  * If a child empties, we never leave null links, so we split a node off from the end or
  * beginning if that position in the parent is the predecessor link, otherwise we split
  * the parent at the link to the now empty leaf, thus creating 2 valid links to 2 new leaves.<p/>
  * Again, if that parent can be merged with grandparent, do so.<p/>
- * <dd>Case 2: For a non-leaf that deletes from a leaf and does NOT empty it, we can rotate the right far
- * left child or left far right child to the former position in the parent.<p/>
- * Special case here is when a parent has 2 leaves with one node, in that case bring them both up into parent
- * and remove 2 leaves and designate parent a leaf.
+ * <dd>Case 2: For a non-leaf that deletes from a leaf and does NOT empty it, we can rotate the right link far
+ * left child or left link far right child to the former position in the parent, using the next inorder key.<p/>
+ * Special case here is when a parent has 2 leaves with one key, and itself has one key, in that case bring them both up into parent
+ * and remove 2 leaves and designate parent a leaf. We use our checkDegenerateSingletons method.
  * <dd>Case 3: Finally for 2 internal nodes, a non-leaf parent deleting from a non-leaf child, we have to take the right node
- * and follow it to the left most leaf, take the first child, and rotate it into the slot. That is,
- * the least valued node immediately to the right<p/>
- * If case 3 empties a leaf, handle it with case using the parent of that leftmost leaf.
+ * and follow it to the left most leaf, take the first key, and rotate it into the slot. That is,
+ * the least valued node immediately to the right. that is, the next inorder traversal key.<p/>
+ * If case 3 empties a leaf, handle it with case using the parent of that leftmost leaf. For any operation that
+ * descends into a subtree to extract the next inorder key, recursively perform the checks until we come to the
+ * original root of our operation.<p/>
  * In the context of the methods, 'rootNode' refers to the starting node in the process, and not explicitly to
  * the root node of the entire tree.
  * 
