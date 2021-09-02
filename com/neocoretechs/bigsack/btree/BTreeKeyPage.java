@@ -169,7 +169,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 			//	System.out.println("block of data "+i+":"+GlobalDBIO.valueOf(sblk)+" offset of data "+i+":"+shblk);
 			//}
 			bTNode.getKeyValueArray(i).setValueOptr(new Optr(sblk, shblk));
-			if(getKeyValueArray(i).getValueOptr().getBlock() == 0 || getKeyValueArray(i).getValueOptr().getBlock() == -1)
+			if(getKeyValueArray(i).getValueOptr().getBlock() == 0 ) // value can be null, -1L || getKeyValueArray(i).getValueOptr().getBlock() == -1)
 				throw new IOException("Bad page read value index "+i+" page:"+this.toString());
 			// set status to mustRead to resolve pointers to data
 			bTNode.getKeyValueArray(i).valueState = KeyValue.synchStates.mustRead;
