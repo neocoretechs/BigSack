@@ -283,8 +283,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException
 	 */
 	public synchronized void deallocOutstandingRollback() throws IOException {
+		if(DEBUG)
 			System.out.printf("%s Rolling back %n",this.getClass().getName());
-			bufferPool.rollback(); 
+		bufferPool.rollback(); 
 	}
 	/**
 	 * dealloc outstanding blocks. if not null, do a dealloc and set null

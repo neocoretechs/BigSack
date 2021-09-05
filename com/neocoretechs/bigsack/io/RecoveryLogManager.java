@@ -136,9 +136,11 @@ public final class RecoveryLogManager  {
 	 */
 	public synchronized void rollBack() throws IOException {
 		if( firstTrans != null) {
-			System.out.printf("%s Rolling back %d%n",this.getClass().getName(), tablespace);
+			if(DEBUG)
+				System.out.printf("%s Rolling back %d%n",this.getClass().getName(), tablespace);
 			fl.undo(globalDBIO, firstTrans, null);
-			if(DEBUG) System.out.println("RecoveryLogManager.rollback Undo initial transaction recorded for rollback in tablespace "+tablespace+" in "+ltf.getDBName());
+			if(DEBUG) 
+				System.out.println("RecoveryLogManager.rollback Undo initial transaction recorded for rollback in tablespace "+tablespace+" in "+ltf.getDBName());
 			firstTrans = null;
 			ltf.stop();
 		} else {
