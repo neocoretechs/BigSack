@@ -142,7 +142,8 @@ public final class RecoveryLogManager  {
 			firstTrans = null;
 			ltf.stop();
 		} else {
-			System.out.printf("%s NOT Rolling back, firstTrans was null %d%n",this.getClass().getName(), tablespace);
+			if(DEBUG)
+				System.out.printf("%s NOT Rolling back, firstTrans was null %d%n",this.getClass().getName(), tablespace);
 		}
 	}
 	
