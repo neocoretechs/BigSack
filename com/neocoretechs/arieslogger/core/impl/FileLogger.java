@@ -432,6 +432,8 @@ public final class FileLogger implements Logger {
 					Entry<LogInstance, LogRecord> recEntry = irecs.next();
 					LogRecord record = recEntry.getValue();
 					Loggable loggable = record.getLoggable();
+					if(loggable instanceof CheckpointOperation)
+						continue;
 					UndoableBlock ub = (UndoableBlock)loggable;
 					BlockAccessIndex lbai = ub.getBlkV2();
 					if(pool.containsKey(lbai.getBlockNum())) {

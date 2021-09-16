@@ -59,7 +59,7 @@ import com.neocoretechs.bigsack.stream.TailSetStream;
 * @author Jonathan Groff (C) NeoCoreTechs 2003, 2017, 2021
 */
 final class BigSackSession implements TransactionInterface {
-	private boolean DEBUG = true;
+	private boolean DEBUG = false;
 	private int uid;
 	private int gid;
 	private KeyValueMainInterface kvStore;

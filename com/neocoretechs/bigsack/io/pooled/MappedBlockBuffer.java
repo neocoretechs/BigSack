@@ -340,8 +340,6 @@ public class MappedBlockBuffer extends AbstractMap {
 				BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)ebaii).get();
 				if( bai.getAccesses() > 1 )
 					throw new IOException("****COMMIT BUFFER access "+bai.getAccesses()+" for buffer "+bai);
-				if(bai.getBlk().isIncore() && bai.getBlk().isInlog())
-					throw new IOException("****COMMIT BUFFER block in core and log simultaneously! "+bai);
 				//if(DEBUGCOMMIT)
 				//	System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),bai);
 				if(bai.getBlk().isIncore() && !bai.getBlk().isInlog()) {
