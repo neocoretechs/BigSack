@@ -48,6 +48,13 @@ public class BigSackAdapter {
 	public static void setRemoteDir(String tableSpaceDir) {
 		BigSackAdapter.remoteDir = tableSpaceDir;
 	}
+	public static String getDatabaseName(Class clazz) {
+		String xClass = translateClass(clazz.getName());
+		return tableSpaceDir+xClass;
+	}
+	public static String getDatabaseName(String clazz) {
+		return tableSpaceDir+clazz;
+	}
 	/**
 	 * Get a TreeSet via Comparable instance.
 	 * @param clazz The Comparable object that the java class name is extracted from
