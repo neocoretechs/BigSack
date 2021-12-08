@@ -49,11 +49,18 @@ public class SubSetKVIterator extends AbstractIterator {
 		synchronized (bTree) {
 			KeySearchResult tsr = bTree.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(tsr);
-			nextKey = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmKey();
-			nextElem = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmValue();
-			if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
+			current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+			if(current == null) {
+				nextKey = null;
+				nextElem = null;
+				stack.clear();
+			} else {
+				nextKey = current.getmKey();
+				nextElem = current.getmValue();
+				if (nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {
 					nextElem = null; //exclusive
 					stack.clear();
+				}
 			}
 			bTree.getIO().deallocOutstanding();
 		}

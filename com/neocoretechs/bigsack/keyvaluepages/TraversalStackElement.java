@@ -30,7 +30,7 @@ public final class TraversalStackElement {
 	}
 	
 	public String toString() {
-		return String.format("TraversalStackElement: %s %d %d%n",keyPage, index, index);
+		return String.format("TraversalStackElement: %s index=%d child=%d%n",keyPage, index, child);
 	}
 
 }

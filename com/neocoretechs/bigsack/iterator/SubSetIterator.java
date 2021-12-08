@@ -51,7 +51,11 @@ public class SubSetIterator extends AbstractIterator {
 		synchronized (kvMain) {
 			KeySearchResult tsr = kvMain.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(tsr);
-			nextKey = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmKey();
+			current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
+			if(current == null)
+				nextKey = null;
+			else
+				nextKey = current.getmKey();
 			if( DEBUG )
 				System.out.println("SubSetIterator.init nextKey:"+nextKey);
 			if (nextKey == null || nextKey.compareTo(toKey) >= 0 || nextKey.compareTo(fromKey) < 0) {

@@ -49,7 +49,10 @@ public class TailSetIterator extends AbstractIterator {
 			KeySearchResult tsr = bTree.seekKey(fromKey, stack);
 			tracker = new TraversalStackElement(tsr);
 			current = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index);
-			nextKey = ((KeyPageInterface)tracker.keyPage).getKeyValueArray(tracker.index).getmKey(); // closest key
+			if(current == null)
+				nextKey = null;
+			else
+				nextKey = current.getmKey(); // closest key
 			if (nextKey == null || nextKey.compareTo(fromKey) < 0) {
 				nextKey = null;
 				stack.clear();
