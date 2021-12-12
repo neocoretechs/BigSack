@@ -32,8 +32,8 @@ public class BatteryBigSack5 {
 	static String val = "Of a BigSack K/V pair!"; // holds base random value string
 	static String uniqKeyFmt = "%0100d"; // base + counter formatted with this gives equal length strings for canonical ordering
 	static int min = 0; // controls range of testing
-	static int max = 100000; //make sure insert is INCLUSIVE OF MAX!
-	static int numDelete = 100; // for delete test
+	static int max = 2500000; //make sure insert is INCLUSIVE OF MAX!
+	static int numDelete = 1000000; // for delete test
 	static int l3CacheSize = 100; // size of object cache
 	/**
 	* Analysis test fixture, pass supplemental method payloads on cmdl.
@@ -45,66 +45,70 @@ public class BatteryBigSack5 {
 			System.exit(1);
 		}
 		BigSackAdapter.setTableSpaceDir(argv[0]);
-		TransactionalTreeMap session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		 System.out.println("Begin Battery Fire!");
+		System.out.println("Begin Battery Fire!");
 		 // add min to max
-		//battery1(session, argv);
-		//session.Commit();
+		TransactionalTreeMap session;
+		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		battery1(session, argv);
+		session.Commit();
 		// get and verify min to max
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1A(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1A(session, argv);
+		//session.Commit();
 		// count
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1A1(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1A1(session, argv);
+		//session.Commit();
 		// first last
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1B(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1B(session, argv);
+		//session.Commit();
 		// keyset,keymap entryset
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1C(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1C(session, argv);
+		//session.Commit();
 		// from/to range
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1D(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1D(session, argv);
+		//session.Commit();
 		// from/to range
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1D1(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1D1(session, argv);
+		//session.Commit();
 		// headMap where key not found
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1D2(session, argv);
-		session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1D2(session, argv);
+		//session.Commit();
 		// compare to synthetic key
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1E(session, argv);
-		session.Commit();
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1E1(session, argv);
-		session.Commit();
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1E(session, argv);
+		//session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1E1(session, argv);
+		//session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
 		// submap keys not explicitly located
-		battery1E2(session, argv);
-		session.Commit();
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1E2(session, argv);
+		//session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
 		// submap keys not explicitly located
-		battery1E3(session, argv);
-		session.Commit();
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1F(session, argv);
-		session.Commit();
-		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
-		battery1F1(session, argv);
-		session.Commit();
+		//battery1E3(session, argv);
+		//session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1F(session, argv);
+		//session.Commit();
+		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
+		//battery1F1(session, argv);
+		//session.Commit();
 		//session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
 		// overwrite
 		//battery1G(session, argv);
 		// deletion tests below
+		session = BigSackAdapter.getBigSackTransactionalTreeMap(key.getClass());
 		//battery2(session, argv);
-		//battery2A(session, argv);
+		//session.Commit();
+		battery2A(session, argv);
+		session.Commit();
 		
 		 System.out.println("TEST BATTERY COMPLETE. "+(System.currentTimeMillis()-tims)+" ms.");
 		 System.exit(0);
@@ -552,11 +556,15 @@ public class BatteryBigSack5 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery2(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery2(TransactionalTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int item = 0; item < numDelete; item++) {
 			String nkey = key + String.format(uniqKeyFmt, item);
-			 System.out.println("Remo: "+nkey);
+			if(item%(max/100) == 0) {
+				System.out.println("Current index "+item+" deleted in "+(System.currentTimeMillis()-tims)+"ms.");
+				tims = System.currentTimeMillis();
+			}
+			 //System.out.println("Remo: "+nkey);
 			session.remove(nkey);
 			Object o = session.get(nkey);
 			if( o != null ) {
@@ -572,12 +580,12 @@ public class BatteryBigSack5 {
 	 * @param argv
 	 * @throws Exception
 	 */
-	public static void battery2A(BufferedTreeMap session, String[] argv) throws Exception {
+	public static void battery2A(TransactionalTreeMap session, String[] argv) throws Exception {
 		long tims = System.currentTimeMillis();
 		for(int i = 0; i < numDelete; i++) {
 			int item = min + (int)(Math.random() * ((max - min) + 1));
 			String nkey = key + String.format(uniqKeyFmt, item);
-			 System.out.println("Remo: "+nkey);
+			 //System.out.println("Remo: "+nkey);
 			session.remove(nkey);
 			Object o = session.get(nkey);
 			if( o != null ) {
