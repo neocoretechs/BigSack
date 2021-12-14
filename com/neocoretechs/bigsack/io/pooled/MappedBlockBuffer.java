@@ -829,11 +829,25 @@ public class MappedBlockBuffer extends AbstractMap {
 		 * This method is invoked by put and putAll after inserting a new entry into the map. 
 		 * It provides the implementor with the opportunity to remove the eldest entry each time a new one is added. 
 		 * This is useful if the map represents a cache: it allows the map to reduce memory consumption by deleting stale entries.
+		 * In this case if we dont remove eldest because its being accessed, look for others eligible if more than HARD_SIZE
+		 * and return false. Once we start clearing, clear as many as possible.
 		 * @param eldest eldest - The least recently inserted entry in the map. This is the entry that will be removed it this method returns true. If the map contains a single entry, the eldest entry is also the newest
 		 * @return true if the eldest entry should be removed from the map; false if it should be retained.
 		 */
 		protected boolean removeEldestEntry(Map.Entry eldest) {
-	        return size() > HARD_SIZE && (!((BlockAccessIndex)eldest.getValue()).getBlk().isIncore() && ((BlockAccessIndex)eldest.getValue()).getAccesses() == 0);
+			if(size() < HARD_SIZE)
+				return false;
+	        if(!((BlockAccessIndex)eldest.getValue()).getBlk().isIncore() && ((BlockAccessIndex)eldest.getValue()).getAccesses() == 0)
+	        	return true;
+	        Set e = entrySet();
+	        Iterator it = e.iterator();
+	        while(it.hasNext()) {
+	        	Map.Entry me = (java.util.Map.Entry) it.next();
+	        	if(!((BlockAccessIndex)eldest.getValue()).getBlk().isIncore() && ((BlockAccessIndex)eldest.getValue()).getAccesses() == 0) {
+		        	it.remove();
+	        	}
+	        }
+	        return false;
 	     }
 	}
 }
