@@ -47,7 +47,7 @@ public class BatteryBigSack2 {
 		BufferedTreeMap session = BigSackAdapter.getBigSackTreeMap(key.getClass());
 		 System.out.println("Begin Battery Fire!");
 		 // add min to max
-		//battery1(session, argv);
+		battery1(session, argv);
 		// get and verify min to max
 		//battery1A(session, argv);
 		 // get by value min to max

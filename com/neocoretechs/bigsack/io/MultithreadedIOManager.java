@@ -405,7 +405,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void checkpointBufferFlush() throws IOException, IllegalAccessException {
 		if( DEBUG )
 			System.out.printf("%s.checkpointBufferFlush invoked.%n",this.getClass().getName());
-		bufferPool.checkpointBufferFlush(ioWorker);
+		bufferPool.checkpointBufferFlush();
 	}
 	
 	@Override

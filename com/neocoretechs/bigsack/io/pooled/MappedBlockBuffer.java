@@ -7,10 +7,11 @@ import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.Optional;
 import java.util.Set;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
@@ -42,9 +43,9 @@ public class MappedBlockBuffer extends AbstractMap {
 	/** The internal HashMap that will hold the SoftReference. */
 	private final ConcurrentHashMap usedBlockList = new ConcurrentHashMap();
 	/** The number of "hard" references to hold internally. */
-	private final int HARD_SIZE = 100;
+	private final static int HARD_SIZE = 100;
 	/** The FIFO list of hard references, order of last access. */
-	private final LinkedList hardCache = new LinkedList();
+	private final HardReferenceQueue hardCache = new HardReferenceQueue();
 	/** Reference queue for cleared SoftReference objects. */
 	private final ReferenceQueue queue = new ReferenceQueue();
 
@@ -105,11 +106,12 @@ public class MappedBlockBuffer extends AbstractMap {
 	        // once, because lookups of the FIFO queue are slow, so
 	        // we don't want to search through it each time to remove
 	        // duplicates.
-	        hardCache.addFirst(result);
-	        if (hardCache.size() > HARD_SIZE) {
+	        hardCache.put(key,result);
+	        // This is handled by the subclassed method removeEldestEntry of LinkedHashMap
+	        //if (hardCache.size() > HARD_SIZE) {
 	          // Remove the last entry if list longer than HARD_SIZE
-	          hardCache.removeLast();
-	        }
+	          //hardCache.removeLast();
+	        //}
 	      }
 	    }
 	    return soft_ref;
@@ -138,6 +140,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	    while ((sv = (SoftValue)queue.poll()) != null) {
 	      System.out.println("SoftReference process queue, removing:"+GlobalDBIO.valueOf((long) sv.key));
 	      usedBlockList.remove(sv.key);
+	      getMemory();
 	    }
 	}
 
@@ -164,6 +167,26 @@ public class MappedBlockBuffer extends AbstractMap {
 	public Set<Entry<Long, SoftReference>> entrySet() {
 		processQueue();
 		return usedBlockList.entrySet();
+	}
+	
+	/**
+	 * 
+	 * @return current, free, and max heap in MB
+	 */
+	public static long[] getMemory() {
+		// Get current size of heap in bytes
+		long heapSize = Runtime.getRuntime().totalMemory(); 
+		// Get amount of free memory within the heap in bytes. This size will increase
+		// after garbage collection and decrease as new objects are created.
+		long heapFreeSize = Runtime.getRuntime().freeMemory(); 
+		// Get maximum size of heap in bytes. The heap cannot grow beyond this size.
+		// Any attempt will result in an OutOfMemoryException.
+		long heapMaxSize = Runtime.getRuntime().maxMemory();
+		long[] retMem = new long[]{ (long)(heapSize / Math.pow(2,20)), (long)(heapFreeSize / Math.pow(2, 20)), (long)(heapMaxSize / Math.pow(2, 20)) };
+		System.out.println("Current Heap Size: " + retMem[0] + " MB");
+		System.out.println("Free Heap Size: " + retMem[1] + " MB");
+		System.out.println("Max Heap Size: " + retMem[2] + " MB");
+		return retMem;
 	}
 	
 	@Override
@@ -336,22 +359,32 @@ public class MappedBlockBuffer extends AbstractMap {
 	 * @throws IOException
 	 */
 	public synchronized void commitBufferFlush(RecoveryLogManager rlm) throws IOException {
-		for(Object ebaii : usedBlockList.values()) {
-				BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)ebaii).get();
-				if( bai.getAccesses() > 1 )
-					throw new IOException("****COMMIT BUFFER access "+bai.getAccesses()+" for buffer "+bai);
-				//if(DEBUGCOMMIT)
-				//	System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),bai);
-				if(bai.getBlk().isIncore() && !bai.getBlk().isInlog()) {
-					// will set incore, inlog, and push to raw store via applyChange of Loggable
-					if( DEBUGCOMMIT )
-						System.out.printf("%s.commitBufferFlush of block:%s%n",this.getClass().getName(),bai);
-					rlm.writeLog(bai);
-				}
-				if( bai.getAccesses() == 1 )
-					bai.decrementAccesses();
-				bai.setByteindex((short) 0);
+		//for(Object ebaii : usedBlockList.values()) {
+		Set itSet = usedBlockList.entrySet();
+		Iterator it = itSet.iterator();
+		while(it.hasNext()) {
+			Map.Entry me = (Entry) it.next();
+			BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)me.getValue()).get();
+			if(bai == null) {
+				System.out.println("Commit rejecting reclaimed block:"+GlobalDBIO.valueOf((long) me.getKey()));
+				it.remove();
+				continue;
+			}
+			if( bai.getAccesses() > 1 )
+				throw new IOException("****COMMIT BUFFER access "+bai.getAccesses()+" for buffer "+bai);
+			//if(DEBUGCOMMIT)
+			//	System.out.printf("%s.commitBufferFlush prospective block:%s%n", this.getClass().getName(),bai);
+			if(bai.getBlk().isIncore() && !bai.getBlk().isInlog()) {
+				// will set incore, inlog, and push to raw store via applyChange of Loggable
+				if( DEBUGCOMMIT )
+					System.out.printf("%s.commitBufferFlush of block:%s%n",this.getClass().getName(),bai);
+				rlm.writeLog(bai);
+			}
+			if( bai.getAccesses() == 1 )
+				bai.decrementAccesses();
+			bai.setByteindex((short) 0);
 		}
+		hardCache.clear();
 	}
 	
 	/**
@@ -362,15 +395,15 @@ public class MappedBlockBuffer extends AbstractMap {
 		Enumeration<SoftReference> elbn = usedBlockList.elements();
 		if(DEBUG) System.out.println("MappedBlockBuffer.direct buffer write");
 		while (elbn.hasMoreElements()) {
-					SoftReference ebaii = (elbn.nextElement());
-					BlockAccessIndex bai = (BlockAccessIndex)ebaii.get();
-					if(bai.getAccesses() == 0 && bai.getBlk().isIncore() ) {
-						if(DEBUG)
-							System.out.println("MappedBlockBuffer.directBufferWrite fully writing "+bai.getBlockNum()+" "+bai.getBlk());
-						ioWorker.FseekAndWriteFully(bai.getBlockNum(), bai.getBlk());
-						ioWorker.Fforce();
-						bai.getBlk().setIncore(false);
-					}
+			SoftReference ebaii = (elbn.nextElement());
+			BlockAccessIndex bai = (BlockAccessIndex)ebaii.get();
+			if(bai.getAccesses() == 0 && bai.getBlk().isIncore() ) {
+				if(DEBUG)
+					System.out.println("MappedBlockBuffer.directBufferWrite fully writing "+bai.getBlockNum()+" "+bai.getBlk());
+				ioWorker.FseekAndWriteFully(bai.getBlockNum(), bai.getBlk());
+				ioWorker.Fforce();
+				bai.getBlk().setIncore(false);
+			}
 		}
 	}
 	
@@ -784,6 +817,23 @@ public class MappedBlockBuffer extends AbstractMap {
 	public String toString() {
 		return "MappedBlockBuffer tablespace "+tablespace+" blocks:"+usedBlockList.size()+" cache hit="+cacheHit+" miss="+cacheMiss;
 	}
-
-
+	
+	/**
+	 * Hard reference queue class to hold those soft references we dont want reclaimed.
+	 * @author groff
+	 *
+	 */
+	private static class HardReferenceQueue extends LinkedHashMap {
+		/**
+		 * Returns true if this map should remove its eldest entry. 
+		 * This method is invoked by put and putAll after inserting a new entry into the map. 
+		 * It provides the implementor with the opportunity to remove the eldest entry each time a new one is added. 
+		 * This is useful if the map represents a cache: it allows the map to reduce memory consumption by deleting stale entries.
+		 * @param eldest eldest - The least recently inserted entry in the map. This is the entry that will be removed it this method returns true. If the map contains a single entry, the eldest entry is also the newest
+		 * @return true if the eldest entry should be removed from the map; false if it should be retained.
+		 */
+		protected boolean removeEldestEntry(Map.Entry eldest) {
+	        return size() > HARD_SIZE && (!((BlockAccessIndex)eldest.getValue()).getBlk().isIncore() && ((BlockAccessIndex)eldest.getValue()).getAccesses() == 0);
+	     }
+	}
 }

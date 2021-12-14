@@ -349,8 +349,8 @@ public class BufferPool {
 	 * @throws IOException 
 	 * @throws IllegalAccessException 
 	 */
-	public synchronized void checkpointBufferFlush(IOWorker[] ioWorker) throws IOException, IllegalAccessException {
-		globalDBIO.forceBufferWrite();
+	public synchronized void checkpointBufferFlush() throws IOException, IllegalAccessException {
+		//globalDBIO.forceBufferWrite();
 		//for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 		//	blockBuffer[i].commitBufferFlush(ulog[i]);
 		//	ulog[i].checkpoint();
