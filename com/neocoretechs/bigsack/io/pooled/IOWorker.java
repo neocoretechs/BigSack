@@ -17,7 +17,7 @@ import com.neocoretechs.bigsack.io.MmapIO;
  * a particular tablespace fulfilling the {@link IoInterface} contract.<p/>
  * The ioUnit is an IoInterface that connects to the underlying raw store, outside of the page/block pool/buffer
  * and provides the low level 'fread','fwrite','fseek' etc functions.<p/>
- * NOTE: references to page blocks is tablespace relative, NOT virtual.
+ * Freeblocklist is stored as virtual blocks.
  * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
  *
  */
@@ -193,13 +193,14 @@ public class IOWorker implements IoInterface {
 	    };
 	}
 	*/
+	/*
 	@Override 
 	public synchronized void FseekAndReadFully(Long block, Datablock dblk) throws IOException {
         Fseek(block);
         dblk.read(this);
         dblk.setIncore(false);
 	}
-	
+	*/
 	@Override 
 	public synchronized void FseekAndRead(Long block, Datablock dblk) throws IOException {
         Fseek(block);
@@ -338,7 +339,7 @@ public class IOWorker implements IoInterface {
 	public boolean isnew() {
 		return ioUnit.isnew();
 	}
-
+	/*
 	@Override
 	public void FseekAndWriteHeader(Long block, Datablock dblk) throws IOException {
 		ioUnit.FseekAndWriteHeader(block, dblk);	
@@ -348,7 +349,7 @@ public class IOWorker implements IoInterface {
 	public void FseekAndReadHeader(Long block, Datablock dblk) throws IOException {
 		ioUnit.FseekAndReadHeader(block, dblk);
 	}
-
+	*/
 
 
 }

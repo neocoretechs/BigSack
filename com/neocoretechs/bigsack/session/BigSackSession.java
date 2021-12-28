@@ -517,9 +517,9 @@ final class BigSackSession implements TransactionInterface {
 			minBlock =0;
 			//long maxBlock = GlobalDBIO.makeVblock(itab, fsiz);
 			
-			System.out.println("<<BigSack Analysis|Tablespace number "+itab+" File size bytes: " + fsiz+">>");
+			System.out.println("<<BigSack Analysis|Tablespace number "+itab+" File size bytes: " + fsiz+" Min block:"+minBlock+"> translated blk:>"+GlobalDBIO.valueOf(GlobalDBIO.makeVblock(itab, minBlock)));
 			while (minBlock < fsiz) {
-				kvStore.getIO().getIOManager().FseekAndReadFully(GlobalDBIO.makeVblock(itab, minBlock), db);
+				kvStore.getIO().getIOManager().FseekAndRead(GlobalDBIO.makeVblock(itab, minBlock), db);
 				if( db.getBytesused() == 0 || db.getBytesinuse() == 0 ) {		
 					++zeroBlocks;
 				} else {
@@ -542,11 +542,16 @@ final class BigSackSession implements TransactionInterface {
 			int taTotal = (int) ((ttotutil / (float)ttTotal) * 100.0); // ratio of total to used
 			System.out.println("BigSack Tablespace "+itab+" utilization: " + (int)ttotutil + " bytes in "+tnumberBlks+" blocks");
 			System.out.println("Maximum possible utilization is "+ttTotal+" bytes, making data Utilization "+taTotal+"%");
-		} while( (minBlock = GlobalDBIO.nextTableSpace(itab++)) != 0);
+		} while(++itab < DBPhysicalConstants.DTABLESPACES);
 		System.out.println("Total BigSack utilization: " + (int)totutil + " bytes in "+numberBlks+" blocks");
 		int tTotal = DBPhysicalConstants.DBLOCKSIZ * numberBlks; // bytes total theoretical
 		int aTotal = (int) ((totutil / (float)tTotal) * 100.0); // ratio of total to used
 		System.out.println("Maximum possible utilization is "+tTotal+" bytes, making data Utilization "+aTotal+"%");
+	}
+	
+	public Object deserialTest(int tablespace, long loc) throws IOException {
+		long vloc = GlobalDBIO.makeVblock(tablespace, loc);
+		return kvStore.getIO().deserializeObject(vloc);
 	}
 
 }

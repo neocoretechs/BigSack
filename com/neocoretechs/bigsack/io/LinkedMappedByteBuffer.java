@@ -28,10 +28,10 @@ import java.nio.channels.*;
 /**
 * Memory mapped file I/O.
 * We can only map 2 gig at a time due to mmap, so we keep track of ranges
-* currently mapped and remap when necessary.
+* currently mapped and remap when necessary. Position is absolute, not virtual.
 * For pool, there are one of these per tablespace and pointers. Use the
 * first 3 bits for tablespace so our theoretical max per tablespace is
-* 2,305,843,009,213,693,952 bytes * 8 tablespaces.
+* 2,305,843,009,213,693,952 bytes * 8 tablespaces. 2305 petabytes * 8.
 * A MappedByteBuffer is the underlying core object, and thread synchronization is on that.
 * @see IoInterface
 * @author Groff

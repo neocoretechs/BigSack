@@ -194,6 +194,7 @@ public final class FileIO implements IoInterface {
 	public byte Fread_byte() throws IOException {
 		return RA.readByte();
 	}
+	
 	@Override
 	public synchronized void FseekAndWriteFully(Long block, Datablock dblk) throws IOException {
 		RA.seek(block);
@@ -205,19 +206,20 @@ public final class FileIO implements IoInterface {
 		RA.seek(block);
 		RA.write(dblk.getData(), 0, dblk.getBytesinuse());
 	}
-
+	/*
 	@Override
 	public synchronized void FseekAndReadFully(Long block, Datablock dblk) throws IOException {
 		RA.seek(block);
 		RA.read(dblk.getData());
 	}
-
+	*/
 	@Override
 	public synchronized void FseekAndRead(Long block, Datablock dblk) throws IOException {
 		RA.seek(block);
 		RA.read(dblk.getData());
 	}
 	
+	/*
 	@Override
 	public void FseekAndWriteHeader(Long block, Datablock dblk) throws IOException {
 		RA.seek(block);
@@ -237,4 +239,5 @@ public final class FileIO implements IoInterface {
 		dblk.setBytesinuse(RA.readShort());
 		dblk.setInLog(RA.readByte());
 	}
+	*/
 }

@@ -29,7 +29,9 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 /**
 * Pool I/O interface; allows us to plug in various I/O modules by
 * implementing this interface.  Some methods may have no context for a
-* given implementation (such as writing a URL)
+* given implementation (such as writing a URL)<p/>
+* At this level, the long pointers indicating file position are REAL, 
+* NOT VIRTUAL as they are in the rest of the modules.
 * @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public interface IoInterface {
@@ -181,6 +183,7 @@ public interface IoInterface {
 	 * @throws IOException
 	 */
 	public void FseekAndWriteFully(Long block, Datablock dblk) throws IOException;
+	
 	/**
 	 * Write the header and used bytes portion of block. Typically the incore flag is cleared
 	 * and an Fforce flush is performed.
@@ -189,20 +192,23 @@ public interface IoInterface {
 	 * @throws IOException
 	 */
 	public void FseekAndWrite(Long block, Datablock dblk) throws IOException;
+	
 	/**
 	 * Write the header portion of the block alone.
 	 * @param block
 	 * @param dblk
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndWriteHeader(Long block, Datablock dblk) throws IOException;
+	*/
 	/**
 	 * Read the header and data portion of block regardless of bytes used. Typically the incore flag is cleared.
 	 * @param block
 	 * @param dblk
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndReadFully(Long block, Datablock dblk) throws IOException;
+	*/
 	/**
 	 * Read the header and data portion of the block up to bytesused high water mark. Typically the incore flag is cleared.
 	 * @param block
@@ -210,13 +216,16 @@ public interface IoInterface {
 	 * @throws IOException
 	 */
 	public void FseekAndRead(Long block, Datablock dblk) throws IOException;
+	
+	
 	/**
 	 * Read only the header portion of the block. No flags are typically altered.
 	 * @param block
 	 * @param dblk
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndReadHeader(Long block, Datablock dblk) throws IOException;
+	*/
 	 /**
 	  * Return the status of the tablespaces.
 	  * @return True if we just created the database and tablespaces.

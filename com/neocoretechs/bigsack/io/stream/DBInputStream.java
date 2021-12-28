@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.lang.ref.SoftReference;
 
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 /*
 * Copyright (c) 1998,2003, NeoCoreTechs
@@ -34,11 +35,14 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 * @author Groff
 */
 public final class DBInputStream extends InputStream {
+	public static boolean DEBUG = false;
 	MappedBlockBuffer blockBuffer;
 	BlockAccessIndex lbai;
 	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai = tlbai;
 		blockBuffer = tsdbio;
+		if(DEBUG)
+			System.out.printf("%s.c'tor %s%n", this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
 	}
 	/**
 	 * Allows us to replace the underlying deep store blocks for data that spans multiple blocks
@@ -49,6 +53,8 @@ public final class DBInputStream extends InputStream {
 	public void replaceSource(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai = tlbai;
 		blockBuffer = tsdbio;
+		if(DEBUG)
+			System.out.printf("%s.replaceSource %s%n", this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
 	}
 	
 	@Override

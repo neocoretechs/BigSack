@@ -439,13 +439,9 @@ public final class FileLogger implements Logger {
 					if(pool.containsKey(lbai.getBlockNum())) {
 						BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)(pool.get(lbai.getBlockNum()))).get();
 						bai.getBlk().setInlog(false);
-						t.FseekAndWriteHeader(bai.getBlockNum(), bai.getBlk());
-					} else {
-						long tblock = lbai.getBlockNum();
-						t.FseekAndReadHeader(tblock, dblk);
-						dblk.setInlog(false);
-						t.FseekAndWriteHeader(tblock, dblk);
 					}
+					long tblock = lbai.getBlockNum();
+					t.updateDeepStoreInLog(tblock, false);
 					if(DEBUG)
 						System.out.printf("%s.commit Reset inLog for block:%s%n",this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
 				} // record iterator

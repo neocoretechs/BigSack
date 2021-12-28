@@ -438,13 +438,6 @@ public class GlobalDBIO {
 		forceBufferClear();
 	}
 	/**
-	 * Force a write of the outstanding blocks in the page buffer pool.
-	 * @throws IOException
-	 */
-	public synchronized void forceBufferWrite() throws IOException {
-		ioManager.directBufferWrite();
-	}
-	/**
 	* We'll do this on a 'clear' of collection, reset all caches
 	* Take the used block list, reset the blocks, move to to free list, then
 	* finally clear the used block list. We do this during rollback to remove any modified
@@ -569,7 +562,7 @@ public class GlobalDBIO {
 	 * @param toffset
 	 * @param tblk
 	 * @throws IOException
-	 */
+	 
 	public synchronized void FseekAndWriteHeader(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndWriteHeader offset:%s Datablock blockdump:%s%n",this.getClass().getName(),valueOf(toffset),tblk.blockdump());
@@ -578,12 +571,13 @@ public class GlobalDBIO {
 		ioManager.FseekAndWriteHeader(toffset, tblk);
 		//if( Props.DEBUG ) System.out.print("GlobalDBIO.FseekAndWriteFully:"+valueOf(toffset)+" "+tblk.toVblockBriefString()+"|");
 	}
+	*/
 	/**
 	 * Used for direct access to deep store for direct operations such as resetting inlog after commit.
 	 * @param toffset
 	 * @param tblk
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndReadHeader(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndReadHeader offset:%s%n",this.getClass().getName(),valueOf(toffset));
@@ -591,6 +585,7 @@ public class GlobalDBIO {
 		// immediately after log writes
 		ioManager.FseekAndReadHeader(toffset, tblk);	
 	}
+	*/
 	/**
 	 * 
 	 * @return main HMapMain, BTreeMain or other main interface to keystore implementation
@@ -938,6 +933,11 @@ public class GlobalDBIO {
 
 	public void setMAXBLOCKS(int mAXBLOCKS) {
 		MAXBLOCKS = mAXBLOCKS;
+	}
+
+	public void updateDeepStoreInLog(long tblock, boolean b) throws IOException {
+		int tblsp = ioManager.objseek(tblock, Datablock.INLOGFLAGPOSITION);
+		ioManager.writen(tblsp, new byte[] { (byte) (b ? 1 : 0)}, 1);
 	}
 
 	

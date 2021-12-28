@@ -260,6 +260,11 @@ public final class SessionManager {
 		bss.analyze(verbose);
 	}
 	
+	public static Object deserial(String dbname, String keyStoreType, int tablespace, long block) throws Exception {
+		BigSackSession bss = SessionManager.ConnectNoRecovery(dbname, keyStoreType, "File", 128);
+		System.out.println("Proceeding to deserialize from "+dbname);
+		return bss.deserialTest(tablespace, block);
+	}
 	/**
 	 * Perform a backward scan of log files.
 	 */

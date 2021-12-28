@@ -33,9 +33,10 @@ import com.neocoretechs.bigsack.io.pooled.Datablock;
 * by the Fextend, which guarantees a block<br>
 * For pool, there are one of these per tablespace and pointers use the
 * first 3 bits for tablespace so our theoretical max per tablespace is
-* 2,305,843,009,213,693,952 bytes * 8 tablespaces
+* 2,305,843,009,213,693,952 bytes * 8 tablespaces. 2305 petabytes * 8.<p/>
+* Positioning here is absolute, not virtual pointers.
 * @see IoInterface
-* @author Groff
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 2021
 */
 public final class MmapIO implements IoInterface {
 	private static boolean DEBUG = false;
@@ -319,7 +320,7 @@ public final class MmapIO implements IoInterface {
 			System.out.println("MMapIO.getChannel:"+FC);
 		return FC;
 	}
-
+	
 	@Override
 	public synchronized void FseekAndWriteFully(Long block, Datablock dblk) throws IOException {
 		Fseek(block);
@@ -331,19 +332,20 @@ public final class MmapIO implements IoInterface {
 		Fseek(block);
 		Fwrite(dblk.getData(), dblk.getBytesinuse());
 	}
-
+	/*
 	@Override
 	public synchronized void FseekAndReadFully(Long block, Datablock dblk) throws IOException {
 		Fseek(block);
 		Fread(dblk.getData());
 	}
-
+	*/
 	@Override
 	public synchronized void FseekAndRead(Long block, Datablock dblk) throws IOException {
 		Fseek(block);
 		Fread(dblk.getData());
 	}
-
+	
+	/*
 	@Override
 	public void FseekAndWriteHeader(Long block, Datablock dblk) throws IOException {
 		Fseek(block);
@@ -363,5 +365,6 @@ public final class MmapIO implements IoInterface {
 		dblk.setBytesinuse(Fread_short());
 		dblk.setInLog(Fread_byte());
 	}
+	*/
 
 }

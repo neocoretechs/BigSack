@@ -62,7 +62,7 @@ public interface IoManagerInterface {
 	
 	public void checkpointBufferFlush() throws IOException, IllegalAccessException;
 
-	public void directBufferWrite() throws IOException;
+	/*public void directBufferWrite() throws IOException;*/
 	
 	public void getNextFreeBlocks() throws IOException;
 	/**
@@ -90,8 +90,9 @@ public interface IoManagerInterface {
 	 * @param offset
 	 * @param tblk
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndWriteHeader(long offset, Datablock tblk) throws IOException;
+	*/
 
 	/**
 	 * Read into the passed {@link Datablock} buffer. The header portion and used bytes alone are read, for a full read use
@@ -108,16 +109,17 @@ public interface IoManagerInterface {
 	 * @param toffset The virtual block to read
 	 * @param tblk The Datablock buffer to read into
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndReadFully(long toffset, Datablock tblk) throws IOException;
-	
+	*/
 	/**
 	 * Seek the virtual block and perform a read of the header portion only. No flags are altered.
 	 * @param toffset
 	 * @param tblk
 	 * @throws IOException
-	 */
+	 
 	public void FseekAndReadHeader(long toffset, Datablock tblk) throws IOException;
+	*/
 
 	/**
 	 * @see com.neocoretechs.bigsack.io.MultithreadedIOManager#initialize()
@@ -175,6 +177,8 @@ public interface IoManagerInterface {
 	public void writen(int tblsp, byte[] o, int osize) throws IOException;
 
 	public int objseek(long iloc) throws IOException;
+	
+	public int objseek(long tblock, short inlogflagposition) throws IOException;
 
 	public void deallocOutstandingRollback() throws IOException;
 	
@@ -203,6 +207,5 @@ public interface IoManagerInterface {
 	public BlockStream getBlockStream(int tablespace);
 
 	public void reInitLogs() throws IOException;
-
 
 }

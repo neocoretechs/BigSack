@@ -30,7 +30,6 @@ import com.neocoretechs.bigsack.DBPhysicalConstants;
 public class BigSackAdapter {
 	private static boolean DEBUG = false;
 	private static String tableSpaceDir = "/";
-	private static String remoteDir = null;
 	private static final char[] ILLEGAL_CHARS = { '[', ']', '!', '+', '=', '|', ';', '?', '*', '\\', '<', '>', '|', '\"', ':' };
 	private static final char[] OK_CHARS = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E' };
 
@@ -42,12 +41,7 @@ public class BigSackAdapter {
 	public static void setTableSpaceDir(String tableSpaceDir) {
 		BigSackAdapter.tableSpaceDir = tableSpaceDir;
 	}
-	public static String getRemoteDir() {
-		return remoteDir;
-	}
-	public static void setRemoteDir(String tableSpaceDir) {
-		BigSackAdapter.remoteDir = tableSpaceDir;
-	}
+
 	public static String getDatabaseName(Class clazz) {
 		String xClass = translateClass(clazz.getName());
 		return tableSpaceDir+xClass;

@@ -386,18 +386,19 @@ public class BufferPool {
 		//	throw new IOException(e);
 		//}
 	}
-
+	/*
 	public Callable<Object> callDirectBufferWrite(MappedBlockBuffer blockBuffer) { 
 		return () -> {
 			blockBuffer.directBufferWrite();
 			return true;
 		};
 	}
+	*/
 	/**
 	 * Create a request to send to each block buffer of each tablespace to write the outstanding blocks
 	 * in each of their buffers. Use a countdownlatch to await each tablespace completion.
 	 * @throws IOException 
-	 */
+	 
 	public synchronized void directBufferWrite() throws IOException {
 		//for(int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 		//		blockBuffer[i].directBufferWrite();
@@ -419,7 +420,7 @@ public class BufferPool {
 			throw new IOException(e);
 		}
 	}
-	
+	*/
 	/**
 	 * Seek the block buffer cursor forward by a specific offset.
 	 * @param tblsp The tablespace to seek
@@ -470,7 +471,7 @@ public class BufferPool {
 	
 	/**
 	* objseek - seek to offset within block
-	* @param adr long block to seek to
+	* @param adr long block to seek to, block is a virtual block
 	* @return the tablespace extracted from passed pointer
 	* @exception IOException If problem seeking block
 	* @see Optr
@@ -479,6 +480,20 @@ public class BufferPool {
 		assert(adr != -1L) : "objseek Sentinel block seek error";
 		int tblsp = findOrAddBlock(adr);
 		blockStream[tblsp].getBlockAccessIndex().setByteindex((short) 0);
+		return tblsp;
+	}
+
+	/**
+	* objseek - seek to offset within block
+	* @param adr long block to seek to, block is virtual
+	* @return the tablespace extracted from passed pointer
+	* @exception IOException If problem seeking block
+	* @see Optr
+	*/
+	public synchronized int objseek(long adr, short offset) throws IOException {
+		assert(adr != -1L) : "objseek Sentinel block seek error";
+		int tblsp = findOrAddBlock(adr);
+		blockStream[tblsp].getBlockAccessIndex().setByteindex(offset);
 		return tblsp;
 	}
 

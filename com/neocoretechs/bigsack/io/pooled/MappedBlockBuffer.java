@@ -302,8 +302,10 @@ public class MappedBlockBuffer extends AbstractMap {
 			++cacheMiss;
 			bai = new BlockAccessIndex(globalIO, true);
 			bai.setBlockNumber(lbn);
-			if(read)
-				ioWorker.FseekAndRead(lbn, bai.getBlk());
+			if(read) {
+				Long bn = GlobalDBIO.getBlock(lbn);
+				ioWorker.FseekAndRead(bn, bai.getBlk());
+			}
 			if(DEBUG)
 				System.out.printf("%s.getBlock for block %s not found in any list; created%n", this.getClass().getName(),bai);
 			put(bai);
@@ -390,7 +392,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	/**
 	 * Commit all outstanding blocks in the buffer, bypassing the log subsystem. Should be used with forethought
 	 * @throws IOException
-	 */
+	 
 	public synchronized void directBufferWrite() throws IOException {
 		Enumeration<SoftReference> elbn = usedBlockList.elements();
 		if(DEBUG) System.out.println("MappedBlockBuffer.direct buffer write");
@@ -406,6 +408,7 @@ public class MappedBlockBuffer extends AbstractMap {
 			}
 		}
 	}
+	*/
 	
 	/**
 	 * If we have to steal a block and bring it in from the freechain, put it to the used list here and up the access

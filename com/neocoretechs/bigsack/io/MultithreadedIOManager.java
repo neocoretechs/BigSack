@@ -152,10 +152,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndWrite(%s,%s)%n ",this.getClass().getName(),GlobalDBIO.valueOf(toffset),tblk);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
+		long tblock = GlobalDBIO.getBlock(toffset);
 		//try {
 			//Future<?> f = ThreadPoolManager.getInstance().spin(ioWorker[tblsp].callFseekAndWrite(offset, tblk),ioWorkerNames[tblsp]);
 			//f.get();
-			ioWorker[tblsp].FseekAndWrite(toffset, tblk);
+			ioWorker[tblsp].FseekAndWrite(tblock, tblk);
 		//} catch (InterruptedException | ExecutionException e) {
 		//	throw new IOException(e);
 		//}
@@ -169,7 +170,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		if( DEBUG )
 			System.out.printf("%s.FseekAndWriteFully(%s,%s)%n ",this.getClass().getName(),GlobalDBIO.valueOf(toffset),tblk);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
-		ioWorker[tblsp].FseekAndWriteFully(toffset, tblk);
+		long tblock = GlobalDBIO.getBlock(toffset);
+		ioWorker[tblsp].FseekAndWriteFully(tblock, tblk);
 	}
 	
 	/* (non-Javadoc)
@@ -182,7 +184,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
 		//	System.out.println("MultithreadedIOManager.FseekAndRead Tablespace_1_114688");
 		int tblsp = GlobalDBIO.getTablespace(toffset);
-		ioWorker[tblsp].FseekAndRead(toffset, tblk);
+		long tblock = GlobalDBIO.getBlock(toffset);
+		ioWorker[tblsp].FseekAndRead(tblock, tblk);
 		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
 		//	System.out.println("MultithreadedIOManager.FseekAndRead EXIT Tablespace_1_114688 "+tblk+" dump:"+tblk.blockdump());
 		//assert(tblk.getBytesused() != 0 && tblk.getBytesinuse() != 0) : "MultithreadedIOManager.FseekAndRead returned unusable block from offset "+GlobalDBIO.valueOf(toffset)+" "+tblk.blockdump();
@@ -193,7 +196,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * including cluster and standalone. The queue can be 'extended' to remote nodes with the queues servicing
 	 * threads also acting as data pipes across the networks once subclassed.
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#FseekAndReadFully(long, com.neocoretechs.bigsack.io.pooled.Datablock)
-	 */
+	 
 	@Override
 	public void FseekAndReadFully(long toffset, Datablock tblk) throws IOException {
 		if( DEBUG )
@@ -201,6 +204,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		int tblsp = GlobalDBIO.getTablespace(toffset);
 		ioWorker[tblsp].FseekAndReadFully(toffset, tblk);
 	}
+	*/
 
 	/**
 	 * Return that which is regarded as the first tablespace, usually 0, location of root node.
@@ -277,6 +281,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.printf("%s.deallocOutstandingCommit invoking commitBufferFlush and deallocOutstanding...%n",this.getClass().getName());
 		commitBufferFlush();
 		deallocOutstanding();
+		Fforce();
 	}
 	/**
 	 * Deallocate the outstanding block and call rollback on the recovery log
@@ -407,7 +412,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.printf("%s.checkpointBufferFlush invoked.%n",this.getClass().getName());
 		bufferPool.checkpointBufferFlush();
 	}
-	
+	/*
 	@Override
 	public void directBufferWrite() throws IOException {
 		if( DEBUG )
@@ -417,7 +422,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//}
 		bufferPool.directBufferWrite();
 	}
-	
+	*/
 	/**
 	* seek_fwd - long seek forward from current spot
 	* @param offset offset from current
@@ -467,7 +472,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	
 	@Override
 	/**
-	 * Perform an Fseek on the block and red it into the {@code datablock}
+	 * Perform an Fseek on the block and read it into the {@code datablock}
 	 */
 	public void readDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
 		synchronized(ioWorker[tblsp]) {
@@ -502,6 +507,11 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	}
 	
 	@Override
+	public int objseek(long tblock, short offset) throws IOException {
+		return bufferPool.objseek(tblock, offset);		
+	}
+
+	@Override
 	public RecoveryLogManager getUlog(int tblsp) {
 		return bufferPool.getUlog(tblsp);
 	}
@@ -515,7 +525,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public BlockStream getBlockStream(int tablespace) {
 		return bufferPool.getBlockStream(tablespace);
 	}
-
+	/*
 	@Override
 	public void FseekAndWriteHeader(long offset, Datablock tblk) throws IOException {
 		int tblsp = GlobalDBIO.getTablespace(offset);
@@ -527,5 +537,5 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		int tblsp = GlobalDBIO.getTablespace(offset);
 		ioWorker[tblsp].FseekAndReadHeader(offset, tblk);
 	}
-
+	*/
 }
