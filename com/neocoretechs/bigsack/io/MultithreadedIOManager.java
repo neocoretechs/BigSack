@@ -465,7 +465,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	public void writeDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
 		synchronized(ioWorker[tblsp]) {
-			((IOWorker) ioWorker[tblsp]).Fseek(blkn);
+			((IOWorker) ioWorker[tblsp]).Fseek(GlobalDBIO.getBlock(blkn));
 			blkV2.write((IoInterface) ioWorker[tblsp]);
 		}
 	}
@@ -476,7 +476,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	public void readDirect(int tblsp, long blkn, Datablock blkV2) throws IOException {
 		synchronized(ioWorker[tblsp]) {
-			((IOWorker) ioWorker[tblsp]).Fseek(blkn);
+			((IOWorker) ioWorker[tblsp]).Fseek(GlobalDBIO.getBlock(blkn));
 			blkV2.read((IoInterface) ioWorker[tblsp]);
 		}
 	}
