@@ -49,7 +49,7 @@ public class EntrySetIterator extends AbstractIterator {
 				nextElem = current.getmValue();
 				nextKey = current.getmKey();
 			}
-			kvMain.getIO().deallocOutstanding();
+			//kvMain.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
@@ -80,7 +80,7 @@ public class EntrySetIterator extends AbstractIterator {
 					nextKey = null;
 					stack.clear();
 				}
-				kvMain.getIO().deallocOutstanding();
+				//kvMain.getIO().deallocOutstanding();
 				return new Entry(retKey, retElem);
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

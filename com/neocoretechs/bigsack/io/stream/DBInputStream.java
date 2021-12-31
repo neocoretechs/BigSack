@@ -1,7 +1,9 @@
 package com.neocoretechs.bigsack.io.stream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
+import java.nio.ByteBuffer;
 
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
@@ -35,36 +37,51 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 * @author Groff
 */
 public final class DBInputStream extends InputStream {
-	public static boolean DEBUG = false;
+	public static boolean DEBUG = true;
 	MappedBlockBuffer blockBuffer;
 	BlockAccessIndex lbai;
+	private DataInputStream DBInput = null;
+	
 	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
 		lbai = tlbai;
 		blockBuffer = tsdbio;
 		if(DEBUG)
-			System.out.printf("%s.c'tor %s%n", this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
+			System.out.printf("%s.c'tor %s%n", this.getClass().getName(),lbai);
 	}
-	/**
-	 * Allows us to replace the underlying deep store blocks for data that spans multiple blocks
-	 * To the underlying stream it should appear as one continuous stream
-	 * @param tlbai
-	 * @param tsdbio
-	 */
-	public void replaceSource(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
-		lbai = tlbai;
-		blockBuffer = tsdbio;
-		if(DEBUG)
-			System.out.printf("%s.replaceSource %s%n", this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
+	
+	public synchronized BlockAccessIndex getBlockAccessIndex() {
+		return lbai;
+	}
+	
+	public synchronized DataInputStream getDBInput() {
+		assert(lbai != null) : "BlockStream has null BlockAccessIndex for tablespace:"+blockBuffer.getTablespace();
+		if(DBInput == null)
+			DBInput = new DataInputStream(this);
+		return DBInput;
+	}
+	
+	@Override
+	public void close() throws IOException {
+		if(lbai != null)
+			lbai.decrementAccesses();
 	}
 	
 	@Override
 	/**
 	 * Return the number available in this block, the bytesinuse - current, but ONLY for this block.<p/>
 	 * Primary use case is to determine if we are going to advance to next block on subsequent read or
-	 * determine of any data exists in this block.
+	 * determine of any data exists in this block. If we have zero bytes available this block, but a next block is linked
+	 * return 1.
 	 */
 	public int available() {
-		return (lbai.getBlk().getBytesused() - lbai.getByteindex());
+		int navail = (lbai.getBlk().getBytesused() - lbai.getByteindex());
+		if(navail < 0)
+			navail = 0;
+		if(navail == 0 && lbai.getBlk().getNextblk() != -1)
+			navail = 1;
+		if(DEBUG)
+			System.out.printf("%s.available = %d %s%n", this.getClass().getName(),navail,lbai);
+		return navail;
 	}
 	
 	@Override
@@ -75,20 +92,175 @@ public final class DBInputStream extends InputStream {
 	//Reads bytes from this byte-input stream into the specified byte array, starting at the given offset.
 	@Override
 	public int read(byte[] b, int off, int len) throws IOException {
-		return blockBuffer.readn(lbai, b, off, len);
+		return readn(lbai, b, off, len);
 	}
 		
 	@Override
 	public int read() throws IOException {
-		return blockBuffer.readi(lbai);
+		return readi(lbai);
 	}
 
 	@Override
 	public long skip(long len) throws IOException {
-		for(int i = 0; i < len; i++)
-				read();
-		return len;
+		long actual = 0L;
+		for(int i = 0; i < len; i++) {
+				if(read() == -1)
+					break;
+				++actual;
+		}
+		return actual;
+	}
+	/**
+	* seek_fwd - long seek forward from current spot. If we change blocks, notify the observers
+	* @param offset offset from current
+	* @exception IOException If we cannot acquire next block
+	*/
+	public synchronized boolean seek_fwd(BlockAccessIndex tbai, long offset) throws IOException {
+		long runcount = offset;
+		lbai = tbai;
+		do {
+			if (runcount >= (lbai.getBlk().getBytesused() - lbai.getByteindex())) {
+				runcount -= (lbai.getBlk().getBytesused() - lbai.getByteindex());
+				lbai = blockBuffer.getnextblk(lbai);
+				if(lbai.getBlk().getNextblk() == -1)
+					return false;
+			} else {
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
+				runcount = 0;
+			}
+		} while (runcount > 0);
+		return true;
+	
 	}
 
-		
+	/**
+	* readn - read n bytes from pool. will start on the passed BlockAccessIndex filling buf from offs until numbyte.
+	* Records spanning blocks will be successively read until buffer is full
+	* @param buf byte buffer to fill
+	* @param numbyte number of bytes to read
+	* @return number of bytes read, -1 if we reach end of stream and/or there is no next block
+	* @exception IOException If we cannot acquire next block
+	*/
+	public synchronized int readn(BlockAccessIndex tbai, byte[] buf, int offs, int numbyte) throws IOException {
+		lbai = tbai;
+		BlockAccessIndex tblk;
+		int i = offs, runcount = numbyte, blkbytes;
+		// see if we need the next block to start
+		// and flag our position
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
+			if((tblk=blockBuffer.getnextblk(lbai)) != null) {
+				lbai=tblk;
+			} else {
+				return -1;
+			}
+		for (;;) {
+			blkbytes = lbai.getBlk().getBytesused() - lbai.getByteindex();
+			if (runcount > blkbytes) {
+				runcount -= blkbytes;
+				System.arraycopy(
+					lbai.getBlk().getData(),
+					lbai.getByteindex(),
+					buf,
+					i,
+					blkbytes);
+				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
+				i += blkbytes;
+				if ((tblk=blockBuffer.getnextblk(lbai)) != null) {
+					lbai=tblk;
+				} else {
+					return (i != 0 ? (i-offs) : -1);
+				}
+			} else {
+				System.arraycopy(
+					lbai.getBlk().getData(),
+					lbai.getByteindex(),
+					buf,
+					i,
+					runcount);
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
+				i += runcount;
+				return (i != 0 ? (i-offs) : -1);
+			}
+		}
+	}
+	
+	public synchronized int readn(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
+		return readn(lbai, buf, 0, numbyte);
+	}
+	/**
+	* readn - read n bytes from pool
+	* @param buf byte buffer to fill
+	* @param numbyte number of bytes to read
+	* @return number of bytes read
+	* @exception IOException If we cannot acquire next block
+	*/
+	public synchronized int readn(BlockAccessIndex tbai, ByteBuffer buf, int numbyte) throws IOException {
+		lbai = tbai;
+		BlockAccessIndex tblk;
+		int i = 0, runcount = numbyte, blkbytes;
+		// see if we need the next block to start
+		// and flag our position
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
+			if((tblk=blockBuffer.getnextblk(lbai)) != null) {
+				lbai=tblk;
+			} else {
+				return (i != 0 ? i : -1);
+			}
+		for (;;) {
+			blkbytes = lbai.getBlk().getBytesused() - lbai.getByteindex();
+			if (runcount > blkbytes) {
+				runcount -= blkbytes;
+				buf.position(i);
+				buf.put(lbai.getBlk().getData(), lbai.getByteindex(), blkbytes);
+				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
+				i += blkbytes;
+				if((tblk=blockBuffer.getnextblk(lbai)) != null) {
+					lbai=tblk;
+				} else {
+					return (i != 0 ? i : -1);
+				}
+			} else {
+				buf.position(i);
+				buf.put(lbai.getBlk().getData(), lbai.getByteindex(), runcount);
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
+				i += runcount;
+				return (i != 0 ? i : -1);
+			}
+		}
+	}
+	/**
+	* readi - read 1 byte from pool.
+	* This method designed to be called from DBInput.
+	* @return the byte as integer for InputStream
+	* @exception IOException If we cannot acquire next block
+	*/
+	public synchronized int readi(BlockAccessIndex tbai) throws IOException {
+		lbai = tbai;
+		BlockAccessIndex tblk;
+		// see if we need the next block to start
+		// and flag our position
+		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1) {
+			if((tblk=blockBuffer.getnextblk(lbai)) == null) {
+				return -1;
+			}
+			lbai = tblk;
+		}
+		int ret = lbai.getBlk().getData()[lbai.getByteindex()] & 255;
+		lbai.setByteindex((short) (lbai.getByteindex() + 1));
+		return ret;
+	}
+	
+	@Override
+	public synchronized String toString() {
+		return "BlockStream for tablespace "+blockBuffer.getTablespace()+" with block "+(lbai == null ? "UNASSIGNED" : lbai)+" and blocks in buffer:"+blockBuffer.size();
+	}
+
+	public void setBlockAccessIndex(BlockAccessIndex bai) {
+		lbai = bai;	
+	}
+	
+	public void setBlockAccessIndex(BlockAccessIndex bai, short byteindex) {
+		lbai = bai;	
+		lbai.setByteindex(byteindex);
+	}
 }

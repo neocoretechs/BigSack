@@ -46,7 +46,7 @@ public class KeySetIterator extends AbstractIterator  {
 			if(current != null) {
 				nextKey = current.getmKey();
 			}
-			kvMain.getIO().deallocOutstanding();
+			//kvMain.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
@@ -73,7 +73,7 @@ public class KeySetIterator extends AbstractIterator  {
 					nextKey = null;
 					stack.clear();
 				}
-				kvMain.getIO().deallocOutstanding();
+				//kvMain.getIO().deallocOutstanding();
 				return retKey;
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

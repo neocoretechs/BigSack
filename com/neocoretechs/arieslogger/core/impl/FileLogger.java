@@ -32,6 +32,7 @@ import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 import java.io.IOException;
 import java.lang.ref.SoftReference;
@@ -441,7 +442,9 @@ public final class FileLogger implements Logger {
 						bai.getBlk().setInlog(false);
 					}
 					long tblock = lbai.getBlockNum();
-					t.updateDeepStoreInLog(tblock, false);
+					DBOutputStream dbo = GlobalDBIO.getBlockOutputStream(lbai);
+					t.updateDeepStoreInLog(dbo,tblock, false);
+					dbo.close();
 					if(DEBUG)
 						System.out.printf("%s.commit Reset inLog for block:%s%n",this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
 				} // record iterator

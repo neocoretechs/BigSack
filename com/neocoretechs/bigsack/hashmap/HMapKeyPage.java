@@ -11,7 +11,8 @@ import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-
+import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -74,7 +75,8 @@ public final class HMapKeyPage implements KeyPageInterface {
 	protected long nextPageId = -1L; // lazy initialization of the collision space, redundant storage of nextPage.pageId to bootstrap
 	protected KeyPageInterface nextPage = null; // next page of collision space
 	private long numKeys = 0L;
-
+	private DBInputStream dbInputStream = null;
+	private DBOutputStream dbOutputStream = null;
 	/**
 	 * This is called from getPageFromPool get set up a node.
 	 * @param sdbio The database IO main class
@@ -88,7 +90,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		if( DEBUG ) 
 			System.out.printf("%s ctor1 BlockAccessIndex:%s%n",this.getClass().getName(), lbai);
 		if( read && lbai.getBlk().getBytesinuse() > 0) {// intentional clear or we may have deleted or rolled back all the way to primordial
-			readFromDBStream(lbai.getDBStream());
+			readFromDBStream(lbai.getDBInputStream());
 		} else {
 			// If we are not reading, we must be preparing the block for new key. Really no
 			// reason for a new block with unassigned and not updating keys conceptually.
@@ -272,15 +274,17 @@ public final class HMapKeyPage implements KeyPageInterface {
 	* @throws IOException 
 	*/
 	synchronized void delete(int index) throws IOException {
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		//System.out.println("KeyPageInterface.delete "+this+" index:"+index);
 		if( hTNode.getKeyValueArray(index) == null )
 			throw new IOException("Node at index "+index+" null for attempted delete");
 		if( !hTNode.getKeyValueArray(index).getKeyOptr().equals(Optr.emptyPointer))
-			hMapMain.getIO().delete_object(hTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(hTNode.getKeyValueArray(index).getmKey()).length);
+			hMapMain.getIO().delete_object(dbOutputStream, hTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(hTNode.getKeyValueArray(index).getmKey()).length);
 		if( hTNode.getKeyValueArray(index).getValueOptr() != null && !hTNode.getKeyValueArray(index).getValueOptr().equals(Optr.emptyPointer))
-			hMapMain.getIO().delete_object(hTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(hTNode.getKeyValueArray(index).getmValue()).length);
+			hMapMain.getIO().delete_object(dbOutputStream, hTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(hTNode.getKeyValueArray(index).getmValue()).length);
 		// If its the rightmost key ignore move
 		setUpdated(true);
+		dbOutputStream.close();
 	}
 	
 	/**
@@ -353,7 +357,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		assert (lbai.getBlockNum() != -1L) : " KeyPageInterface unlinked from page pool:"+this;
 		// write the page to the current block
 		// Write to the block output stream
-		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(lbai);
+		DataOutputStream bs = GlobalDBIO.getDataOutputStream(lbai);
 		bs.writeLong(numKeys);
 		for(int i = 0; i < numKeys; i++) {
 			if(getKeyValueArray(i) != null && getKeyValueArray(i).keyState == KeyValue.synchStates.mustWrite || getKeyValueArray(i).keyState == KeyValue.synchStates.mustReplace ) { // if set, key was processed by putKey[i]
@@ -405,6 +409,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @throws IOException
 	 */
 	public synchronized boolean putKey(int index, ArrayList<Long> currentPayloadBlocks) throws IOException {
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		if(getKeyValueArray(index).getmKey() == null) {
 			if(DEBUG || DEBUGPUTKEY) 
 				System.out.printf("%s.putKey index=%d, key=%s Optr=%s%n", this.getClass().getName(),
@@ -417,10 +422,11 @@ public final class HMapKeyPage implements KeyPageInterface {
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmKey());
 		getKeyValueArray(index).setKeyOptr(hMapMain.getIO().getIOManager().getNewInsertPosition(currentPayloadBlocks, pb.length));
-		hMapMain.getIO().add_object(getKeyValueArray(index).getKeyOptr(), pb, pb.length);
+		hMapMain.getIO().add_object(dbOutputStream, getKeyValueArray(index).getKeyOptr(), pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY)
 			System.out.printf("%s.putKey ADDED Object for k/v:%s index:%d bytes:%d%n",this.getClass().getName(),getKeyValueArray(index),index,pb.length);
 		setUpdated(true);
+		dbOutputStream.close();
 		return true;
 	}
 	
@@ -433,7 +439,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @throws IOException
 	 */
 	public synchronized boolean putData(int index, ArrayList<Long> currentPayloadBlocks) throws IOException {
-
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		if( getKeyValueArray(index).getmValue() == null ) {
 			//|| bTreeKeyPage.getKeyValueArray()[index].getValueOptr().equals(Optr.emptyPointer)) {
 			getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
@@ -447,7 +453,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 		getKeyValueArray(index).setValueOptr(hMapMain.getIO().getIOManager().getNewInsertPosition(currentPayloadBlocks, pb.length));		
 		if( DEBUGPUTDATA )
 			System.out.printf("%s.putData ADDING NON NULL value for k/v:%s index:%d%n",this.getClass().getName(),getKeyValueArray(index),index);
-		hMapMain.getIO().add_object(getKeyValueArray(index).getValueOptr(), pb, pb.length);
+		hMapMain.getIO().add_object(dbOutputStream, getKeyValueArray(index).getValueOptr(), pb, pb.length);
 		setUpdated(true);
 		return true;
 	}
@@ -462,7 +468,7 @@ public final class HMapKeyPage implements KeyPageInterface {
 	 * @throws IOException
 	 */
 	protected synchronized void writeIndex(RootKeyPageInterface childPages, int index, long blocknum) throws IOException {
-		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(childPages.getBlockAccessIndex(), (short)((index*8)+4));
+		DataOutputStream bs = GlobalDBIO.getDataOutputStream(childPages.getBlockAccessIndex(), (short)((index*8)+4));
 		bs.writeLong(blocknum);
 		childPages.getBlockAccessIndex().setUpdated();
 		bs.flush();

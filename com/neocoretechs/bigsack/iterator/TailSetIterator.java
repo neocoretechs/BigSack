@@ -57,7 +57,7 @@ public class TailSetIterator extends AbstractIterator {
 				nextKey = null;
 				stack.clear();
 			}
-			bTree.getIO().deallocOutstanding();
+			//bTree.getIO().deallocOutstanding();
 			if( DEBUG )
 				System.out.println("TailSetIterator.Nextkey:"+nextKey);
 		}
@@ -85,7 +85,7 @@ public class TailSetIterator extends AbstractIterator {
 					nextKey = null;
 					stack.clear();
 				}
-				kvMain.getIO().deallocOutstanding();
+				//kvMain.getIO().deallocOutstanding();
 				return retKey;
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

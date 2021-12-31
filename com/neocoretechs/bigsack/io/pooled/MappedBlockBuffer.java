@@ -38,7 +38,7 @@ public class MappedBlockBuffer extends AbstractMap {
 	private GlobalDBIO globalIO;
 	private IoInterface ioWorker;
 	private int tablespace;
-	private final Set<BlockChangeEvent> mObservers = Collections.newSetFromMap(new ConcurrentHashMap<BlockChangeEvent, Boolean>());
+	//private final Set<BlockChangeEvent> mObservers = Collections.newSetFromMap(new ConcurrentHashMap<BlockChangeEvent, Boolean>());
 	private LinkedHashMap<Long, BlockAccessIndex> freeBlockList = new LinkedHashMap<Long, BlockAccessIndex>(DBPhysicalConstants.DBUCKETS);
 	/** The internal HashMap that will hold the SoftReference. */
 	private final ConcurrentHashMap usedBlockList = new ConcurrentHashMap();
@@ -194,7 +194,9 @@ public class MappedBlockBuffer extends AbstractMap {
 		return usedBlockList.containsKey(key);
 	}
 	
-	public void addBlockChangeObserver(BlockChangeEvent bce) { mObservers.add(bce); }
+	public int getTablespace() { 
+		return tablespace;
+	}
 	
 	@Override
 	/**
@@ -217,18 +219,7 @@ public class MappedBlockBuffer extends AbstractMap {
 		//value.startExpired();
 		return usedBlockList.put(key, new SoftValue(value, key, queue));
 	}
-	/**
-    * This method notifies currently registered observers about BlockChangeEvent change.
-    * We wont do this for methods that return the BLockAccessIndex from one block returned by a call
-    * because we assume the operation will be carried out downstream so we save this expensive
-    * operation. But in a case where we are iterating through multiple blocks we will notify the
-    * BlockStream and other listeners of the event. In short, dont look for total updates on this channel.
-    */
-    private void notifyObservers(BlockAccessIndex bai) {
-        for (BlockChangeEvent observer : mObservers) { // this is safe due to thread-safe Set
-            observer.blockChanged(tablespace, bai);
-        }
-    }
+
     
 	public synchronized GlobalDBIO getGlobalIO() { return globalIO;}
 	/**
@@ -330,28 +321,6 @@ public class MappedBlockBuffer extends AbstractMap {
 	public synchronized int sizeFreeBlockList() {
 		return freeBlockList.size();
 	}
-	/**
-	* seek_fwd - long seek forward from current spot. If we change blocks, notify the observers
-	* @param offset offset from current
-	* @exception IOException If we cannot acquire next block
-	*/
-	public synchronized boolean seek_fwd(BlockAccessIndex tbai, long offset) throws IOException {
-		long runcount = offset;
-		BlockAccessIndex lbai = tbai;
-		do {
-			if (runcount >= (lbai.getBlk().getBytesused() - lbai.getByteindex())) {
-				runcount -= (lbai.getBlk().getBytesused() - lbai.getByteindex());
-				lbai = getnextblk(lbai);
-				if(lbai.getBlk().getNextblk() == -1)
-					return false;
-			} else {
-				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
-				runcount = 0;
-			}
-		} while (runcount > 0);
-		return true;
-	
-	}
 
 	/**
 	 * Commit all outstanding blocks in the buffer. Iterate the elements in 'this' and write to the undo log
@@ -445,7 +414,7 @@ public class MappedBlockBuffer extends AbstractMap {
 		if( DEBUG ) {
 			System.out.println("MappedBlockBuffer.addBlockAccessNoRead "+Lbn+" returning after freeBL take "+bai+" "+this);
 		}
-		notifyObservers(bai);
+		//notifyObservers(bai);
 		return bai;
 	}
 	
@@ -471,349 +440,6 @@ public class MappedBlockBuffer extends AbstractMap {
 		if( DEBUG )
 			System.out.println("MappedBlockBuffer.getnextblk next block fetch retrieved:"+(nextBlk == null ? "<null>" : nextBlk));
 		return nextBlk;
-	}
-	
-	/**
-	* readn - read n bytes from pool. will start on the passed BlockAccessIndex filling buf from offs until numbyte.
-	* Records spanning blocks will be successively read until buffer is full
-	* @param buf byte buffer to fill
-	* @param numbyte number of bytes to read
-	* @return number of bytes read, -1 if we reach end of stream and/or there is no next block
-	* @exception IOException If we cannot acquire next block
-	*/
-	public synchronized int readn(BlockAccessIndex lbai, byte[] buf, int offs, int numbyte) throws IOException {
-		BlockAccessIndex tblk;
-		int i = offs, runcount = numbyte, blkbytes;
-		// see if we need the next block to start
-		// and flag our position
-		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
-			if((tblk=getnextblk(lbai)) != null) {
-				lbai=tblk;
-			} else {
-				return -1;
-			}
-		for (;;) {
-			blkbytes = lbai.getBlk().getBytesused() - lbai.getByteindex();
-			if (runcount > blkbytes) {
-				runcount -= blkbytes;
-				System.arraycopy(
-					lbai.getBlk().getData(),
-					lbai.getByteindex(),
-					buf,
-					i,
-					blkbytes);
-				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
-				i += blkbytes;
-				if ((tblk=getnextblk(lbai)) != null) {
-					lbai=tblk;
-				} else {
-					return (i != 0 ? (i-offs) : -1);
-				}
-			} else {
-				System.arraycopy(
-					lbai.getBlk().getData(),
-					lbai.getByteindex(),
-					buf,
-					i,
-					runcount);
-				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
-				i += runcount;
-				return (i != 0 ? (i-offs) : -1);
-			}
-		}
-	}
-	
-	public synchronized int readn(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
-		return readn(lbai, buf, 0, numbyte);
-	}
-	/**
-	* readn - read n bytes from pool
-	* @param buf byte buffer to fill
-	* @param numbyte number of bytes to read
-	* @return number of bytes read
-	* @exception IOException If we cannot acquire next block
-	*/
-	public synchronized int readn(BlockAccessIndex lbai, ByteBuffer buf, int numbyte) throws IOException {
-		BlockAccessIndex tblk;
-		int i = 0, runcount = numbyte, blkbytes;
-		// see if we need the next block to start
-		// and flag our position
-		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1)
-			if((tblk=getnextblk(lbai)) != null) {
-				lbai=tblk;
-			} else {
-				return (i != 0 ? i : -1);
-			}
-		for (;;) {
-			blkbytes = lbai.getBlk().getBytesused() - lbai.getByteindex();
-			if (runcount > blkbytes) {
-				runcount -= blkbytes;
-				buf.position(i);
-				buf.put(lbai.getBlk().getData(), lbai.getByteindex(), blkbytes);
-				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
-				i += blkbytes;
-				if((tblk=getnextblk(lbai)) != null) {
-					lbai=tblk;
-				} else {
-					return (i != 0 ? i : -1);
-				}
-			} else {
-				buf.position(i);
-				buf.put(lbai.getBlk().getData(), lbai.getByteindex(), runcount);
-				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
-				i += runcount;
-				return (i != 0 ? i : -1);
-			}
-		}
-	}
-	/**
-	* readi - read 1 byte from pool.
-	* This method designed to be called from DBInput.
-	* @return the byte as integer for InputStream
-	* @exception IOException If we cannot acquire next block
-	*/
-	public synchronized int readi(BlockAccessIndex lbai) throws IOException {
-		BlockAccessIndex tblk;
-		// see if we need the next block to start
-		// and flag our position
-		if (lbai.getByteindex() >= lbai.getBlk().getBytesused()-1) {
-			if((tblk=getnextblk(lbai)) == null) {
-				return -1;
-			}
-			lbai = tblk;
-		}
-		int ret = lbai.getBlk().getData()[lbai.getByteindex()] & 255;
-		lbai.setByteindex((short) (lbai.getByteindex() + 1));
-		return ret;
-	}
-	/**
-	* writen -  write n bytes to pool.  This
-	* will overwrite to next block if necessary, or allocate from end
-	* @param buf byte buffer to write
-	* @param numbyte number of bytes to write
-	* @return number of bytes written
-	* @exception IOException if can't acquire new block
-	*/
-	public synchronized int writen(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
-		BlockAccessIndex tblk = null;
-		BlockAccessIndex ablk = null;
-		int i = 0, runcount = numbyte, blkbytes;
-		// see if we need the next block to start
-		// and flag our position, tblk has passed block or a new acquired one
-		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
-			if ((tblk=getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
-				tblk = acquireNewBlk(lbai);
-			}
-		} else { // we have some room in the passed block
-			tblk = lbai;
-		}
-		// Iterate, reducing the byte count in buffer by room in each block
-		for (;;) {
-			blkbytes = DBPhysicalConstants.DATASIZE - tblk.getByteindex();
-			if(DEBUG)
-				System.out.printf("Writing %d to tblk:%s%n",blkbytes, tblk);
-			if (runcount > blkbytes) {  //overflow block
-				runcount -= blkbytes;
-				System.arraycopy(
-					buf,
-					i,
-					tblk.getBlk().getData(),
-					tblk.getByteindex(),
-					blkbytes);
-				tblk.setByteindex((short) (tblk.getByteindex() + (short)blkbytes));
-				i += blkbytes;
-				tblk.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
-				//update control info
-				tblk.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
-				if((ablk=getnextblk(tblk)) == null) { // no linked block to write into? get one
-					ablk = acquireNewBlk(tblk);
-				}
-				tblk = ablk;
-				// now tblk has next block in chain or new acquired block
-			} else { // we can fit the remainder of buffer in this block
-				System.arraycopy(
-					buf,
-					i,
-					tblk.getBlk().getData(),
-					tblk.getByteindex(),
-					runcount);
-				tblk.setByteindex((short) (tblk.getByteindex() + runcount));
-				i += runcount;
-				if (tblk.getByteindex() > tblk.getBlk().getBytesused()) {
-					//update control info
-					tblk.getBlk().setBytesused(tblk.getByteindex());
-					tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
-				}
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
-				return i;
-			}
-		}
-	}
-	/**
-	* writen -  write n bytes to pool.  This will overwrite to next block if necessary, or allocate from end
-	* The blocks written have their 'inCore' property set to true and their 'inLog' property set to false.
-	* The is used in the Seekable DB channel that moves data from store to pool
-	* @param buf byte buffer to write
-	* @param numbyte number of bytes to write
-	* @return number of bytes written
-	* @exception IOException if can't acquire new block
-	*/
-	public synchronized int writen(BlockAccessIndex lbai, ByteBuffer buf, int numbyte) throws IOException {
-		BlockAccessIndex tblk = null;
-		BlockAccessIndex ablk = null;
-		int i = 0, runcount = numbyte, blkbytes;
-		// sets the incore to true and the inlog to false on both blocks
-		// see if we need the next block to start
-		// and flag our position, tblk has passed block or a new acquired one
-		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
-			if ((tblk=getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
-				tblk = acquireNewBlk(lbai);
-			}
-		} else { // we have some room in the passed block
-			tblk = lbai;
-		}
-		//
-		for (;;) {
-			blkbytes = DBPhysicalConstants.DATASIZE - tblk.getByteindex();
-			if(DEBUG)
-				System.out.printf("Writing %d to tblk:%s buffer:%s%n",blkbytes, tblk, buf);
-			if (runcount > blkbytes) {
-				runcount -= blkbytes;
-				buf.position(i);
-				buf.get(tblk.getBlk().getData(), tblk.getByteindex(), blkbytes);
-				tblk.setByteindex((short) (tblk.getByteindex() + (short)blkbytes));
-				i += blkbytes;
-				tblk.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
-				//update control info
-				tblk.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
-				if ((ablk=getnextblk(tblk)) == null) {
-					ablk = acquireNewBlk(tblk);
-				}
-				tblk = ablk;
-			} else {
-				buf.position(i);
-				buf.get(tblk.getBlk().getData(), tblk.getByteindex(), runcount);
-				tblk.setByteindex((short) (tblk.getByteindex() + runcount));
-				i += runcount;
-				if (tblk.getByteindex() >= tblk.getBlk().getBytesused()) {
-					//update control info
-					tblk.getBlk().setBytesused(tblk.getByteindex());
-					tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
-				}
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
-				return i;
-			}
-		}
-	}
-
-	/**
-	* writei -  write 1 byte to pool.
-	* This method designed to be called from DBOutput.
-	* Will overwrite to next blk if necessary.
-	* @param byte to write
-	* @exception IOException If cannot acquire new block
-	*/
-	public synchronized void writei(BlockAccessIndex lbai, int tbyte) throws IOException {
-		BlockAccessIndex tblk;
-		// see if we need the next block to start
-		// and flag our position
-		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
-			if ((tblk=getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
-				tblk = acquireNewBlk(lbai);
-			}
-		} else { // we have some room in the passed block
-			tblk = lbai;
-		}
-		if (!tblk.getBlk().isIncore())
-			tblk.getBlk().setIncore(true);
-		tblk.getBlk().getData()[tblk.getByteindex()] = (byte) tbyte;
-		tblk.setByteindex((short) (tblk.getByteindex() + 1));
-		if (tblk.getByteindex() > tblk.getBlk().getBytesused()) {
-			//update control info
-			tblk.getBlk().setBytesused( tblk.getByteindex()) ;
-			tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
-		}
-	}
-
-	/**
-	* deleten -  delete n bytes from object / directory. Item may span a block so we
-	* adjust the pointers across block boundaries if necessary. Numerous sanity checks along the way.
-	* @param osize number bytes to delete
-	* @return true if success
-	* @exception IOException If we cannot write block, or we attempted to seek past the end of a chain, or if the high water mark and total bytes used did not ultimately agree.
-	*/
-	protected synchronized void deleten(BlockAccessIndex lbai, int osize) throws IOException {
-		//System.out.println("MappedBlockBuffer.deleten:"+lbai+" size:"+osize);
-		BlockAccessIndex tblk;
-		int runcount = osize;
-		if (osize <= 0)
-			throw new IOException("Attempt to delete object with size invalid: " + osize);
-		//
-		// Handle the case where the entry we want to delete can be contained within one block
-		// we are not altering the high water mark because the entry falls between the beginning and high water
-		// and there may be another entry between it and high water
-		//
-		if( (((int)lbai.getByteindex()) + runcount) < ((int)lbai.getBlk().getBytesused())) {
-			lbai.getBlk().setBytesinuse((short) (((int)(lbai.getBlk().getBytesinuse()) - runcount)) ); // reduce total bytes being used by delete amount
-			// assertion did everything make sense at the end?
-			if(lbai.getBlk().getBytesinuse() < 0)
-				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount:"+runcount+" delete size:"+osize);
-			lbai.getBlk().setIncore(true);
-			lbai.getBlk().setInlog(false);
-			return;
-		}
-		//
-		// The following case works for all contiguous chunks, however,it DOES NOT work for non contiguous chunks
-		// where an entry is between the one to be deleted and high water mark. as in byteindex = 64 and osiz = 32
-		// bytesused = 128 high water and bytesinuse = 64, 2 32 byte entries. in that case bspan = 96, dspan = 64
-		// bytesused comes out 64 and bytesinuse comes out 0, and the entry after the one we want gone disappears.
-		// that case should have been handled above.
-		//
-		do {
-			//
-			int bspan = ((int)lbai.getByteindex()) + runcount; // current delete amount plus start of delete
-			int dspan = ((int)lbai.getBlk().getBytesused()) - ((int)lbai.getByteindex()); // (high water mark bytesused - index) total available to delete this page
-			if( bspan < dspan ) { // If the total we want to delete plus start, does not exceed total this page, set to delete remaining runcount
-				dspan = runcount;
-			} else {
-				// reduce bytesused by total this page, set high water mark back since we exceeded it
-				lbai.getBlk().setBytesused( (short) (((int)(lbai.getBlk().getBytesused()) - dspan)) );
-			}
-			//System.out.println("runcount="+runcount+" dspan="+dspan+" bspan="+bspan);
-			runcount = runcount - dspan; //reduce runcount by total available to delete this page
-			lbai.getBlk().setBytesinuse((short) (((int)(lbai.getBlk().getBytesinuse()) - dspan)) ); // reduce total bytes being used by delete amount
-			//
-			// assertion did everything make sense at the end?
-			if(lbai.getBlk().getBytesinuse() < 0)
-				throw new IOException(this.toString() + " "+lbai+" negative bytesinuse from runcount:"+runcount+" delete size:"+osize);
-			if(lbai.getBlk().getBytesused() < 0)
-				throw new IOException(this.toString() + " "+lbai+" negative bytesused from runcount "+runcount+" delete size:"+osize);
-			// high water mark 0, but bytes used for data is not, something went horribly wrong
-			if(lbai.getBlk().getBytesinuse() == 0) { //if total bytes used is 0, reset high water mark to 0 to eventually reclaim block
-				lbai.getBlk().setBytesused((short)0);
-				lbai.setByteindex((short)0);	
-			}
-			//
-			lbai.getBlk().setIncore(true);
-			lbai.getBlk().setInlog(false);
-			if(runcount > 0) { // if we have more to delete
-				tblk = getnextblk(lbai);
-				// another sanity check
-				if(tblk == null)
-					throw new IOException(
-						"Attempted delete past end of block chain for "+ osize + " bytes total, with remaining runcount "+runcount+" in "+ lbai);
-				// we have to unlink this from the next block
-				lbai.getBlk().setNextblk(-1L);
-				lbai = tblk;
-				lbai.setByteindex((short) 0);// start at the beginning of the next block to continue delete, or whatever
-			}
-		} while( runcount > 0); // while we still have more to delete
 	}
 	
 	@Override

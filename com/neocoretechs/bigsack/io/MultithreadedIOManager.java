@@ -9,12 +9,13 @@ import java.util.concurrent.Future;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.BufferPool;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.IOWorker;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 /**
  * Handles the aggregation of the IO worker threads of which there is one for each tablespace.<p/>
@@ -272,40 +273,48 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.printf("%s getNextFree specific Tablespace %d for next free block %s%n", this.getClass().getName(), tblsp, bai);
 		return bai;
 	}
+	
+	@Override
 	/**
 	 * Deallocate the outstanding block and call commit on the recovery log
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingCommit() throws IOException {
+	public synchronized void deallocOutstandingCommit(BlockAccessIndex bai) throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.deallocOutstandingCommit invoking commitBufferFlush and deallocOutstanding...%n",this.getClass().getName());
 		commitBufferFlush();
-		deallocOutstanding();
+		deallocOutstanding(bai);
 		Fforce();
 	}
+	
+	@Override
 	/**
 	 * Deallocate the outstanding block and call rollback on the recovery log
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingRollback() throws IOException {
+	public synchronized void deallocOutstandingRollback(BlockAccessIndex bai) throws IOException {
 		if(DEBUG)
 			System.out.printf("%s Rolling back %n",this.getClass().getName());
+		deallocOutstanding(bai);
 		bufferPool.rollback(); 
 	}
+	
+	@Override
 	/**
 	 * dealloc outstanding blocks. if not null, do a dealloc and set null
 	 * @throws IOException
 	 */
-	public void deallocOutstanding() throws IOException {
-			bufferPool.deallocOutstanding();
+	public void deallocOutstanding(BlockAccessIndex bai) throws IOException {
+		bufferPool.deallocOutstanding(bai);
 	}
 	
+	@Override
 	/**
 	 * Deallocate the outstanding block and write it to the log. To be eligible for write it must be incore, have
 	 * accesses = 1 (latched) and and NOT yet in log.
 	 */
-	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex lbai) throws IOException {
-		bufferPool.deallocOutstandingWriteLog(tablespace, lbai);
+	public void deallocOutstandingWriteLog(BlockAccessIndex lbai) throws IOException {
+		bufferPool.deallocOutstandingWriteLog(GlobalDBIO.getTablespace(lbai.getBlockNum()), lbai);
 	}
 
  	/* (non-Javadoc)
@@ -428,8 +437,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @param offset offset from current
 	* @exception IOException If we cannot acquire next block
 	*/
-	public boolean seek_fwd(int tblsp, long offset) throws IOException {
-		return bufferPool.seekFwd(tblsp, offset);
+	public boolean seek_fwd(DBInputStream blockStream, int tblsp, long offset) throws IOException {
+		return bufferPool.seekFwd( blockStream, tblsp, offset);
 	}
 	
 
@@ -443,16 +452,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	public GlobalDBIO getIO() {
 		return globalIO;
-	}
-	
-	@Override
-	public void writen(int tblsp, byte[] o, int osize) throws IOException {
-		bufferPool.writen(tblsp, o, osize);
-	}
-	
-	@Override
-	public int deleten(Optr adr, int osize) throws IOException {
-		return bufferPool.deleten(adr, osize);
 	}
 	
 	
@@ -488,9 +487,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @exception IOException If problem seeking block
 	* @see Optr
 	*/
-	public int objseek(Optr adr) throws IOException {
+	public int objseek(DBInputStream blockStream, Optr adr) throws IOException {
 		assert (adr.getBlock() != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		return bufferPool.objseek(adr);
+		return bufferPool.objseek(blockStream, adr);
 	}
 	
 	@Override
@@ -501,14 +500,43 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @exception IOException If problem seeking block
 	* @see Optr
 	*/
-	public int objseek(long adr) throws IOException {
+	public int objseek(DBInputStream blockStream, long adr) throws IOException {
 		assert(adr != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		return bufferPool.objseek(adr);
+		return bufferPool.objseek(blockStream, adr);
 	}
 	
 	@Override
-	public int objseek(long tblock, short offset) throws IOException {
-		return bufferPool.objseek(tblock, offset);		
+	public int objseek(DBInputStream blockStream, long tblock, short offset) throws IOException {
+		return bufferPool.objseek(blockStream, tblock, offset);		
+	}
+	@Override
+	/**
+	* objseek - seek to offset within block
+	* @param adr block/offset to seek to
+	* @exception IOException If problem seeking block
+	* @see Optr
+	*/
+	public int objseek(DBOutputStream blockStream, Optr adr) throws IOException {
+		assert (adr.getBlock() != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
+		return bufferPool.objseek(blockStream, adr);
+	}
+	
+	@Override
+	/**
+	* objseek - seek to offset within block
+	* @param adr long block to seek to
+	* @return the tablespace extracted from passed pointer
+	* @exception IOException If problem seeking block
+	* @see Optr
+	*/
+	public int objseek(DBOutputStream blockStream, long adr) throws IOException {
+		assert(adr != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
+		return bufferPool.objseek(blockStream, adr);
+	}
+	
+	@Override
+	public int objseek(DBOutputStream blockStream, long tblock, short offset) throws IOException {
+		return bufferPool.objseek(blockStream, tblock, offset);		
 	}
 
 	@Override
@@ -522,9 +550,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	}
 
 	@Override
-	public BlockStream getBlockStream(int tablespace) {
-		return bufferPool.getBlockStream(tablespace);
+	public MappedBlockBuffer getBlockBuffer(int tablespace) {
+		return bufferPool.getBlockBuffer(tablespace);
 	}
+
 	/*
 	@Override
 	public void FseekAndWriteHeader(long offset, Datablock tblk) throws IOException {

@@ -167,8 +167,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		countBTree((BTreeKeyPage) root);
 		if( DEBUG || DEBUGCOUNT )
 			System.out.println("Count for "+sdbio.getDBName()+" returned "+numKeys+" keys in "+(System.currentTimeMillis()-tim)+" ms.");
-		// deallocate outstanding blocks in all tablespaces
-		sdbio.deallocOutstanding();
 		return numKeys;
 	}
 	
@@ -219,8 +217,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 			if(o.getValue().equals(targetObject))
 				return o;
 		}
-		// deallocate outstanding blocks in all tablespaces
-		sdbio.deallocOutstanding();
 		return null;
 	}
 	/**
@@ -238,17 +234,6 @@ public final class BTreeMain implements KeyValueMainInterface {
 		if( DEBUG || DEBUGSEARCH)
 			System.out.println("SeekKey state is targKey:"+targetKey+" "+tsr);
 		return tsr;
-	}
-	/**
-	 * Called back from delete in BTNode to remove persistent data prior to in-memory update where the
-	 * references would be lost.
-	 * @param optr The pointer with virtual block and offset
-	 * @param o The object that was previously present at that location
-	 * @throws IOException
-	 */
-	@Override
-	public synchronized void delete(Optr optr, Object o) throws IOException {
-		GlobalDBIO.deleteFromOptr(sdbio, optr, o);
 	}
 	
 	/**

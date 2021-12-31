@@ -69,7 +69,7 @@ public class SubSetIterator extends AbstractIterator {
 				nextKey = null; //exclusive
 				stack.clear();	
 			}
-			kvMain.getIO().deallocOutstanding();
+			//kvMain.getIO().deallocOutstanding();
 		}
 	}
 	/**
@@ -110,7 +110,7 @@ public class SubSetIterator extends AbstractIterator {
 					nextKey = null;
 					stack.clear();
 				}
-				kvMain.getIO().deallocOutstanding();
+				//kvMain.getIO().deallocOutstanding();
 				return retKey;
 			}
 		} catch (IOException ioe) {

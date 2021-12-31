@@ -32,6 +32,8 @@ import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
+import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
 
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
@@ -70,7 +72,7 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
 public class GlobalDBIO {
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGDESERIALIZE = false; // called upon every deserialization
+	private static final boolean DEBUGDESERIALIZE = true; // called upon every deserialization
 	private static final boolean DEBUGLOGINIT = false; // view blocks written to log and store
 	private static final boolean NEWNODEPOSITIONDEBUG = false;;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
@@ -460,8 +462,18 @@ public class GlobalDBIO {
 	 * without regard to transaction status..
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstanding() throws IOException {
-		ioManager.deallocOutstanding();	
+	public synchronized void deallocOutstanding(DBInputStream blockStream) throws IOException {
+		if(blockStream != null)
+			ioManager.deallocOutstanding(blockStream.getBlockAccessIndex());	
+	}
+	/**
+	 * Deallocate the outstanding buffer resources, block latches, etc. for 
+	 * without regard to transaction status..
+	 * @throws IOException
+	 */
+	public synchronized void deallocOutstanding(DBOutputStream blockStream) throws IOException {
+		if(blockStream != null)
+			ioManager.deallocOutstanding(blockStream.getBlockAccessIndex());	
 	}
 	/**
 	 * Selects a tablespace to prepare call the ioManager
@@ -469,8 +481,6 @@ public class GlobalDBIO {
 	 * of the {@link BufferPool}.<p/> 
 	 * In order to acquire the {@link BlockAccessIndex} block, find the smallest tablespace free block list,
 	 * and remove it for use by placing it into the {@link MappedBlockBuffer} BlockAccessIndex buffer for that tablespace.<p/>
-	 * At that point the buffers are set for cursor based retrieval from the {@link BlockStream} part of 
-	 * the tablespace {@link BufferPool}.
 	 * @return The BlockAccessIndex from the random tablespace freelist, with byte index set to 0
 	 * @throws IOException
 	 */
@@ -485,16 +495,18 @@ public class GlobalDBIO {
 	 * the purpose of transaction checkpoint rollback.
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingRollback() throws IOException {
-		ioManager.deallocOutstandingRollback();
+	public synchronized void deallocOutstandingRollback(DBOutputStream blockStream) throws IOException {
+		if(blockStream != null)
+			ioManager.deallocOutstandingRollback(blockStream.getBlockAccessIndex());
 	}
 	/**
 	 * Deallocate the outstanding buffer resources, block latches, etc. for 
 	 * the purpose of transaction checkpoint commit.
 	 * @throws IOException
 	 */	
-	public synchronized void deallocOutstandingCommit() throws IOException {
-		ioManager.deallocOutstandingCommit();
+	public synchronized void deallocOutstandingCommit(DBOutputStream blockStream) throws IOException {
+		if(blockStream != null)
+			ioManager.deallocOutstandingCommit(blockStream.getBlockAccessIndex());
 		if(DEBUGLOGINIT)
 			System.out.printf("%s.deallocOutstandingCommit%n", this.getClass().getName());
 	}
@@ -780,38 +792,62 @@ public class GlobalDBIO {
 		return btk;
 	}
 	
-	public static DataOutputStream getBlockOutputStream(BlockAccessIndex bai) {
-		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
+	public static DataOutputStream getDataOutputStream(BlockAccessIndex bai) throws IOException {
+		DBOutputStream bks = new DBOutputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
 		bks.setBlockAccessIndex(bai); // sets byteindex to 0
 		return bks.getDBOutput();
 	}
 	
-	public static DataInputStream getBlockInputStream(BlockAccessIndex bai) {
-		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
+	public static DataInputStream getDataInputStream(BlockAccessIndex bai) throws IOException {
+		DBInputStream bks = new DBInputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
 		bks.setBlockAccessIndex(bai); // sets byteindex to 0
 		return bks.getDBInput();
 	}
 	
-	public static DataOutputStream getBlockOutputStream(BlockAccessIndex bai, short byteindex) {
-		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
-		bks.setBlockAccessIndex(bai, byteindex); // sets byteindex to 0
+	public static DataOutputStream getDataOutputStream(BlockAccessIndex bai, short byteindex) throws IOException {
+		DBOutputStream bks = new DBOutputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
+		bks.setBlockAccessIndex(bai, byteindex);
 		return bks.getDBOutput();
 	}
 	
-	public static DataInputStream getBlockInputStream(BlockAccessIndex bai, short byteindex) {
-		BlockStream bks = bai.getSdbio().getIOManager().getBlockStream(GlobalDBIO.getTablespace(bai.getBlockNum()));
-		bks.setBlockAccessIndex(bai, byteindex); // sets byteindex to 0
+	public static DataInputStream getDataInputStream(BlockAccessIndex bai, short byteindex) throws IOException {
+		DBInputStream bks = new DBInputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
+		bks.setBlockAccessIndex(bai, byteindex);
 		return bks.getDBInput();
+	}
+	
+	public static DBOutputStream getBlockOutputStream(BlockAccessIndex bai) throws IOException {
+		DBOutputStream bks = new DBOutputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
+		bks.setBlockAccessIndex(bai); // sets byteindex to 0
+		return bks;
+	}
+	
+	public static DBInputStream getBlockInputStream(BlockAccessIndex bai) throws IOException {
+		DBInputStream bks = new DBInputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
+		bks.setBlockAccessIndex(bai); // sets byteindex to 0
+		return bks;
+	}
+	
+	public static DBOutputStream getBlockOutputStream(BlockAccessIndex bai, short byteindex) throws IOException {
+		DBOutputStream bks = new DBOutputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
+		bks.setBlockAccessIndex(bai, byteindex);
+		return bks;
+	}
+	
+	public static DBInputStream getBlockInputStream(BlockAccessIndex bai, short byteindex) throws IOException {
+		DBInputStream bks = new DBInputStream(bai, bai.getSdbio().getIOManager().getBlockBuffer(GlobalDBIO.getTablespace(bai.getBlockNum())));
+		bks.setBlockAccessIndex(bai, byteindex);
+		return bks;
 	}
 	
 	/**
 	* delete an object at the given block and offset
 	*/
-	public static void deleteFromOptr(GlobalDBIO sdbio, Optr pos, Object target) throws IOException {
+	public static void deleteFromOptr(GlobalDBIO sdbio, DBOutputStream blockStream, Optr pos, Object target) throws IOException {
 		if(pos == null || pos == Optr.emptyPointer) 
 			throw new IOException("Object index "+pos+" invalid in deleteFromOptr for db:"+sdbio.getDBName()+" for key:"+target);
 		byte[] b = GlobalDBIO.getObjectAsBytes(target);
-		sdbio.delete_object(pos, b.length);
+		sdbio.delete_object(blockStream, pos, b.length);
 	}
 	/**
 	* delete_object and potentially reclaim space
@@ -819,10 +855,10 @@ public class GlobalDBIO {
 	* @param osize object size
 	* @exception IOException if the block cannot be sought or written
 	*/
-	public synchronized void delete_object(Optr loc, int osize) throws IOException {
+	public synchronized void delete_object(DBOutputStream blockStream, Optr loc, int osize) throws IOException {
 		//System.out.println("GlobalDBIO.delete_object "+loc+" "+osize);
-		ioManager.objseek(loc);
-		ioManager.deleten(loc, osize);
+		ioManager.objseek(blockStream, loc);
+		blockStream.deleten(blockStream.getBlockAccessIndex(), osize);
 	}
 		
 	/**
@@ -832,10 +868,10 @@ public class GlobalDBIO {
 	* @param osize  The size of the payload to add from array
 	* @exception IOException If the adding did not happen
 	*/
-	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
-		int tblsp = ioManager.objseek(loc);
+	public synchronized void add_object(DBOutputStream blockStream, Optr loc, byte[] o, int osize) throws IOException {
+		int tblsp = ioManager.objseek(blockStream, loc);
 		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
-		ioManager.writen(tblsp, o, osize);
+		blockStream.writen(blockStream.getBlockAccessIndex(), o, osize);
 		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
 		//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
 		//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
@@ -851,8 +887,7 @@ public class GlobalDBIO {
 	public synchronized Object deserializeObject(long iloc) throws IOException {
 		// read Object at ptr to byte array
 		if(DEBUG)
-			System.out.print(" Deserialize "
-					+GlobalDBIO.valueOf(iloc)+" current block "+GlobalDBIO.valueOf(iloc));
+			System.out.print(" Deserialize "+GlobalDBIO.valueOf(iloc));
 		Object Od = null;
 		try {
 			ObjectInput s;
@@ -888,7 +923,7 @@ public class GlobalDBIO {
 			System.out.print(" Deserialize "+iloc);
 		try {
 			ObjectInput s;
-			ioManager.objseek(iloc);
+			//ioManager.objseek(iloc);
 			if (isCustomClassLoader())
 				s =	new CObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()), getCustomClassLoader());
 			else
@@ -935,9 +970,9 @@ public class GlobalDBIO {
 		MAXBLOCKS = mAXBLOCKS;
 	}
 
-	public void updateDeepStoreInLog(long tblock, boolean b) throws IOException {
-		int tblsp = ioManager.objseek(tblock, Datablock.INLOGFLAGPOSITION);
-		ioManager.writen(tblsp, new byte[] { (byte) (b ? 1 : 0)}, 1);
+	public void updateDeepStoreInLog(DBOutputStream blockStream, long tblock, boolean b) throws IOException {
+		ioManager.objseek(blockStream, tblock, Datablock.INLOGFLAGPOSITION);
+		blockStream.writen(blockStream.getBlockAccessIndex(), new byte[] { (byte) (b ? 1 : 0)}, 1);
 	}
 
 	

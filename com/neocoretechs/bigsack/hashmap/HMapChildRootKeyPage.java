@@ -30,7 +30,7 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 		for(int i = 0; i < MAXKEYSCHILD; i++)
 			childKeys[i] = -1L;
 		if(read) {	
-			readFromDBStream(GlobalDBIO.getBlockInputStream(lbai));
+			readFromDBStream(GlobalDBIO.getDataInputStream(lbai));
 		}
 	}
 	@Override
@@ -40,7 +40,7 @@ public class HMapChildRootKeyPage implements ChildRootKeyPageInterface {
 	
 	@Override
 	public synchronized void putPage() throws IOException {
-		DataOutputStream dos = GlobalDBIO.getBlockOutputStream(lbai);
+		DataOutputStream dos = GlobalDBIO.getDataOutputStream(lbai);
 		dos.writeLong(numKeys);
 		for(int i = 0; i < numKeys; i++) {
 			dos.writeLong(childKeys[i]);

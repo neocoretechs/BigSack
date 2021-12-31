@@ -58,7 +58,7 @@ public class TailSetKVIterator extends AbstractIterator {
 					stack.clear();
 				}
 			}
-			bTree.getIO().deallocOutstanding();
+			//bTree.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
@@ -88,7 +88,7 @@ public class TailSetKVIterator extends AbstractIterator {
 					nextElem = null;
 					stack.clear();
 				}
-				kvMain.getIO().deallocOutstanding();
+				//kvMain.getIO().deallocOutstanding();
 				return new KeyValuePair(retKey,retElem);
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

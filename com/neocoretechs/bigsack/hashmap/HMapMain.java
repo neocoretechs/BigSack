@@ -1,4 +1,5 @@
 package com.neocoretechs.bigsack.hashmap;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,6 +14,7 @@ import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.io.stream.PageIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
@@ -296,17 +298,7 @@ public final class HMapMain implements KeyValueMainInterface {
 			System.out.println("SeekKeystate is targKey:"+targetKey);
 		return tsr;
 	}
-	/**
-	 * Called back from delete in BTNode to remove persistent data prior to in-memory update where the
-	 * references would be lost.
-	 * @param optr The pointer with virtual block and offset
-	 * @param o The object that was previously present at that location
-	 * @throws IOException
-	 */
-	public synchronized void delete(Optr optr, Object o) throws IOException {
-		GlobalDBIO.deleteFromOptr(sdbio, optr, o);
-	}
-	
+
 	/**
 	 * Add to deep store, Set operation.
 	 * @param key
@@ -413,7 +405,9 @@ public final class HMapMain implements KeyValueMainInterface {
     	if(!keyValue.getValueOptr().isEmptyPointer()) {
     	  	if( DEBUG || DEBUGOVERWRITE )
     			System.out.println("OVERWRITE value "+value+" for key "+key+" index["+ksr.insertPoint+"] page:"+ksr);
-    		sdbio.delete_object(keyValue.getValueOptr(), GlobalDBIO.getObjectAsBytes(keyValue.getmValue()).length);
+    	  	DBOutputStream dbo = sdbio.getBlockOutputStream(ksr.page.getBlockAccessIndex());
+    		sdbio.delete_object(dbo, keyValue.getValueOptr(), GlobalDBIO.getObjectAsBytes(keyValue.getmValue()).length);
+    		dbo.close();
     		keyValue.setValueOptr(Optr.emptyPointer);
     	}
     	((HMapKeyPage) ksr.page).putDataToArray(value,ksr.insertPoint);

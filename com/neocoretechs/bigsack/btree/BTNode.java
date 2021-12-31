@@ -100,7 +100,7 @@ public class BTNode<K extends Comparable, V> extends HTNode {
 	private void loadNode() throws IOException {
 		if(getNumKeys() > 0)
 			throw new IOException("Attempt to overwrite node "+this+" with page "+page);
-		page.readFromDBStream(GlobalDBIO.getBlockInputStream(page.getBlockAccessIndex()));
+		page.readFromDBStream(GlobalDBIO.getDataInputStream(page.getBlockAccessIndex()));
 	}
 	
     

@@ -52,7 +52,7 @@ public class HeadSetIterator extends AbstractIterator {
 					stack.clear();
 				}
 			}
-			kvMain.getIO().deallocOutstanding();
+			//kvMain.getIO().deallocOutstanding();
 		}
 	}
 	public boolean hasNext() {
@@ -83,7 +83,7 @@ public class HeadSetIterator extends AbstractIterator {
 					nextKey = null;
 					stack.clear();
 				}
-				kvMain.getIO().deallocOutstanding();
+				//kvMain.getIO().deallocOutstanding();
 				return retKey;
 			} catch (IOException ioe) {
 				throw new RuntimeException(ioe.toString());

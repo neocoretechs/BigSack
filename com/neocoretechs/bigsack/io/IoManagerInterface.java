@@ -4,11 +4,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockStream;
-import com.neocoretechs.bigsack.io.pooled.BufferPool;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
+import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 
 /**
  * This interface enforces the contract for IO managers that facilitate block level operations.
@@ -170,23 +170,25 @@ public interface IoManagerInterface {
 	
 	public GlobalDBIO getIO();
 
-	public int objseek(Optr loc) throws IOException;
+	public int objseek(DBInputStream blockStream, Optr loc) throws IOException;
 
-	public int deleten(Optr loc, int size) throws IOException;
+	public int objseek(DBInputStream blockStream, long iloc) throws IOException;
+	
+	public int objseek(DBInputStream blockStream, long tblock, short offset) throws IOException;
+	
+	public int objseek(DBOutputStream blockStream, Optr loc) throws IOException;
 
-	public void writen(int tblsp, byte[] o, int osize) throws IOException;
+	public int objseek(DBOutputStream blockStream, long iloc) throws IOException;
+	
+	public int objseek(DBOutputStream blockStream, long tblock, short offset) throws IOException;
 
-	public int objseek(long iloc) throws IOException;
+	public void deallocOutstandingRollback(BlockAccessIndex bai) throws IOException;
 	
-	public int objseek(long tblock, short inlogflagposition) throws IOException;
-
-	public void deallocOutstandingRollback() throws IOException;
+	public void deallocOutstandingCommit(BlockAccessIndex bai) throws IOException;
 	
-	public void deallocOutstandingCommit() throws IOException;
+	public void deallocOutstanding(BlockAccessIndex bai) throws IOException;
 	
-	public void deallocOutstanding() throws IOException;
-	
-	public void deallocOutstandingWriteLog(int tablespace, BlockAccessIndex blk) throws IOException;
+	public void deallocOutstandingWriteLog(BlockAccessIndex bai) throws IOException;
 	
 	/**
 	 * Perform an Fseek on the block and and write it. Use the write method of Datablock and
@@ -204,8 +206,8 @@ public interface IoManagerInterface {
 
 	public void extend(int ispace, long l) throws IOException;
 
-	public BlockStream getBlockStream(int tablespace);
-
 	public void reInitLogs() throws IOException;
+
+	public MappedBlockBuffer getBlockBuffer(int tablespace);
 
 }

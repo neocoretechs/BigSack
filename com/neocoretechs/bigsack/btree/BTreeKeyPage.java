@@ -10,7 +10,8 @@ import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
-
+import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -97,6 +98,9 @@ public class BTreeKeyPage implements KeyPageInterface {
 	protected transient KeyValueMainInterface bTreeMain;
 	protected transient NodeInterface<Comparable, Object> bTNode = null;
 	private long numKeys = 0L;
+	
+	private DBInputStream dbInputStream = null;
+	private DBOutputStream dbOutputStream = null;
 	/**
 	 * This is called from getPageFromPool get set up a new clean node
 	 * @param bTMain The database IO main class instance of KeyValueMainInterface
@@ -113,7 +117,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 		// Pre-allocate the arrays that hold persistent data
 		//setupKeyArrays();
 		if( read && lbai.getBlk().getBytesinuse() > 0) {// intentional clear or we may have deleted or rolled back all the way to primordial
-			readFromDBStream(lbai.getDBStream());
+			readFromDBStream(lbai.getDBInputStream());
 		} else {
 			// If we are not reading, we must be preparing the block for new key. Really no
 			// reason for a new block with unassigned and not updating keys conceptually.
@@ -296,22 +300,24 @@ public class BTreeKeyPage implements KeyPageInterface {
 	*/
 	public synchronized void delete(int index) throws IOException {
 		//System.out.println("KeyPageInterface.delete "+this+" index:"+index);
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		if( bTNode.getKeyValueArray(index) == null )
 			throw new IOException("Node at index "+index+" null for attempted delete "+this);
 		if( !bTNode.getKeyValueArray(index).getKeyOptr().equals(Optr.emptyPointer)) {
-			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmKey()).length);
+			bTreeMain.getIO().delete_object(dbOutputStream, bTNode.getKeyValueArray(index).getKeyOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmKey()).length);
 			bTNode.getKeyValueArray(index).setKeyOptr(Optr.emptyPointer);
 			bTNode.getKeyValueArray(index).setmKey(null);
 			bTNode.getKeyValueArray(index).keyState = KeyValue.synchStates.mustUpdate;
 		}
 		if( bTNode.getKeyValueArray(index).getValueOptr() != null && !bTNode.getKeyValueArray(index).getValueOptr().equals(Optr.emptyPointer)) {
-			bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmValue()).length);
+			bTreeMain.getIO().delete_object(dbOutputStream, bTNode.getKeyValueArray(index).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(index).getmValue()).length);
 			bTNode.getKeyValueArray(index).setValueOptr(Optr.emptyPointer);
 			bTNode.getKeyValueArray(index).setmValue(null);
 			bTNode.getKeyValueArray(index).valueState = KeyValue.synchStates.mustUpdate;
 		}
 		// If its the rightmost key ignore move
 		setUpdated(true);
+		dbOutputStream.close();
 	}
 
 	/**
@@ -325,6 +331,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 * @throws IOException
 	 */
 	public synchronized boolean putKey(int index, ArrayList<Long> keys) throws IOException {
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		if(getKeyValueArray(index).getmKey() == null) {
 			if(DEBUG || DEBUGPUTKEY) 
 				System.out.printf("%s.putKey index=%d, key=%s Optr=%s%n", this.getClass().getName(),
@@ -337,9 +344,10 @@ public class BTreeKeyPage implements KeyPageInterface {
 		// We either have a block with some space or one we took from freechain list
 		byte[] pb = GlobalDBIO.getObjectAsBytes(getKeyValueArray(index).getmKey());
 		getKeyValueArray(index).setKeyOptr(lbai.getSdbio().getIOManager().getNewInsertPosition(keys, pb.length));
-		lbai.getSdbio().add_object(getKeyValueArray(index).getKeyOptr(), pb, pb.length);
+		lbai.getSdbio().add_object(dbOutputStream, getKeyValueArray(index).getKeyOptr(), pb, pb.length);
 		if(DEBUG || DEBUGPUTKEY) 
 				System.out.println("KeyPageInterface.putKey Added object:"+getKeyValueArray(index).getmKey()+" @"+getKeyValueArray(index)+" bytes:"+pb.length);
+		dbOutputStream.close();
 		return true;
 	}
 	
@@ -352,6 +360,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	 */
 	@Override
 	public synchronized boolean putData(int index, ArrayList<Long> values) throws IOException {
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		if( getKeyValueArray(index).getmValue() == null ) {
 			if( DEBUGPUTDATA )
 					System.out.println("KeyPageInterface.putData ADDING NULL value for key index "+index);
@@ -364,7 +373,8 @@ public class BTreeKeyPage implements KeyPageInterface {
 		if( DEBUGPUTDATA )
 			System.out.println("KeyPageInterface.putData ADDING NON NULL value "+getKeyValueArray(index)+" for key index "+index+" at "+
 				getKeyValueArray(index).getValueOptr());
-		lbai.getSdbio().add_object(getKeyValueArray(index).getValueOptr(), pb, pb.length);
+		lbai.getSdbio().add_object(dbOutputStream, getKeyValueArray(index).getValueOptr(), pb, pb.length);
+		dbOutputStream.close();
 		return true;
 	}
 	/**
@@ -398,6 +408,7 @@ public class BTreeKeyPage implements KeyPageInterface {
 	
 	@Override
 	public synchronized void putPage() throws IOException {
+		dbOutputStream = GlobalDBIO.getBlockOutputStream(lbai);
 		if(bTNode == null) {
 			throw new IOException(String.format("%s.putPage BTNode is null:%s%n",this.getClass().getName(),this));
 		}
@@ -424,17 +435,18 @@ public class BTreeKeyPage implements KeyPageInterface {
 					if(getKeyValueArray(i).valueState == KeyValue.synchStates.mustReplace) {
 						// delete old entry
 						if( bTNode.getKeyValueArray(i).getValueOptr() != null && !bTNode.getKeyValueArray(i).getValueOptr().equals(Optr.emptyPointer))
-							bTreeMain.getIO().delete_object(bTNode.getKeyValueArray(i).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(i).getmValue()).length);
+							bTreeMain.getIO().delete_object(dbOutputStream, bTNode.getKeyValueArray(i).getValueOptr(), GlobalDBIO.getObjectAsBytes(bTNode.getKeyValueArray(i).getmValue()).length);
 					}
 					putData(i, currentPayloadBlocks);
 				}
 			}
 		}
+		dbOutputStream.close();
 		//
 		assert (lbai.getBlockNum() != -1L) : " KeyPageInterface unlinked from page pool:"+this;
 		// write the page to the current block
 		// Write to the block output stream
-		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(lbai);
+		DataOutputStream bs = GlobalDBIO.getDataOutputStream(lbai);
 		bs.writeLong(getNumKeys());
 		bs.writeByte(getmIsLeafNode() ? 1 : 0);
 		for(int i = 0; i < getNumKeys(); i++) {

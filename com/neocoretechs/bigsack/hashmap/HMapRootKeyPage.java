@@ -55,7 +55,7 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 		for(int i = 0; i < MAXKEYSROOT; i++)
 			rootKeys[i] = -1L;
 		if(read) {	
-			readFromDBStream(GlobalDBIO.getBlockInputStream(this.rootPage));
+			readFromDBStream(GlobalDBIO.getDataInputStream(this.rootPage));
 		}
 	}
 	/**
@@ -85,7 +85,7 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 	 */
 	public synchronized void setRootNode(BlockAccessIndex bai) throws IOException {
 		this.rootPage = bai;
-		DataOutputStream bs = GlobalDBIO.getBlockOutputStream(this.rootPage);
+		DataOutputStream bs = GlobalDBIO.getDataOutputStream(this.rootPage);
 		bs.writeLong(0L); // size
 		bs.flush();
 		bs.close();
@@ -110,7 +110,7 @@ public class HMapRootKeyPage implements RootKeyPageInterface {
 
 	@Override
 	public synchronized void putPage() throws IOException {
-		DataOutputStream dos = GlobalDBIO.getBlockOutputStream(rootPage);
+		DataOutputStream dos = GlobalDBIO.getDataOutputStream(rootPage);
 		dos.writeLong(MAXKEYSROOT);
 		for(int i = 0; i < MAXKEYSROOT; i++) {
 			dos.writeLong(rootKeys[i]);

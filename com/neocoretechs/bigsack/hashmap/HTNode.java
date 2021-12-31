@@ -1,13 +1,10 @@
 package com.neocoretechs.bigsack.hashmap;
 
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 
 import com.neocoretechs.bigsack.io.Optr;
-import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
-import com.neocoretechs.bigsack.io.pooled.BlockStream;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
@@ -91,7 +88,7 @@ public class HTNode<K extends Comparable, V> implements NodeInterface<K, V> {
 	private void loadNode() throws IOException {
 		if(numKeys > 0)
 			throw new IOException("Attempt to overwrite node "+this+" with page "+page);
-		DataInputStream dis = GlobalDBIO.getBlockInputStream(page.getBlockAccessIndex());
+		DataInputStream dis = GlobalDBIO.getDataInputStream(page.getBlockAccessIndex());
 		if(dis.available() == 0) {
 			System.out.printf("%s.loadNode nothing avail for page %s%n", this.getClass().getName(),page);
 			return;

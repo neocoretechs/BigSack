@@ -308,9 +308,10 @@ public final class BlockAccessIndex implements Comparable, Serializable {
 	/**
 	 * Get the stream from the buffer pool for the blockNum in 'this'.
 	 * @return The DataInputStream to read from buffer pool block.
+	 * @throws IOException 
 	 */
-	public DataInputStream getDBStream() {
-		return GlobalDBIO.getBlockInputStream(this);
+	public DataInputStream getDBInputStream() throws IOException {
+		return GlobalDBIO.getDataInputStream(this);
 	}
 	/**
 	 * Ensure this block is set to updated for storage upon flush or commit

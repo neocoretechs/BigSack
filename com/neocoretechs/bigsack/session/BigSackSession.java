@@ -1,12 +1,16 @@
 package com.neocoretechs.bigsack.session;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Stack;
 import java.util.stream.Stream;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.Datablock;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.stream.DBInputStream;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.iterator.EntrySetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetIterator;
 import com.neocoretechs.bigsack.iterator.HeadSetKVIterator;
@@ -64,6 +68,8 @@ final class BigSackSession implements TransactionInterface {
 	private int gid;
 	private KeyValueMainInterface kvStore;
 	private GlobalDBIO globalIO;
+	private DBInputStream dbInputStream = null;
+	private DBOutputStream dbOutputStream = null;
 	/**
 	* Create a new session
 	* @param kvMain The {@link KeyValueMainInterface} Main object than handles the key pages indexing the objects in the deep store.
@@ -450,7 +456,9 @@ final class BigSackSession implements TransactionInterface {
 	* @exception IOException for low level failure
 	*/
 	public void Rollback() throws IOException {
-		kvStore.getIO().deallocOutstandingRollback();
+		kvStore.getIO().deallocOutstandingRollback(dbOutputStream);
+		if(dbInputStream != null)
+			dbInputStream.close();
 	}
 	
 	/**
@@ -458,7 +466,9 @@ final class BigSackSession implements TransactionInterface {
 	* @exception IOException For low level failure
 	*/
 	public void Commit() throws IOException {
-		kvStore.getIO().deallocOutstandingCommit();
+		kvStore.getIO().deallocOutstandingCommit(dbOutputStream);
+		if(dbInputStream != null)
+			dbInputStream.close();
 	}
 	/**
 	 * Checkpoint the current transaction
@@ -478,10 +488,10 @@ final class BigSackSession implements TransactionInterface {
 	*/
 	public void rollupSession(boolean rollback) throws IOException {
 		if (rollback) {
-			kvStore.getIO().deallocOutstandingRollback();
+			kvStore.getIO().deallocOutstandingRollback(dbOutputStream);
 		} else {
 			// calls commitbufferflush
-			kvStore.getIO().deallocOutstandingCommit();
+			kvStore.getIO().deallocOutstandingCommit(dbOutputStream);
 		}
 		SessionManager.releaseSession(this);
 	}
@@ -551,7 +561,19 @@ final class BigSackSession implements TransactionInterface {
 	
 	public Object deserialTest(int tablespace, long loc) throws IOException {
 		long vloc = GlobalDBIO.makeVblock(tablespace, loc);
-		return kvStore.getIO().deserializeObject(vloc);
+		//return kvStore.getIO().deserializeObject(vloc);
+		Datablock db = new Datablock(DBPhysicalConstants.DBLOCKSIZ);
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		do {
+			kvStore.getIO().getIOManager().FseekAndRead(vloc, db);
+			if( db.getBytesused() == 0 || db.getBytesinuse() == 0 )	
+				continue;
+			//if( Props.DEBUG ) System.out.println("Block:" + xblk + ": " + db.toBriefString());
+			System.out.println("BigSack Block Data:"+db.blockdump());
+			baos.write(db.getData(),0,db.getBytesused());
+			vloc = db.getNextblk();
+		} while(vloc != -1L);
+		return GlobalDBIO.deserializeObject(baos.toByteArray());
 	}
 
 }

@@ -79,14 +79,6 @@ public interface KeyValueMainInterface {
 	*/
 	KeySearchResult seekKey(Comparable targetKey, Stack stack) throws IOException;
 
-	/**
-	 * Called back from delete in NodeInterface to remove persistent data prior to in-memory update where the
-	 * references would be lost.
-	 * @param optr The pointer with virtual block and offset
-	 * @param o The object that was previously present at that location
-	 * @throws IOException
-	 */
-	void delete(Optr optr, Object o) throws IOException;
 
 	/**
 	 * Add to deep store, Set operation.

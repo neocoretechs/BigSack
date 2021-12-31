@@ -10,6 +10,7 @@ import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.ThreadPoolManager;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
+import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.keyvaluepages.KVIteratorIF;
 import com.neocoretechs.bigsack.keyvaluepages.KeyPageInterface;
 import com.neocoretechs.bigsack.keyvaluepages.KeySearchResult;
@@ -556,7 +557,9 @@ public class BTreeNavigator<K extends Comparable, V> {
         }
         V value = keyVal.getmValue();
         // delete our returned item from deep store
-        deleteFromDeepStore(keyVal);
+        DBOutputStream dbo = GlobalDBIO.getBlockOutputStream(ksr.page.getBlockAccessIndex());
+        deleteFromDeepStore(dbo, keyVal);
+        dbo.close();
         return value;
     }
     /**
@@ -565,12 +568,12 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @param kv
      * @throws IOException
      */
-    private void deleteFromDeepStore(KeyValue<K, V> kv) throws IOException {
+    private void deleteFromDeepStore(DBOutputStream dbo,KeyValue<K, V> kv) throws IOException {
 		if( !kv.getKeyOptr().equals(Optr.emptyPointer)) {
-			bTreeMain.getIO().delete_object(kv.getKeyOptr(), GlobalDBIO.getObjectAsBytes(kv.getmKey()).length);
+			bTreeMain.getIO().delete_object(dbo, kv.getKeyOptr(), GlobalDBIO.getObjectAsBytes(kv.getmKey()).length);
 		}
 		if( kv.getValueOptr() != null && !kv.getValueOptr().equals(Optr.emptyPointer)) {
-			bTreeMain.getIO().delete_object(kv.getValueOptr(), GlobalDBIO.getObjectAsBytes(kv.getmValue()).length);
+			bTreeMain.getIO().delete_object(dbo, kv.getValueOptr(), GlobalDBIO.getObjectAsBytes(kv.getmValue()).length);
 		}
     }
     /**
