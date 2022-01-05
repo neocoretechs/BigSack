@@ -68,8 +68,7 @@ final class BigSackSession implements TransactionInterface {
 	private int gid;
 	private KeyValueMainInterface kvStore;
 	private GlobalDBIO globalIO;
-	private DBInputStream dbInputStream = null;
-	private DBOutputStream dbOutputStream = null;
+
 	/**
 	* Create a new session
 	* @param kvMain The {@link KeyValueMainInterface} Main object than handles the key pages indexing the objects in the deep store.
@@ -456,9 +455,7 @@ final class BigSackSession implements TransactionInterface {
 	* @exception IOException for low level failure
 	*/
 	public void Rollback() throws IOException {
-		kvStore.getIO().deallocOutstandingRollback(dbOutputStream);
-		if(dbInputStream != null)
-			dbInputStream.close();
+		kvStore.getIO().deallocOutstandingRollback();
 	}
 	
 	/**
@@ -466,9 +463,7 @@ final class BigSackSession implements TransactionInterface {
 	* @exception IOException For low level failure
 	*/
 	public void Commit() throws IOException {
-		kvStore.getIO().deallocOutstandingCommit(dbOutputStream);
-		if(dbInputStream != null)
-			dbInputStream.close();
+		kvStore.getIO().deallocOutstandingCommit();
 	}
 	/**
 	 * Checkpoint the current transaction
@@ -488,10 +483,10 @@ final class BigSackSession implements TransactionInterface {
 	*/
 	public void rollupSession(boolean rollback) throws IOException {
 		if (rollback) {
-			kvStore.getIO().deallocOutstandingRollback(dbOutputStream);
+			kvStore.getIO().deallocOutstandingRollback();
 		} else {
 			// calls commitbufferflush
-			kvStore.getIO().deallocOutstandingCommit(dbOutputStream);
+			kvStore.getIO().deallocOutstandingCommit();
 		}
 		SessionManager.releaseSession(this);
 	}

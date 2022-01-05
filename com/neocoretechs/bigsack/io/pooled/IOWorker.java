@@ -126,6 +126,7 @@ public class IOWorker implements IoInterface {
 	 * Get the next free block of minimum block number such that we return the free blocks in ascending order.<p/>
 	 * Remove the block from freechain and insert it into active list, if the freechain is emptied call
 	 * {@link GlobalDBIO} createBuckets to extend the tablespace and insert the new free black into the free list.
+	 * Calls back to IoManagerInterface.addBlockAccess(BlockAccessIndex)
 	 * @return the minimum block so that when we do the next backward scan we recover maximum free blocks.
 	 * @throws IOException
 	 */

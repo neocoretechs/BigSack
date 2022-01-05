@@ -54,14 +54,6 @@ public interface IoManagerInterface {
 	 * @throws IOException
 	 */
 	//public void freeupBlock() throws IOException;
-	/**
-	 * Commit the outstanding blocks and flush the buffer of pages at end
-	 * @throws IOException
-	 */
-	public void commitBufferFlush() throws IOException;
-	
-	public void checkpointBufferFlush() throws IOException, IllegalAccessException;
-
 	/*public void directBufferWrite() throws IOException;*/
 	
 	public void getNextFreeBlocks() throws IOException;
@@ -182,13 +174,17 @@ public interface IoManagerInterface {
 	
 	public int objseek(DBOutputStream blockStream, long tblock, short offset) throws IOException;
 
-	public void deallocOutstandingRollback(BlockAccessIndex bai) throws IOException;
+	public void deallocOutstandingRollback() throws IOException;
 	
-	public void deallocOutstandingCommit(BlockAccessIndex bai) throws IOException;
+	public void deallocOutstandingCommit() throws IOException;
 	
 	public void deallocOutstanding(BlockAccessIndex bai) throws IOException;
 	
 	public void deallocOutstandingWriteLog(BlockAccessIndex bai) throws IOException;
+
+	public void commitBufferFlush() throws IOException;
+	
+	public void checkpointBufferFlush() throws IOException, IllegalAccessException;
 	
 	/**
 	 * Perform an Fseek on the block and and write it. Use the write method of Datablock and

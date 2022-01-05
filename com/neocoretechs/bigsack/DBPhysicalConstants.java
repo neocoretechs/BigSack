@@ -57,5 +57,6 @@ public interface DBPhysicalConstants {
 	 * The backing store type "File", "MMap" etc, as supported in GlobalDBIO
 	 */
 	public static String BACKINGSTORE = "MMap";
+	//public static String BACKINGSTORE = "File";
 
 }

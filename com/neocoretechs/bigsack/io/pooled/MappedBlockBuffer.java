@@ -34,7 +34,7 @@ import com.neocoretechs.bigsack.io.RecoveryLogManager;
 public class MappedBlockBuffer extends AbstractMap {
 	private static final long serialVersionUID = -5744666991433173620L;
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGCOMMIT = false;
+	private static final boolean DEBUGCOMMIT = true;
 	private GlobalDBIO globalIO;
 	private IoInterface ioWorker;
 	private int tablespace;

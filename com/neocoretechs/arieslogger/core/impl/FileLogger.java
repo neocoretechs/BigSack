@@ -404,10 +404,10 @@ public final class FileLogger implements Logger {
 	/**
 	* Commit the entire transaction. Scan the log and reset the inLog indicator in the persistent store.<p/>
 	* If the block still resides in the BufferPool, make sure its inlog flag is reset and its pushed
-	* back to deep store, otherwise bring it in from deep store, rest it and push the header back out.
+	* back to deep store, otherwise bring it in from deep store, reset it, and push the header back out.
 	* <P>MT - synchronized method
-	* @param t 	the IO controller
-	* @param pool 
+	* @param t the IO controller
+	* @param pool Buffer pool for tablespace
 	* @exception IOException
 	*/
 	public synchronized void commit(GlobalDBIO t, MappedBlockBuffer pool) throws IOException {
@@ -416,6 +416,7 @@ public final class FileLogger implements Logger {
 		}
 		StreamLogScan scanLog;
 		Compensation  compensation = null;
+		DBOutputStream dbo = null;
 		try {
 			scanLog = (StreamLogScan)logToFile.openCheckedForwardScan(LogInstance.INVALID_LOG_INSTANCE, null);
 			if(scanLog == null) {
@@ -425,7 +426,6 @@ public final class FileLogger implements Logger {
 				return;
 			}
 			HashMap<LogInstance, LogRecord> records;
-			Datablock dblk = new Datablock();
 			// scan records
 			while ((records =  scanLog.getNextRecord(0)) != null) {
 				Iterator<Entry<LogInstance, LogRecord>> irecs = records.entrySet().iterator();
@@ -440,11 +440,14 @@ public final class FileLogger implements Logger {
 					if(pool.containsKey(lbai.getBlockNum())) {
 						BlockAccessIndex bai = (BlockAccessIndex) ((SoftReference)(pool.get(lbai.getBlockNum()))).get();
 						bai.getBlk().setInlog(false);
-					}
+					} else
+						throw new IOException("Pool "+pool.getTablespace()+" of size "+pool.size()+" doesnt contain key "+GlobalDBIO.valueOf(lbai.getBlockNum()));
 					long tblock = lbai.getBlockNum();
-					DBOutputStream dbo = GlobalDBIO.getBlockOutputStream(lbai);
-					t.updateDeepStoreInLog(dbo,tblock, false);
-					dbo.close();
+					if(dbo == null)
+						dbo = new DBOutputStream(lbai, pool);
+					else
+						dbo.setBlockAccessIndex(lbai);
+					t.updateDeepStoreInLog(dbo, tblock, false);
 					if(DEBUG)
 						System.out.printf("%s.commit Reset inLog for block:%s%n",this.getClass().getName(),GlobalDBIO.valueOf(lbai.getBlockNum()));
 				} // record iterator
@@ -456,9 +459,13 @@ public final class FileLogger implements Logger {
 		}
 		finally {
 			if (compensation != null)  {
-            // err out
-			compensation.releaseResource(t);
+				// err out
+				compensation.releaseResource(t);
 			}
+			if( dbo != null ) {
+				dbo.close();
+			}
+				
 		}
 		if(DEBUG) {
 			System.out.println("FileLogger.commit: Finish commit");

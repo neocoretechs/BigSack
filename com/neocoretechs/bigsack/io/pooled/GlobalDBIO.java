@@ -320,61 +320,8 @@ public class GlobalDBIO {
 		return Od;
 	}
 	
-	/**
-	 * Deserialize an object from the provided InputStream
-	 * @param is
-	 * @return The magically reconstituted object
-	 * @throws IOException
-	 */
-	public static Object deserializeObject(InputStream is) throws IOException {
-		Object Od;
-		try {
-			ObjectInputStream s;
-			ReadableByteChannel rbc = Channels.newChannel(is);
-			s = new ObjectInputStream(Channels.newInputStream(rbc));
-			Od = s.readObject();
-			s.close();
-			rbc.close();
-		} catch (IOException ioe) {
-			throw new IOException(
-				"deserializeObject: "
-					+ ioe.toString()
-					+ ": Class Unreadable, may have been modified beyond version compatibility: from inputstream "
-					+ is);
-		} catch (ClassNotFoundException cnf) {
-			throw new IOException(
-				cnf.toString()
-					+ ":Class Not found, may have been modified beyond version compatibility");
-		}
-		return Od;
-	}
-	/**
-	 * Deserialize an object from the provided ByteChannel
-	 * @param rbc
-	 * @return The magically reconstituted object
-	 * @throws IOException
-	 */
-	public static Object deserializeObject(ByteChannel rbc) throws IOException {
-		Object Od;
-		try {
-			ObjectInputStream s;
-			s = new ObjectInputStream(Channels.newInputStream(rbc));
-			Od = s.readObject();
-			s.close();
-			rbc.close();
-		} catch (IOException ioe) {
-			throw new IOException(
-				"deserializeObject: "
-					+ ioe.toString()
-					+ ": Class Unreadable, may have been modified beyond version compatibility: from ByteChannel "
-					+ rbc);
-		} catch (ClassNotFoundException cnf) {
-			throw new IOException(
-				cnf.toString()
-					+ ":Class Not found, may have been modified beyond version compatibility: from ByteChannel");
-		}
-		return Od;
-	}
+
+
 	/**
 	 * Deserialize an object from the provided ByteBuffer
 	 * @param bb
@@ -495,18 +442,16 @@ public class GlobalDBIO {
 	 * the purpose of transaction checkpoint rollback.
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingRollback(DBOutputStream blockStream) throws IOException {
-		if(blockStream != null)
-			ioManager.deallocOutstandingRollback(blockStream.getBlockAccessIndex());
+	public synchronized void deallocOutstandingRollback() throws IOException {
+		ioManager.deallocOutstandingRollback();
 	}
 	/**
 	 * Deallocate the outstanding buffer resources, block latches, etc. for 
 	 * the purpose of transaction checkpoint commit.
 	 * @throws IOException
 	 */	
-	public synchronized void deallocOutstandingCommit(DBOutputStream blockStream) throws IOException {
-		if(blockStream != null)
-			ioManager.deallocOutstandingCommit(blockStream.getBlockAccessIndex());
+	public synchronized void deallocOutstandingCommit() throws IOException {
+		ioManager.deallocOutstandingCommit();
 		if(DEBUGLOGINIT)
 			System.out.printf("%s.deallocOutstandingCommit%n", this.getClass().getName());
 	}
@@ -849,6 +794,7 @@ public class GlobalDBIO {
 		byte[] b = GlobalDBIO.getObjectAsBytes(target);
 		sdbio.delete_object(blockStream, pos, b.length);
 	}
+	
 	/**
 	* delete_object and potentially reclaim space
 	* @param loc Location of object
@@ -858,11 +804,25 @@ public class GlobalDBIO {
 	public synchronized void delete_object(DBOutputStream blockStream, Optr loc, int osize) throws IOException {
 		//System.out.println("GlobalDBIO.delete_object "+loc+" "+osize);
 		ioManager.objseek(blockStream, loc);
-		blockStream.deleten(blockStream.getBlockAccessIndex(), osize);
+		blockStream.delete(osize);
 	}
-		
+	
 	/**
-	 * Add an object, which in this case is a load of bytes.
+	* delete_object and potentially reclaim space
+	* @param loc Location of object
+	* @param osize object size
+	* @exception IOException if the block cannot be sought or written
+	*/
+	public synchronized void delete_object(Optr loc, int osize) throws IOException {
+		//System.out.println("GlobalDBIO.delete_object "+loc+" "+osize);
+		DBOutputStream blockStream = new DBOutputStream(loc, ioManager);
+		blockStream.delete(osize);
+		blockStream.close();
+	}
+	
+	/**
+	* Add an object, which in this case is a load of bytes.
+	* @param DBOutputStream the output stream for MappedBlockBuffer and block for that tablespace
 	* @param loc Location to add this
 	* @param o The byte payload to add to pool
 	* @param osize  The size of the payload to add from array
@@ -871,13 +831,29 @@ public class GlobalDBIO {
 	public synchronized void add_object(DBOutputStream blockStream, Optr loc, byte[] o, int osize) throws IOException {
 		int tblsp = ioManager.objseek(blockStream, loc);
 		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
-		blockStream.writen(blockStream.getBlockAccessIndex(), o, osize);
+		blockStream.write(o, 0, osize);
 		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
 		//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
 		//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
 			//ioManager.deallocOutstandingWriteLog(tblsp);
 	}
-
+	/**
+	* Add an object, which in this case is a load of bytes.
+	* @param loc Location to add this
+	* @param o The byte payload to add to pool
+	* @param osize  The size of the payload to add from array
+	* @exception IOException If the adding did not happen
+	*/
+	public synchronized void add_object(Optr loc, byte[] o, int osize) throws IOException {
+		DBOutputStream blockStream = new DBOutputStream(loc, ioManager);
+		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 ) : "Writing unlatched block:"+loc+" with payload:"+osize;
+		blockStream.write(o, 0, osize);
+		blockStream.close();
+		//assert(ioManager.getBlockStream(tblsp).getLbai().getAccesses() > 0 && 
+		//	   ioManager.getBlockStream(tblsp).getLbai().getBlk().isIncore()) : 
+		//	"Block "+loc+" unlatched after write, accesses: "+ioManager.getBlockStream(tblsp).getLbai().getAccesses();
+			//ioManager.deallocOutstandingWriteLog(tblsp);
+	}
 	/**
 	* Read Object in pool: deserialize the byte array.
 	* @param iloc The location of the object to retrieve from backing store
@@ -972,7 +948,7 @@ public class GlobalDBIO {
 
 	public void updateDeepStoreInLog(DBOutputStream blockStream, long tblock, boolean b) throws IOException {
 		ioManager.objseek(blockStream, tblock, Datablock.INLOGFLAGPOSITION);
-		blockStream.writen(blockStream.getBlockAccessIndex(), new byte[] { (byte) (b ? 1 : 0)}, 1);
+		blockStream.write(new byte[] { (byte) (b ? 1 : 0)});
 	}
 
 	

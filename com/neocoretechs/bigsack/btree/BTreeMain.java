@@ -76,7 +76,7 @@ import com.neocoretechs.bigsack.session.BufferedTreeSet;
 * @author Groff Copyright (C) NeoCoreTechs 2015,2017,2021
 */
 public final class BTreeMain implements KeyValueMainInterface {
-	private static boolean DEBUG = false; // General debug, overrides other levels
+	private static boolean DEBUG = true; // General debug, overrides other levels
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of KeyPageInterface
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;
@@ -557,7 +557,7 @@ public final class BTreeMain implements KeyValueMainInterface {
 	private synchronized TraversalStackElement seekLeftTree(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
         if (((BTreeKeyPage) node).getmIsLeafNode()) {
-        	if(DEBUGSEARCH)
+        	if(DEBUG || DEBUGSEARCH)
             	System.out.printf("%s Leaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
                     //for (int i = 0; i < node.getNumKeys(); i++) {
                     //        System.out.print(" Page:"+GlobalDBIO.valueOf(node.getPageId())+" INDEX:"+i+" node:"+node.getKey(i) + ", ");
@@ -565,7 +565,7 @@ public final class BTreeMain implements KeyValueMainInterface {
                     //System.out.println("\n");
             tse.index = 0;
         } else {
-            if(DEBUGSEARCH)
+            if(DEBUG || DEBUGSEARCH)
             	System.out.printf("%s NonLeaf node numkeys:%d%n",this.getClass().getName(),node.getNumKeys());
             KeyPageInterface btk = (KeyPageInterface) node.getPage(tse.index);
             TraversalStackElement tsex = new TraversalStackElement(node, tse.index, tse.index);
@@ -584,13 +584,13 @@ public final class BTreeMain implements KeyValueMainInterface {
 	private synchronized TraversalStackElement seekRightTree(TraversalStackElement tse, Stack stack) throws IOException {
 		KeyPageInterface node = (KeyPageInterface) tse.keyPage;
         if (((BTreeKeyPage) node).getmIsLeafNode()) {
-        	if(DEBUG) {
+        	if(DEBUG || DEBUGSEARCH) {
             	System.out.printf("%s Leaf node numkeys:%d %s %s%n",this.getClass().getName(),node.getNumKeys(),node,tse);
             	printStack(stack);
             }
             tse.index = node.getNumKeys()-1;
         } else {
-            if(DEBUG) {
+            if(DEBUG || DEBUGSEARCH) {
             	System.out.printf("%s NonLeaf node numkeys:%d %s %s%n",this.getClass().getName(),node.getNumKeys(),node,tse);
             	printStack(stack);
             }

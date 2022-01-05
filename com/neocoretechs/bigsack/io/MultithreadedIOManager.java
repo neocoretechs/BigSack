@@ -116,7 +116,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.printf("%s.getNewInsertPosition(%s, %d, %d, %d)%n",this.getClass().getName(), locs, bytesNeeded);
 		return globalIO.getNewInsertPosition(locs, bytesNeeded);
 	}
-
 	
 	@Override
 	/**
@@ -216,7 +215,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		return 0L;
 	}
 
-
 	/**
 	 * Find the largest freechain, and conversely the smallest tablespace, and leave it in filed smallestTablespace.
 	 */
@@ -238,6 +236,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	/**
 	 * Get next free block from given tablespace. The block is translated from real to virtual block.
 	 * @return The next free block from the round robin tablespace, translated to a virtual block.
+	 * the ioWorker calls back here to addBlockAccess(BlockAccessIndex) from IOWorker.getNextFreeBlock
 	 * @throws IOException 
 	 */
 	public synchronized BlockAccessIndex getNextFreeBlock() throws IOException {
@@ -264,6 +263,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	@Override
 	/**
 	 * Get next free block from given tablespace. The block is translated from real to virtual block.
+	 * The ioWorker calls back here to addBlockAccess(BlockAccessIndex) from IOWorker.getNextFreeBlock
 	 * @return The next free block from the round robin tablespace, translated to a virtual block.
 	 * @throws IOException 
 	 */
@@ -279,11 +279,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * Deallocate the outstanding block and call commit on the recovery log
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingCommit(BlockAccessIndex bai) throws IOException {
+	public synchronized void deallocOutstandingCommit() throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.deallocOutstandingCommit invoking commitBufferFlush and deallocOutstanding...%n",this.getClass().getName());
 		commitBufferFlush();
-		deallocOutstanding(bai);
 		Fforce();
 	}
 	
@@ -292,10 +291,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * Deallocate the outstanding block and call rollback on the recovery log
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingRollback(BlockAccessIndex bai) throws IOException {
+	public synchronized void deallocOutstandingRollback() throws IOException {
 		if(DEBUG)
 			System.out.printf("%s Rolling back %n",this.getClass().getName());
-		deallocOutstanding(bai);
 		bufferPool.rollback(); 
 	}
 	
@@ -382,10 +380,10 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#getIOWorker(int)
 	 */
-
 	public IOWorker getIOWorker(int tblsp) {
 		return ioWorker[tblsp];
 	}
+	
 	@Override
 	public void forceBufferClear() {
 		//for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
@@ -393,7 +391,6 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//}
 		bufferPool.forceBufferClear();
 	}
-
 	
 	@Override
 	public BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
@@ -439,8 +436,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	*/
 	public boolean seek_fwd(DBInputStream blockStream, int tblsp, long offset) throws IOException {
 		return bufferPool.seekFwd( blockStream, tblsp, offset);
-	}
-	
+	}	
 
 	@Override
 	public long Fsize(int tblsp) throws IOException {
@@ -453,8 +449,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public GlobalDBIO getIO() {
 		return globalIO;
 	}
-	
-	
+		
 	@Override
 	/**
 	 * Perform an Fseek on the block and and write it. Use the write method of Datablock and

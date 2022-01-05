@@ -6,7 +6,10 @@ import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
+import com.neocoretechs.bigsack.io.IoManagerInterface;
+import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
+import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 /*
 * Copyright (c) 1998,2003, NeoCoreTechs
@@ -42,26 +45,37 @@ public final class DBOutputStream extends OutputStream {
 	BlockAccessIndex lbai;
 	private DataOutputStream DBOutput = null;
 	public DBOutputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
+		if(tsdbio.getTablespace() != GlobalDBIO.getTablespace(tlbai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+tsdbio.getTablespace()+" to block "+GlobalDBIO.valueOf(tlbai.getBlockNum())+" mismatch for DBOutputStream");
 		lbai =  tlbai;
+		lbai.setByteindex((short) 0);
 		//tlbai.getBlk().setIncore(true);
 		blockBuffer = tsdbio;
 	}
 	
+	public DBOutputStream(Optr optr, IoManagerInterface tsdbio) throws IOException {
+		blockBuffer = tsdbio.getBlockBuffer(GlobalDBIO.getTablespace(optr.getBlock()));
+		lbai = blockBuffer.findOrAddBlock(optr.getBlock(), true);
+		lbai.setByteindex(optr.getOffset());
+		if(DEBUG)
+			System.out.printf("%s.c'tor %s%n", this.getClass().getName(),lbai);
+	}
+	
 	@Override
 	public void write(byte[] b) throws IOException {
-		writen(lbai, b, b.length);
+		writen(b, b.length);
 	}
 		
 	//Reads bytes from this byte-input stream into the specified byte array, starting at the given offset.
 	@Override
 	public void write(byte[] b, int off, int len) throws IOException {
 		for(int i = off; i < len; i++)
-			writei(lbai, b[i]);
+			writei(b[i]);
 	}
 		
 	@Override
 	public void write(int b) throws IOException {
-		writei(lbai, b);
+		writei(b);
 	}
 	
 	@Override
@@ -81,60 +95,60 @@ public final class DBOutputStream extends OutputStream {
 	* @return number of bytes written
 	* @exception IOException if can't acquire new block
 	*/
-	public synchronized int writen(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
-		BlockAccessIndex tblk = null;
-		BlockAccessIndex ablk = null;
+	private synchronized int writen(byte[] buf, int numbyte) throws IOException {
 		int i = 0, runcount = numbyte, blkbytes;
+		BlockAccessIndex tblk;
 		// see if we need the next block to start
 		// and flag our position, tblk has passed block or a new acquired one
 		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
 			if ((tblk=blockBuffer.getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
-				tblk = blockBuffer.acquireNewBlk(lbai);
+				lbai = blockBuffer.acquireNewBlk(lbai);
+			} else {
+				lbai = tblk;
 			}
-		} else { // we have some room in the passed block
-			tblk = lbai;
-		}
+		} 
 		// Iterate, reducing the byte count in buffer by room in each block
 		for (;;) {
-			blkbytes = DBPhysicalConstants.DATASIZE - tblk.getByteindex();
+			blkbytes = DBPhysicalConstants.DATASIZE - lbai.getByteindex();
 			if(DEBUG)
-				System.out.printf("Writing %d to tblk:%s%n",blkbytes, tblk);
+				System.out.printf("Writing %d to tblk:%s%n",blkbytes, lbai);
 			if (runcount > blkbytes) {  //overflow block
 				runcount -= blkbytes;
 				System.arraycopy(
 					buf,
 					i,
-					tblk.getBlk().getData(),
-					tblk.getByteindex(),
+					lbai.getBlk().getData(),
+					lbai.getByteindex(),
 					blkbytes);
-				tblk.setByteindex((short) (tblk.getByteindex() + (short)blkbytes));
+				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
 				i += blkbytes;
-				tblk.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
+				lbai.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
 				//update control info
-				tblk.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
-				if((ablk=blockBuffer.getnextblk(tblk)) == null) { // no linked block to write into? get one
-					ablk = blockBuffer.acquireNewBlk(tblk);
+				lbai.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
+				lbai.getBlk().setIncore(true);
+				lbai.getBlk().setInlog(false);
+				if((tblk=blockBuffer.getnextblk(lbai)) == null) { // no linked block to write into? get one
+					lbai = blockBuffer.acquireNewBlk(lbai);
+				} else {
+					lbai = tblk;
 				}
-				tblk = ablk;
 				// now tblk has next block in chain or new acquired block
 			} else { // we can fit the remainder of buffer in this block
 				System.arraycopy(
 					buf,
 					i,
-					tblk.getBlk().getData(),
-					tblk.getByteindex(),
+					lbai.getBlk().getData(),
+					lbai.getByteindex(),
 					runcount);
-				tblk.setByteindex((short) (tblk.getByteindex() + runcount));
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
 				i += runcount;
-				if (tblk.getByteindex() > tblk.getBlk().getBytesused()) {
+				if (lbai.getByteindex() > lbai.getBlk().getBytesused()) {
 					//update control info
-					tblk.getBlk().setBytesused(tblk.getByteindex());
-					tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
+					lbai.getBlk().setBytesused(lbai.getByteindex());
+					lbai.getBlk().setBytesinuse(lbai.getBlk().getBytesused());
 				}
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
+				lbai.getBlk().setIncore(true);
+				lbai.getBlk().setInlog(false);
 				return i;
 			}
 		}
@@ -148,52 +162,55 @@ public final class DBOutputStream extends OutputStream {
 	* @return number of bytes written
 	* @exception IOException if can't acquire new block
 	*/
-	public synchronized int writen(BlockAccessIndex lbai, ByteBuffer buf, int numbyte) throws IOException {
+	public synchronized int write(BlockAccessIndex tbai, ByteBuffer buf, int numbyte) throws IOException {
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(tbai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(tbai.getBlockNum())+" mismatch for DBOutputStream");
+		lbai = tbai;
 		BlockAccessIndex tblk = null;
-		BlockAccessIndex ablk = null;
 		int i = 0, runcount = numbyte, blkbytes;
 		// sets the incore to true and the inlog to false on both blocks
 		// see if we need the next block to start
 		// and flag our position, tblk has passed block or a new acquired one
 		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
 			if ((tblk=blockBuffer.getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
-				tblk = blockBuffer.acquireNewBlk(lbai);
+				lbai = blockBuffer.acquireNewBlk(lbai);
+			} else { // we have some room in the passed block
+				lbai = tblk;
 			}
-		} else { // we have some room in the passed block
-			tblk = lbai;
 		}
 		//
 		for (;;) {
-			blkbytes = DBPhysicalConstants.DATASIZE - tblk.getByteindex();
+			blkbytes = DBPhysicalConstants.DATASIZE - lbai.getByteindex();
 			if(DEBUG)
-				System.out.printf("Writing %d to tblk:%s buffer:%s%n",blkbytes, tblk, buf);
+				System.out.printf("Writing %d to tblk:%s buffer:%s%n",blkbytes, lbai, buf);
 			if (runcount > blkbytes) {
 				runcount -= blkbytes;
 				buf.position(i);
-				buf.get(tblk.getBlk().getData(), tblk.getByteindex(), blkbytes);
-				tblk.setByteindex((short) (tblk.getByteindex() + (short)blkbytes));
+				buf.get(lbai.getBlk().getData(), lbai.getByteindex(), blkbytes);
+				lbai.setByteindex((short) (lbai.getByteindex() + (short)blkbytes));
 				i += blkbytes;
-				tblk.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
+				lbai.getBlk().setBytesused(DBPhysicalConstants.DATASIZE);
 				//update control info
-				tblk.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
-				if ((ablk=blockBuffer.getnextblk(tblk)) == null) {
-					ablk = blockBuffer.acquireNewBlk(tblk);
+				lbai.getBlk().setBytesinuse(DBPhysicalConstants.DATASIZE);
+				lbai.getBlk().setIncore(true);
+				lbai.getBlk().setInlog(false);
+				if ((tblk=blockBuffer.getnextblk(lbai)) == null) {
+					lbai = blockBuffer.acquireNewBlk(lbai);
+				} else {
+					lbai = tblk;
 				}
-				tblk = ablk;
 			} else {
 				buf.position(i);
-				buf.get(tblk.getBlk().getData(), tblk.getByteindex(), runcount);
-				tblk.setByteindex((short) (tblk.getByteindex() + runcount));
+				buf.get(lbai.getBlk().getData(), lbai.getByteindex(), runcount);
+				lbai.setByteindex((short) (lbai.getByteindex() + runcount));
 				i += runcount;
-				if (tblk.getByteindex() >= tblk.getBlk().getBytesused()) {
+				if (lbai.getByteindex() >= lbai.getBlk().getBytesused()) {
 					//update control info
-					tblk.getBlk().setBytesused(tblk.getByteindex());
-					tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
+					lbai.getBlk().setBytesused(lbai.getByteindex());
+					lbai.getBlk().setBytesinuse(lbai.getBlk().getBytesused());
 				}
-				tblk.getBlk().setIncore(true);
-				tblk.getBlk().setInlog(false);
+				lbai.getBlk().setIncore(true);
+				lbai.getBlk().setInlog(false);
 				return i;
 			}
 		}
@@ -206,36 +223,36 @@ public final class DBOutputStream extends OutputStream {
 	* @param byte to write
 	* @exception IOException If cannot acquire new block
 	*/
-	public synchronized void writei(BlockAccessIndex lbai, int tbyte) throws IOException {
+	private synchronized void writei(int tbyte) throws IOException {
 		BlockAccessIndex tblk;
 		// see if we need the next block to start
 		// and flag our position
 		if (lbai.getByteindex() >= DBPhysicalConstants.DATASIZE) {
 			if ((tblk=blockBuffer.getnextblk(lbai)) == null) { // no room in passed block, no next block, acquire one
-				tblk = blockBuffer.acquireNewBlk(lbai);
+				lbai = blockBuffer.acquireNewBlk(lbai);
+			} else { // we have some room in the passed block
+				lbai = tblk;
 			}
-		} else { // we have some room in the passed block
-			tblk = lbai;
 		}
-		if (!tblk.getBlk().isIncore())
-			tblk.getBlk().setIncore(true);
-		tblk.getBlk().getData()[tblk.getByteindex()] = (byte) tbyte;
-		tblk.setByteindex((short) (tblk.getByteindex() + 1));
-		if (tblk.getByteindex() > tblk.getBlk().getBytesused()) {
+		if (!lbai.getBlk().isIncore())
+			lbai.getBlk().setIncore(true);
+		lbai.getBlk().getData()[lbai.getByteindex()] = (byte) tbyte;
+		lbai.setByteindex((short) (lbai.getByteindex() + 1));
+		if (lbai.getByteindex() > lbai.getBlk().getBytesused()) {
 			//update control info
-			tblk.getBlk().setBytesused( tblk.getByteindex()) ;
-			tblk.getBlk().setBytesinuse(tblk.getBlk().getBytesused());
+			lbai.getBlk().setBytesused( lbai.getByteindex()) ;
+			lbai.getBlk().setBytesinuse(lbai.getBlk().getBytesused());
 		}
 	}
 
 	/**
-	* deleten -  delete n bytes from object / directory. Item may span a block so we
+	* delete -  delete n bytes from object / directory. Item may span a block so we
 	* adjust the pointers across block boundaries if necessary. Numerous sanity checks along the way.
 	* @param osize number bytes to delete
 	* @return true if success
 	* @exception IOException If we cannot write block, or we attempted to seek past the end of a chain, or if the high water mark and total bytes used did not ultimately agree.
 	*/
-	public synchronized void deleten(BlockAccessIndex lbai, int osize) throws IOException {
+	public synchronized void delete(int osize) throws IOException {
 		//System.out.println("MappedBlockBuffer.deleten:"+lbai+" size:"+osize);
 		BlockAccessIndex tblk;
 		int runcount = osize;
@@ -296,8 +313,8 @@ public final class DBOutputStream extends OutputStream {
 					throw new IOException(
 						"Attempted delete past end of block chain for "+ osize + " bytes total, with remaining runcount "+runcount+" in "+ lbai);
 				// we have to unlink this from the next block
-				lbai.getBlk().setNextblk(-1L);
 				lbai = tblk;
+				lbai.getBlk().setNextblk(-1L);
 				lbai.setByteindex((short) 0);// start at the beginning of the next block to continue delete, or whatever
 			}
 		} while( runcount > 0); // while we still have more to delete
@@ -316,10 +333,15 @@ public final class DBOutputStream extends OutputStream {
 	}
 
 	public void setBlockAccessIndex(BlockAccessIndex bai) {
-		lbai = bai;	
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(bai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(bai.getBlockNum())+" mismatch for DBOutputStream");
+		lbai = bai;
+		lbai.setByteindex((short) 0);
 	}
 	
 	public void setBlockAccessIndex(BlockAccessIndex bai, short index) {
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(bai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(bai.getBlockNum())+" mismatch for DBOutputStream");
 		lbai = bai;
 		lbai.setByteindex(index);
 	}

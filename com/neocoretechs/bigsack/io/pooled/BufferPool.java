@@ -75,8 +75,6 @@ public class BufferPool {
 		return undoLog[tablespace];
 	}
 
-
-	
 	/**
 	 * Create the MappedBlockBuffer block pools, block pool cursor, and recovery log managers for each tablespace
 	 * @param globalIO the Global IO manager
@@ -422,7 +420,7 @@ public class BufferPool {
 	 * @throws IOException
 	 */
 	public synchronized void writen(DBOutputStream blockStream, int tblsp, byte[] o, int osize) throws IOException {
-		blockStream.writen(blockStream.getBlockAccessIndex(), o, osize);
+		blockStream.write(o, 0, osize);
 	}
 	
 	/**
@@ -434,7 +432,7 @@ public class BufferPool {
 	 */
 	public synchronized int deleten(DBOutputStream blockStream, Optr adr, int osize) throws IOException {
 		int tblsp = objseek(blockStream, adr);
-		blockStream.deleten(blockStream.getBlockAccessIndex(), osize);
+		blockStream.delete(osize);
 		return tblsp;
 	}
 	

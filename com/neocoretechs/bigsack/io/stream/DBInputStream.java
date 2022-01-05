@@ -5,6 +5,9 @@ import java.io.InputStream;
 import java.lang.ref.SoftReference;
 import java.nio.ByteBuffer;
 
+import com.neocoretechs.bigsack.io.IoManagerInterface;
+import com.neocoretechs.bigsack.io.MultithreadedIOManager;
+import com.neocoretechs.bigsack.io.Optr;
 import com.neocoretechs.bigsack.io.pooled.BlockAccessIndex;
 import com.neocoretechs.bigsack.io.pooled.GlobalDBIO;
 import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
@@ -43,8 +46,19 @@ public final class DBInputStream extends InputStream {
 	private DataInputStream DBInput = null;
 	
 	public DBInputStream(BlockAccessIndex tlbai, MappedBlockBuffer tsdbio) {
+		if(tsdbio.getTablespace() != GlobalDBIO.getTablespace(tlbai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+tsdbio.getTablespace()+" to block "+GlobalDBIO.valueOf(tlbai.getBlockNum())+" mismatch for DBInputStream");
 		lbai = tlbai;
 		blockBuffer = tsdbio;
+		lbai.setByteindex((short) 0);
+		if(DEBUG)
+			System.out.printf("%s.c'tor %s%n", this.getClass().getName(),lbai);
+	}
+	
+	public DBInputStream(Optr optr, IoManagerInterface tsdbio) throws IOException {
+		blockBuffer = tsdbio.getBlockBuffer(GlobalDBIO.getTablespace(optr.getBlock()));
+		lbai = blockBuffer.findOrAddBlock(optr.getBlock(), true);
+		lbai.setByteindex(optr.getOffset());
 		if(DEBUG)
 			System.out.printf("%s.c'tor %s%n", this.getClass().getName(),lbai);
 	}
@@ -92,12 +106,12 @@ public final class DBInputStream extends InputStream {
 	//Reads bytes from this byte-input stream into the specified byte array, starting at the given offset.
 	@Override
 	public int read(byte[] b, int off, int len) throws IOException {
-		return readn(lbai, b, off, len);
+		return readn(b, off, len);
 	}
 		
 	@Override
 	public int read() throws IOException {
-		return readi(lbai);
+		return readi();
 	}
 
 	@Override
@@ -116,6 +130,8 @@ public final class DBInputStream extends InputStream {
 	* @exception IOException If we cannot acquire next block
 	*/
 	public synchronized boolean seek_fwd(BlockAccessIndex tbai, long offset) throws IOException {
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(tbai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(tbai.getBlockNum())+" mismatch for DBInputStream");
 		long runcount = offset;
 		lbai = tbai;
 		do {
@@ -141,8 +157,7 @@ public final class DBInputStream extends InputStream {
 	* @return number of bytes read, -1 if we reach end of stream and/or there is no next block
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized int readn(BlockAccessIndex tbai, byte[] buf, int offs, int numbyte) throws IOException {
-		lbai = tbai;
+	private synchronized int readn(byte[] buf, int offs, int numbyte) throws IOException {
 		BlockAccessIndex tblk;
 		int i = offs, runcount = numbyte, blkbytes;
 		// see if we need the next block to start
@@ -184,9 +199,7 @@ public final class DBInputStream extends InputStream {
 		}
 	}
 	
-	public synchronized int readn(BlockAccessIndex lbai, byte[] buf, int numbyte) throws IOException {
-		return readn(lbai, buf, 0, numbyte);
-	}
+
 	/**
 	* readn - read n bytes from pool
 	* @param buf byte buffer to fill
@@ -194,7 +207,9 @@ public final class DBInputStream extends InputStream {
 	* @return number of bytes read
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized int readn(BlockAccessIndex tbai, ByteBuffer buf, int numbyte) throws IOException {
+	public synchronized int read(BlockAccessIndex tbai, ByteBuffer buf, int numbyte) throws IOException {
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(tbai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(tbai.getBlockNum())+" mismatch for DBInputStream");
 		lbai = tbai;
 		BlockAccessIndex tblk;
 		int i = 0, runcount = numbyte, blkbytes;
@@ -234,8 +249,7 @@ public final class DBInputStream extends InputStream {
 	* @return the byte as integer for InputStream
 	* @exception IOException If we cannot acquire next block
 	*/
-	public synchronized int readi(BlockAccessIndex tbai) throws IOException {
-		lbai = tbai;
+	private synchronized int readi() throws IOException {
 		BlockAccessIndex tblk;
 		// see if we need the next block to start
 		// and flag our position
@@ -256,10 +270,15 @@ public final class DBInputStream extends InputStream {
 	}
 
 	public void setBlockAccessIndex(BlockAccessIndex bai) {
-		lbai = bai;	
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(bai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(bai.getBlockNum())+" mismatch for DBInputStream");
+		lbai = bai;
+		lbai.setByteindex((short) 0);
 	}
 	
 	public void setBlockAccessIndex(BlockAccessIndex bai, short byteindex) {
+		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(bai.getBlockNum()))
+			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(bai.getBlockNum())+" mismatch for DBInputStream");
 		lbai = bai;	
 		lbai.setByteindex(byteindex);
 	}
