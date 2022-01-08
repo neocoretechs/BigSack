@@ -40,7 +40,7 @@ import com.neocoretechs.bigsack.io.pooled.MappedBlockBuffer;
 * @author Groff
 */
 public final class DBInputStream extends InputStream {
-	public static boolean DEBUG = true;
+	public static boolean DEBUG = false;
 	MappedBlockBuffer blockBuffer;
 	BlockAccessIndex lbai;
 	private DataInputStream DBInput = null;
