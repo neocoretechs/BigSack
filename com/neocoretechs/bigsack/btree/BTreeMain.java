@@ -76,7 +76,7 @@ import com.neocoretechs.bigsack.session.BufferedTreeSet;
 * @author Groff Copyright (C) NeoCoreTechs 2015,2017,2021
 */
 public final class BTreeMain implements KeyValueMainInterface {
-	private static boolean DEBUG = true; // General debug, overrides other levels
+	private static boolean DEBUG = false; // General debug, overrides other levels
 	private static boolean DEBUGCURRENT = false; // alternate debug level to view current page assignment of KeyPageInterface
 	private static boolean DEBUGSEARCH = false; // traversal debug
 	private static boolean DEBUGCOUNT = false;

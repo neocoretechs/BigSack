@@ -157,6 +157,7 @@ public final class SessionManager {
 			// did'nt find it, create anew, throws IllegalAccessException if no go.
 			// Global IO and main Key/Value index
 			GlobalDBIO objIO = new GlobalDBIO(dbname, keystoreType, backingstoreType, getGlobalTransId(), poolBlocks);
+			objIO.bringUpBackEnd();
 			hps = new BigSackSession(objIO, uid, gid);
 			SessionTable.put(dbname, hps);
 			if( DEBUG )
@@ -196,8 +197,9 @@ public final class SessionManager {
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery bringing up IO");
 			GlobalDBIO objIO = new GlobalDBIO(dbname, keystoreType, backingstoreType, getGlobalTransId(), poolBlocks);
+			objIO.bringUpBackEnd();
 			if( DEBUG )
-				System.out.println("SessionManager.ConectNoRecovery bringing up BTree");
+				System.out.println("SessionManager.ConectNoRecovery bringing up session");
 			hps = new BigSackSession(objIO, uid, gid);
 			if( DEBUG )
 				System.out.println("SessionManager.ConectNoRecovery logging session");

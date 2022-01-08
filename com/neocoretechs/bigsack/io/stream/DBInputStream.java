@@ -100,22 +100,33 @@ public final class DBInputStream extends InputStream {
 	
 	@Override
 	public int read(byte[] b) throws IOException {
-		return read(b, 0, b.length);
+		int nread = read(b, 0, b.length);
+		if(DEBUG)
+			System.out.printf("%s.read %d %s%n",this.getClass().getName(),nread,lbai);
+		return nread;
 	}
 		
 	//Reads bytes from this byte-input stream into the specified byte array, starting at the given offset.
 	@Override
 	public int read(byte[] b, int off, int len) throws IOException {
-		return readn(b, off, len);
+		int nread = readn(b, off, len);
+		if(DEBUG)
+			System.out.printf("%s.read %d offset %d %s%n",this.getClass().getName(),nread,off,lbai);
+		return nread;
 	}
 		
 	@Override
 	public int read() throws IOException {
-		return readi();
+		int nread = readi();
+		if(DEBUG)
+			System.out.printf("%s.read %d %s%n",this.getClass().getName(),nread,lbai);
+		return nread;
 	}
 
 	@Override
 	public long skip(long len) throws IOException {
+		if(DEBUG)
+			System.out.printf("%s.skip %d %s%n",this.getClass().getName(),len,lbai);
 		long actual = 0L;
 		for(int i = 0; i < len; i++) {
 				if(read() == -1)
@@ -132,6 +143,8 @@ public final class DBInputStream extends InputStream {
 	public synchronized boolean seek_fwd(BlockAccessIndex tbai, long offset) throws IOException {
 		if(blockBuffer.getTablespace() != GlobalDBIO.getTablespace(tbai.getBlockNum()))
 			throw new RuntimeException("Tablespace "+blockBuffer.getTablespace()+" to block "+GlobalDBIO.valueOf(tbai.getBlockNum())+" mismatch for DBInputStream");
+		if(DEBUG)
+			System.out.printf("%s.seek_fwd %d %s%n",this.getClass().getName(),offset,lbai);
 		long runcount = offset;
 		lbai = tbai;
 		do {

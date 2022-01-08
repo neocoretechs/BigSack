@@ -1,33 +1,32 @@
 package com.neocoretechs.bigsack.io.pooled;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
+
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 
 import com.neocoretechs.bigsack.DBPhysicalConstants;
-
 import com.neocoretechs.bigsack.btree.BTreeKeyPage;
 import com.neocoretechs.bigsack.btree.BTreeMain;
 import com.neocoretechs.bigsack.btree.BTreeRootKeyPage;
-
 import com.neocoretechs.bigsack.hashmap.HMapChildRootKeyPage;
 import com.neocoretechs.bigsack.hashmap.HMapKeyPage;
 import com.neocoretechs.bigsack.hashmap.HMapMain;
 import com.neocoretechs.bigsack.hashmap.HMapRootKeyPage;
-
 import com.neocoretechs.bigsack.io.IoManagerInterface;
 import com.neocoretechs.bigsack.io.MultithreadedIOManager;
 import com.neocoretechs.bigsack.io.Optr;
@@ -35,7 +34,6 @@ import com.neocoretechs.bigsack.io.stream.CObjectInputStream;
 import com.neocoretechs.bigsack.io.stream.DBInputStream;
 import com.neocoretechs.bigsack.io.stream.DBOutputStream;
 import com.neocoretechs.bigsack.io.stream.DirectByteArrayOutputStream;
-
 import com.neocoretechs.bigsack.keyvaluepages.KeyValueMainInterface;
 import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 
@@ -67,12 +65,12 @@ import com.neocoretechs.bigsack.keyvaluepages.NodeInterface;
 * Treats collections of tablespaces (files, etc) as cohesive IO units.  We utilize three caches.
 * In our nomenclature, Level 1 cache is the deserialized in-memory tables of Objects.  Level
 * 2 cache is the buffer pool of pages (blocks).  Level 3 cache is the memory mapped or filesystem file. 
-* @author Jonathan Groff Copyright (C) NeoCoreTechs 1997,2020,2021
+* @author Jonathan Groff Copyright (C) NeoCoreTechs 1997,2020,2021,2022
 */
 
 public class GlobalDBIO {
 	private static final boolean DEBUG = false;
-	private static final boolean DEBUGDESERIALIZE = true; // called upon every deserialization
+	private static final boolean DEBUGDESERIALIZE = false; // called upon every deserialization
 	private static final boolean DEBUGLOGINIT = false; // view blocks written to log and store
 	private static final boolean NEWNODEPOSITIONDEBUG = false;;
 	private int MAXBLOCKS = 1024; // PoolBlocks property may overwrite
@@ -81,8 +79,9 @@ public class GlobalDBIO {
 	// Are we using custom class loader for serialized versions?
 	private boolean isCustomClassLoader;
 	private ClassLoader customClassLoader;
-	
+	private static String[] keystoreTypes = {"BTree","HMap"};
 	private String dbName;
+	private String keystoreType;
 	private long transId;
 
 	protected IoManagerInterface ioManager = null;// = new MultithreadedIOManager();, ClusterIOManager, etc.
@@ -144,6 +143,31 @@ public class GlobalDBIO {
 	public GlobalDBIO(String dbname, String keystoreType, String backingstoreType, long transId, int poolBlocks) throws IOException {
 		this.dbName = dbname;
 		this.transId = transId;
+		this.keystoreType = keystoreType;
+		boolean foundType = false;
+		for(String t: keystoreTypes) {
+			if(t.equals(keystoreType)) {
+				foundType = true;
+				break;
+			}
+		}
+		if(!foundType)
+			throw new IOException("Unknown key store type "+keystoreType);
+		// Set up the proper backing store
+		switch(backingstoreType) {
+			case "MMap":
+				L3cache = 0;
+				break;
+			case "File":
+				L3cache = 1;
+				break;
+			default:
+				throw new IOException("Unsupported backing store type");
+		}	
+		setMAXBLOCKS(poolBlocks);
+	}
+
+	public IoManagerInterface bringUpBackEnd() throws IOException {
 		switch(keystoreType) {
 			case "BTree":
 				keyValueMain =  new BTreeMain(this);
@@ -155,27 +179,13 @@ public class GlobalDBIO {
 				keyValueMain =  new BTreeMain(this);
 				break;
 		}
-		// Set up the proper backing store
-		switch(backingstoreType) {
-			case "MMap":
-				L3cache = 0;
-				break;
-			case "File":
-				L3cache = 1;
-				break;
-			default:
-				throw new IOException("Unsupported L3 cache type");
-		}
-		
-		setMAXBLOCKS(poolBlocks);
-
 		if( DEBUG )
 			System.out.println("Multithreaded IO Manager coming up...");
-		ioManager = new MultithreadedIOManager((GlobalDBIO) this, L3cache);
-		
+		ioManager = new MultithreadedIOManager((GlobalDBIO) this, L3cache);		
 		ioManager.initialize();
+		return ioManager;
 	}
-
+	
 	/**
 	* Get first tablespace
 	* @return the position of the first byte of first tablespace
@@ -862,7 +872,7 @@ public class GlobalDBIO {
 	*/
 	public synchronized Object deserializeObject(long iloc) throws IOException {
 		// read Object at ptr to byte array
-		if(DEBUG)
+		if(DEBUG || DEBUGDESERIALIZE)
 			System.out.print(" Deserialize "+GlobalDBIO.valueOf(iloc));
 		Object Od = null;
 		try {
@@ -882,7 +892,8 @@ public class GlobalDBIO {
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ GlobalDBIO.valueOf(iloc)+" in "+getDBName());
 		} 
-		if( DEBUG ) System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
+		if( DEBUG ||DEBUGDESERIALIZE) 
+			System.out.println("From long "+GlobalDBIO.valueOf(iloc)+" Deserialized:\r\n "+Od);
 		return Od;
 	}
 	/**
@@ -895,25 +906,39 @@ public class GlobalDBIO {
 	public synchronized Object deserializeObject(Optr iloc) throws IOException {
 			// read Object at ptr to byte array
 		Object Od;
-		if(DEBUGDESERIALIZE)
+		if(DEBUG || DEBUGDESERIALIZE)
 			System.out.print(" Deserialize "+iloc);
-		try {
+		try {	
+			/* seems to fail on large objects?
 			ObjectInput s;
-			//ioManager.objseek(iloc);
 			if (isCustomClassLoader())
-				s =	new CObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()), getCustomClassLoader());
+				s =	new CObjectInputStream(new BufferedInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset())), getCustomClassLoader());
 			else
-				s = new ObjectInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset()));
+				s = new ObjectInputStream(new BufferedInputStream(GlobalDBIO.getBlockInputStream(ioManager.findOrAddBlockAccess(iloc.getBlock()), iloc.getOffset())));
 			Od = s.readObject();
 			s.close();
-		} catch (IOException | ClassNotFoundException ioe) {
+			*/		
+			ByteArrayOutputStream baos = new ByteArrayOutputStream();
+			BlockAccessIndex bai = ioManager.findOrAddBlockAccess(iloc.getBlock());
+			baos.write(bai.getBlk().data,iloc.getOffset(),bai.getBlk().getBytesused()-iloc.getOffset());
+			while(true) {
+				if(bai.getBlk().getNextblk() != -1)
+					bai = ioManager.findOrAddBlockAccess(bai.getBlk().getNextblk());
+				else
+					break;
+				baos.write(bai.getBlk().data,iloc.getOffset(),bai.getBlk().getBytesused()-iloc.getOffset());
+			} 
+			baos.flush();
+			Od =  deserializeObject(baos.toByteArray());		
+		} catch (IOException /*| ClassNotFoundException*/ ioe) {
 			throw new IOException(
 				"deserializeObject from pointer: "
 					+ ioe.toString()
 					+ ": Class Unreadable, may have been modified beyond version compatibility "
 					+ iloc+" in "+getDBName());
 		}
-		if( DEBUG ) System.out.println("From ptr "+iloc+" Deserialized:\r\n "+Od);
+		if( DEBUG || DEBUGDESERIALIZE) 
+			System.out.println("From ptr "+iloc+" Deserialized: "+Od);
 		return Od;
 	}
 		
@@ -950,6 +975,21 @@ public class GlobalDBIO {
 		ioManager.objseek(blockStream, tblock, Datablock.INLOGFLAGPOSITION);
 		blockStream.write(new byte[] { (byte) (b ? 1 : 0)});
 	}
-
+	
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder("Database:");
+		sb.append(dbName);
+		sb.append("Key Store Type:");
+		sb.append(keystoreType);
+		sb.append("Backing Store:");
+		sb.append(L3cache);
+		sb.append("Pool blocks:");
+		sb.append(MAXBLOCKS);
+		sb.append("TransId:");
+		sb.append(transId);
+		sb.append("\r\n");
+		return sb.toString();
+	}
 	
 }

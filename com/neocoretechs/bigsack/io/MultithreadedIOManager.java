@@ -75,7 +75,8 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * to cursor through the blocks as we access them. The BlockStream class has the BlockAccessIndex and DBStream
 	 * for each tablespace. The cursor window block and read and written from seep store and buffer pool.
 	 */
-	public synchronized boolean initialize() throws IOException {
+	public boolean initialize() throws IOException {
+		synchronized(bufferPool) {
 		for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 			if( !isNew() ) {
 				// attempt recovery if needed
@@ -83,6 +84,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			} else {
 				bufferPool.initialize(ioWorker[i]);
 			}
+		}
 		}
 		getNextFreeBlocks();
 		// Take block 0 from bufferpool
@@ -93,7 +95,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	}
 	
 	@Override
-	public void reInitLogs() throws IOException {
+	public synchronized void reInitLogs() throws IOException {
 	//	for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 	//		bufferPool.reInitLog(globalIO, i);
 	//	}
@@ -132,7 +134,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		// queue to each tablespace
 		try {
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callGetNextFreeBlock(),ioWorkerNames[i]);
+				synchronized(ioWorker[i]) {
+					futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callGetNextFreeBlock(),ioWorkerNames[i]);
+				}
 			}
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 				futureArray[i].get();
@@ -156,7 +160,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//try {
 			//Future<?> f = ThreadPoolManager.getInstance().spin(ioWorker[tblsp].callFseekAndWrite(offset, tblk),ioWorkerNames[tblsp]);
 			//f.get();
+		synchronized(ioWorker[tblsp]) {
 			ioWorker[tblsp].FseekAndWrite(tblock, tblk);
+		}
 		//} catch (InterruptedException | ExecutionException e) {
 		//	throw new IOException(e);
 		//}
@@ -171,7 +177,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 			System.out.printf("%s.FseekAndWriteFully(%s,%s)%n ",this.getClass().getName(),GlobalDBIO.valueOf(toffset),tblk);
 		int tblsp = GlobalDBIO.getTablespace(toffset);
 		long tblock = GlobalDBIO.getBlock(toffset);
-		ioWorker[tblsp].FseekAndWriteFully(tblock, tblk);
+		synchronized(ioWorker[tblsp]) {
+			ioWorker[tblsp].FseekAndWriteFully(tblock, tblk);
+		}
 	}
 	
 	/* (non-Javadoc)
@@ -185,7 +193,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//	System.out.println("MultithreadedIOManager.FseekAndRead Tablespace_1_114688");
 		int tblsp = GlobalDBIO.getTablespace(toffset);
 		long tblock = GlobalDBIO.getBlock(toffset);
-		ioWorker[tblsp].FseekAndRead(tblock, tblk);
+		synchronized(ioWorker[tblsp]) {
+			ioWorker[tblsp].FseekAndRead(tblock, tblk);
+		}
 		//if( GlobalDBIO.valueOf(toffset).equals("Tablespace_1_114688"))
 		//	System.out.println("MultithreadedIOManager.FseekAndRead EXIT Tablespace_1_114688 "+tblk+" dump:"+tblk.blockdump());
 		//assert(tblk.getBytesused() != 0 && tblk.getBytesinuse() != 0) : "MultithreadedIOManager.FseekAndRead returned unusable block from offset "+GlobalDBIO.valueOf(toffset)+" "+tblk.blockdump();
@@ -239,25 +249,27 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * the ioWorker calls back here to addBlockAccess(BlockAccessIndex) from IOWorker.getNextFreeBlock
 	 * @throws IOException 
 	 */
-	public synchronized BlockAccessIndex getNextFreeBlock() throws IOException {
+	public BlockAccessIndex getNextFreeBlock() throws IOException {
 		int eliglbleTablespace = findEligibleTablespace();
 		if(DEBUG)
 			System.out.printf("%s getNextFree smallest Tablespace %d%n", this.getClass().getName(), eliglbleTablespace);
-		BlockAccessIndex bai = ioWorker[eliglbleTablespace].getNextFreeBlock();
-		if(bai == null) {
-			StringBuilder s = new StringBuilder();
-			s.append("size=");
-			s.append(bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().size());
-			s.append("|");
-			for(Long b : bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().keySet()) {
-				s.append(b);
+		synchronized(ioWorker[eliglbleTablespace]) {
+			BlockAccessIndex bai = ioWorker[eliglbleTablespace].getNextFreeBlock();
+			if(bai == null) {
+				StringBuilder s = new StringBuilder();
+				s.append("size=");
+				s.append(bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().size());
 				s.append("|");
+				for(Long b : bufferPool.getBlockBuffer(eliglbleTablespace).getFreeBlockList().keySet()) {
+					s.append(b);
+					s.append("|");
+				}
+				throw new IOException("Failed to remove valid block from free list:"+GlobalDBIO.valueOf(bai.getBlockNum())+" "+s.toString());
 			}
-			throw new IOException("Failed to remove valid block from free list:"+GlobalDBIO.valueOf(bai.getBlockNum())+" "+s.toString());
+			if(DEBUG)
+				System.out.printf("%s getNextFree smallest Tablespace %d for next free block %s%n", this.getClass().getName(), eliglbleTablespace, bai);
+			return bai;
 		}
-		if(DEBUG)
-			System.out.printf("%s getNextFree smallest Tablespace %d for next free block %s%n", this.getClass().getName(), eliglbleTablespace, bai);
-		return bai;
 	}
 	
 	@Override
@@ -267,11 +279,13 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @return The next free block from the round robin tablespace, translated to a virtual block.
 	 * @throws IOException 
 	 */
-	public synchronized BlockAccessIndex getNextFreeBlock(int tblsp) throws IOException {
-		BlockAccessIndex bai = ioWorker[tblsp].getNextFreeBlock();
-		if(DEBUG)
-			System.out.printf("%s getNextFree specific Tablespace %d for next free block %s%n", this.getClass().getName(), tblsp, bai);
-		return bai;
+	public BlockAccessIndex getNextFreeBlock(int tblsp) throws IOException {
+		synchronized(ioWorker[tblsp]) {
+			BlockAccessIndex bai = ioWorker[tblsp].getNextFreeBlock();
+			if(DEBUG)
+				System.out.printf("%s getNextFree specific Tablespace %d for next free block %s%n", this.getClass().getName(), tblsp, bai);
+			return bai;
+		}
 	}
 	
 	@Override
@@ -279,7 +293,7 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * Deallocate the outstanding block and call commit on the recovery log
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingCommit() throws IOException {
+	public void deallocOutstandingCommit() throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.deallocOutstandingCommit invoking commitBufferFlush and deallocOutstanding...%n",this.getClass().getName());
 		commitBufferFlush();
@@ -291,10 +305,12 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * Deallocate the outstanding block and call rollback on the recovery log
 	 * @throws IOException
 	 */
-	public synchronized void deallocOutstandingRollback() throws IOException {
+	public void deallocOutstandingRollback() throws IOException {
 		if(DEBUG)
 			System.out.printf("%s Rolling back %n",this.getClass().getName());
-		bufferPool.rollback(); 
+		synchronized(bufferPool) {
+			bufferPool.rollback();
+		}
 	}
 	
 	@Override
@@ -303,7 +319,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @throws IOException
 	 */
 	public void deallocOutstanding(BlockAccessIndex bai) throws IOException {
-		bufferPool.deallocOutstanding(bai);
+		synchronized(bufferPool) {
+			bufferPool.deallocOutstanding(bai);
+		}
 	}
 	
 	@Override
@@ -312,30 +330,38 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * accesses = 1 (latched) and and NOT yet in log.
 	 */
 	public void deallocOutstandingWriteLog(BlockAccessIndex lbai) throws IOException {
-		bufferPool.deallocOutstandingWriteLog(GlobalDBIO.getTablespace(lbai.getBlockNum()), lbai);
+		synchronized(bufferPool) {
+			bufferPool.deallocOutstandingWriteLog(GlobalDBIO.getTablespace(lbai.getBlockNum()), lbai);
+		}
 	}
 
  	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fopen()
 	 */
  	@Override
-	public synchronized void Fopen() throws IOException {
- 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
- 				if (ioWorker[i] != null && !((IoInterface)ioWorker[i]).isopen())
- 					((IoInterface)ioWorker[i]).Fopen();
+	public void Fopen() throws IOException {
+ 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
+ 				synchronized(ioWorker[i]) {
+ 					if (ioWorker[i] != null && !((IoInterface)ioWorker[i]).isopen()) {
+ 						((IoInterface)ioWorker[i]).Fopen();
+ 					}
+ 				}
+ 			}
 	}
 	
 	/* (non-Javadoc)
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fclose()
 	 */
 	@Override
-	public synchronized void Fclose() throws IOException {
+	public void Fclose() throws IOException {
 		Future<?>[] futureArray = new Future<?>[DBPhysicalConstants.DTABLESPACES];
 		// queue to each tablespace
 		try {
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				if(((IoInterface)ioWorker[i]).isopen()) {
-					futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callFclose,ioWorkerNames[i]);
+				synchronized(ioWorker[i]) {
+					if(((IoInterface)ioWorker[i]).isopen()) {
+						futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callFclose,ioWorkerNames[i]);
+					}
 				}
 			}
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
@@ -350,15 +376,17 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 * @see com.neocoretechs.bigsack.io.IoManagerInterface#Fforce()
 	 */
 	@Override
-	public synchronized void Fforce() throws IOException {
+	public void Fforce() throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.Fforce%n",this.getClass().getName());
 		Future<?>[] futureArray = new Future<?>[DBPhysicalConstants.DTABLESPACES];
 		// queue to each tablespace
 		try {
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
-				if(((IoInterface)ioWorker[i]).isopen()) {
-					futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callFforce,ioWorkerNames[i]);
+				synchronized(ioWorker[i]) {
+					if(((IoInterface)ioWorker[i]).isopen()) {
+						futureArray[i] = ThreadPoolManager.getInstance().spin(ioWorker[i].callFforce,ioWorkerNames[i]);
+					}
 				}
 			}
 			for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++)
@@ -374,7 +402,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	 */
 	@Override
 	public boolean isNew() {
+		synchronized(ioWorker[0]) {
 			return ioWorker[0].isnew();
+		}
 	}
 	
 	/* (non-Javadoc)
@@ -389,17 +419,23 @@ public class MultithreadedIOManager implements IoManagerInterface {
 		//for (int i = 0; i < DBPhysicalConstants.DTABLESPACES; i++) {
 		//	blockBuffer[i].forceBufferClear();
 		//}
-		bufferPool.forceBufferClear();
+		synchronized(bufferPool) {
+			bufferPool.forceBufferClear();
+		}
 	}
 	
 	@Override
 	public BlockAccessIndex addBlockAccess(BlockAccessIndex blk) throws IOException {
-		return bufferPool.addBlockAccess(blk);	
+		synchronized(bufferPool) {
+			return bufferPool.addBlockAccess(blk);
+		}
 	}
 	
 	@Override
 	public BlockAccessIndex findOrAddBlockAccess(long bn) throws IOException {
-		return bufferPool.findOrAddBlockAccess(bn);
+		synchronized(bufferPool) {
+			return bufferPool.findOrAddBlockAccess(bn);
+		}
 	}
 	
 	/**
@@ -409,14 +445,18 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	public void commitBufferFlush() throws IOException {
 		if( DEBUG )
 			System.out.printf("%s.commitBufferFlush invoked.%n",this.getClass().getName());
-		bufferPool.commitBufferFlush();
+		synchronized(bufferPool) {
+			bufferPool.commitBufferFlush();
+		}
 	}
 	
 	@Override
 	public void checkpointBufferFlush() throws IOException, IllegalAccessException {
 		if( DEBUG )
 			System.out.printf("%s.checkpointBufferFlush invoked.%n",this.getClass().getName());
-		bufferPool.checkpointBufferFlush();
+		synchronized(bufferPool) {
+			bufferPool.checkpointBufferFlush();
+		}
 	}
 	/*
 	@Override
@@ -435,14 +475,18 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	* @exception IOException If we cannot acquire next block
 	*/
 	public boolean seek_fwd(DBInputStream blockStream, int tblsp, long offset) throws IOException {
-		return bufferPool.seekFwd( blockStream, tblsp, offset);
+		synchronized(bufferPool) {
+			return bufferPool.seekFwd( blockStream, tblsp, offset);
+		}
 	}	
 
 	@Override
 	public long Fsize(int tblsp) throws IOException {
-		if( DEBUG )
-			System.out.printf("%s.Fsize(%d)%n",this.getClass().getName(),tblsp);
-		return ioWorker[tblsp].Fsize();
+		synchronized(ioWorker[tblsp]) {
+			if( DEBUG )
+				System.out.printf("%s.Fsize(%d)%n",this.getClass().getName(),tblsp);
+			return ioWorker[tblsp].Fsize();
+		}
 	}
 	
 	@Override
@@ -484,7 +528,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	*/
 	public int objseek(DBInputStream blockStream, Optr adr) throws IOException {
 		assert (adr.getBlock() != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		return bufferPool.objseek(blockStream, adr);
+		synchronized(bufferPool) {
+			return bufferPool.objseek(blockStream, adr);
+		}
 	}
 	
 	@Override
@@ -497,12 +543,16 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	*/
 	public int objseek(DBInputStream blockStream, long adr) throws IOException {
 		assert(adr != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		return bufferPool.objseek(blockStream, adr);
+		synchronized(bufferPool) {
+			return bufferPool.objseek(blockStream, adr);
+		}
 	}
 	
 	@Override
 	public int objseek(DBInputStream blockStream, long tblock, short offset) throws IOException {
-		return bufferPool.objseek(blockStream, tblock, offset);		
+		synchronized(bufferPool) {
+			return bufferPool.objseek(blockStream, tblock, offset);	
+		}
 	}
 	@Override
 	/**
@@ -513,7 +563,9 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	*/
 	public int objseek(DBOutputStream blockStream, Optr adr) throws IOException {
 		assert (adr.getBlock() != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		return bufferPool.objseek(blockStream, adr);
+		synchronized(bufferPool) {
+			return bufferPool.objseek(blockStream, adr);
+		}
 	}
 	
 	@Override
@@ -526,27 +578,37 @@ public class MultithreadedIOManager implements IoManagerInterface {
 	*/
 	public int objseek(DBOutputStream blockStream, long adr) throws IOException {
 		assert(adr != -1L) : "MultithreadedIOManager objseek Sentinel block seek error";
-		return bufferPool.objseek(blockStream, adr);
+		synchronized(bufferPool) {
+			return bufferPool.objseek(blockStream, adr);
+		}
 	}
 	
 	@Override
 	public int objseek(DBOutputStream blockStream, long tblock, short offset) throws IOException {
-		return bufferPool.objseek(blockStream, tblock, offset);		
+		synchronized(bufferPool) {
+			return bufferPool.objseek(blockStream, tblock, offset);	
+		}
 	}
 
 	@Override
 	public RecoveryLogManager getUlog(int tblsp) {
-		return bufferPool.getUlog(tblsp);
+		synchronized(bufferPool) {
+			return bufferPool.getUlog(tblsp);
+		}
 	}
 	
 	@Override
 	public void extend(int ispace, long newLen) throws IOException {
-		ioWorker[ispace].Fset_length(newLen);	
+		synchronized(ioWorker[ispace]) {
+			ioWorker[ispace].Fset_length(newLen);
+		}
 	}
 
 	@Override
 	public MappedBlockBuffer getBlockBuffer(int tablespace) {
-		return bufferPool.getBlockBuffer(tablespace);
+		synchronized(bufferPool) {
+			return bufferPool.getBlockBuffer(tablespace);
+		}
 	}
 
 	/*
