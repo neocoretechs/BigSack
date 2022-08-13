@@ -557,9 +557,7 @@ public class BTreeNavigator<K extends Comparable, V> {
         }
         V value = keyVal.getmValue();
         // delete our returned item from deep store
-        DBOutputStream dbo = GlobalDBIO.getBlockOutputStream(ksr.page.getBlockAccessIndex());
-        deleteFromDeepStore(dbo, keyVal);
-        dbo.close();
+        deleteFromDeepStore(keyVal);
         return value;
     }
     /**
@@ -568,12 +566,12 @@ public class BTreeNavigator<K extends Comparable, V> {
      * @param kv
      * @throws IOException
      */
-    private void deleteFromDeepStore(DBOutputStream dbo,KeyValue<K, V> kv) throws IOException {
+    private void deleteFromDeepStore(KeyValue<K, V> kv) throws IOException {
 		if( !kv.getKeyOptr().equals(Optr.emptyPointer)) {
-			bTreeMain.getIO().delete_object(dbo, kv.getKeyOptr(), GlobalDBIO.getObjectAsBytes(kv.getmKey()).length);
+	        bTreeMain.getIO().delete_object(kv.getKeyOptr(), GlobalDBIO.getObjectAsBytes(kv.getmKey()).length);
 		}
 		if( kv.getValueOptr() != null && !kv.getValueOptr().equals(Optr.emptyPointer)) {
-			bTreeMain.getIO().delete_object(dbo, kv.getValueOptr(), GlobalDBIO.getObjectAsBytes(kv.getmValue()).length);
+			bTreeMain.getIO().delete_object(kv.getValueOptr(), GlobalDBIO.getObjectAsBytes(kv.getmValue()).length);
 		}
     }
     /**
@@ -756,6 +754,13 @@ public class BTreeNavigator<K extends Comparable, V> {
     @SuppressWarnings("unchecked")
 	private void recursiveRotate(Stack<StackInfo> stack) throws IOException {
     	StackInfo si = stack.pop();
+    	if(si == null)
+    		throw new IOException("recursiveRotate encountered null from initial stack pop");
+    	if(si.mNode == null)
+    		throw new IOException("recursiveRotate encountered null from stack pop mNode:"+si);
+       	if(si.mParent == null)
+    		//throw new IOException("recursiveRotate encountered null from stack pop mParent:"+si);
+       		return;
     	BTNode<K, V>  btNode = si.mNode;
     	BTNode<K, V> parentNode = si.mParent;
     	int parentIndex = si.mNodeIdx;

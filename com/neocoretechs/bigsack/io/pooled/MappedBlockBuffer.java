@@ -263,7 +263,8 @@ public class MappedBlockBuffer extends AbstractMap {
 		Enumeration<SoftReference> it = usedBlockList.elements();
 		while(it.hasMoreElements()) {
 			SoftReference bai = (SoftReference) it.nextElement();
-			((BlockAccessIndex)bai.get()).resetBlock(true); // reset and clear access latch
+			if(bai.get() != null)
+				((BlockAccessIndex)bai.get()).resetBlock(true); // reset and clear access latch
 		}
 		clear();
 	}
